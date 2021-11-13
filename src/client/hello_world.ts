@@ -216,7 +216,7 @@ export async function reportFindings(): Promise<void> {
   console.log(
     greetedPubkey.toBase58(),
     'has been created',
-    JSON.stringify(greeting),
+    JSON.stringify(greeting),§
     'time(s)',
   );
 }
