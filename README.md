@@ -1,6 +1,6 @@
-# Solchat, a chatt app on Solana
+# Solvei, a chat app on Solana
 
-WIP
+Learning solana by programming a fun app
 
 ## MVP idea
 
@@ -14,9 +14,10 @@ WIP
 
 # In progress A
 
-- Functionality for the program to create an account "channel" given a user instruction
+Functionality for the program to create an account "channel" given a user instruction
 
-User -> "Create channel instruction" -> Program account -> Channel account
+- User -> "Create channel instruction" -> Channel account  ✅
+- User -> "Update channel instruction" -> Channel gets updated 
 
 
 
