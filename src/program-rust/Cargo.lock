@@ -2267,9 +2267,12 @@ dependencies = [
  "arrayref",
  "borsh",
  "borsh-derive",
+ "num-derive",
+ "num-traits",
  "solana-program",
  "solana-program-test",
  "solana-sdk",
+ "thiserror",
 ]
 
 [[package]]

@@ -1,15 +1,22 @@
+use account::AccountMaxSize;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::{self, AccountInfo, next_account_info}, entrypoint, entrypoint::ProgramResult, instruction::{AccountMeta, Instruction}, msg, program::{invoke, invoke_signed}, program_error::ProgramError, program_pack::{IsInitialized, Pack, Sealed}, pubkey::{PUBKEY_BYTES, Pubkey}, rent::Rent, system_instruction::{self, SystemInstruction}, system_program, sysvar::Sysvar};
 
-use crate::address::get_channel_address_and_bump_seed;
+use crate::{account::create_and_serialize_account_signed, address::get_channel_address_and_bump_seed};
 
+pub static NULL_KEY:Pubkey = Pubkey::new_from_array([0_u8;32]);
+
+mod error;
 pub mod address;
+mod account;
+
+/// Trait for accounts to return their max size
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub struct ChannelAccount
 {
     pub name:String,
-    //pub tail_message:Option<Pubkey>
+    pub tail_message:Pubkey
 }
 
 impl ChannelAccount
@@ -18,11 +25,18 @@ impl ChannelAccount
     {
         ChannelAccount {
             name,
+            tail_message: NULL_KEY
            // tail_message: None
         }
     }
 }
 
+impl AccountMaxSize for ChannelAccount
+{
+    fn get_max_size(&self) -> Option<usize> {
+        None
+    }
+}
 //pub const SIGNER_SEED: &[u8] = b"xyz";
 
 /* 
@@ -107,15 +121,25 @@ pub fn process_instruction(
         ChatInstruction::CreateChannel(channel)  => 
         {
 
+          
 
             let rent = Rent::get()?;   
-            let  account_size = channel.try_to_vec().unwrap().len();
+            /*l
+              let (channel_address_pda, bump) = get_channel_address_and_bump_seed(channel.name.as_str(), program_id);
+            let signer_seeds: &[&[_]] = &[ &channel.name.as_bytes(),    &[bump]];
 
-            let (channel_address_pda, bump) = get_channel_address_and_bump_seed(channel.name.as_str(), program_id);
+            let (serialized_data, account_size) = if let Some(max_size) = channel.get_max_size() {
+                (None, max_size)
+            } else {
+                let serialized_data = channel.try_to_vec()?;
+                let account_size = serialized_data.len();
+                (Some(serialized_data), account_size)
+            };
+
+
             let new_account = system_instruction::create_account(payer_account.key, &channel_address_pda,rent.minimum_balance(account_size),
             account_size as u64, program_id);
 
-            let signer_seeds: &[&[_]] = &[ &channel.name.as_bytes(),    &[bump]];
             if channel_address_pda != *channel_account_pda.key {
                 msg!("Error: Channel address does not match seed derivation");
                 return Err(ProgramError::InvalidSeeds);
@@ -127,12 +151,16 @@ pub fn process_instruction(
                 &[signer_seeds],
         
             )?; 
-            channel.serialize(&mut  *channel_account_pda.data.borrow_mut())?
+            channel.serialize(&mut  *channel_account_pda.data.borrow_mut())?;*/
+            create_and_serialize_account_signed(payer_account,channel_account_pda,&channel,&[channel.name.as_bytes()],program_id,system_account,&rent)?;
+           
        
         },
         ChatInstruction::UpdateChannel(channel)  => 
         {
 
+            // Don't allow channel name to be updated, since it would require us to resize the account size
+            // This would also mean that the PDA would change!
             channel.serialize(&mut  *channel_account_pda.data.borrow_mut())?
        
         },
