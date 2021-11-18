@@ -1,4 +1,6 @@
-# Solvei, a chat app on Solana
+# [<img src="https://www.pdclipart.org/albums/Weather/sun_sun_15.png" style="width: 100px; margin-right: 10px">](https://github.com/marcus-pousette/solvei) Solvei - A chat app on Solana
+
+
 
 Learning solana by programming a fun app
 
@@ -11,13 +13,20 @@ Learning solana by programming a fun app
 - Frontend (E)
 
 
+# How? 
+
+![A sketch on how any size message could be sent](./controllers_brief.svg)
+<img src="./infra.svg">
+
 
 # In progress A
 
 Functionality for the program to create an account "channel" given a user instruction
 
 - User -> "Create channel instruction" -> Channel account  ✅
-- User -> "Update channel instruction" -> Channel gets updated 
+- User -> "Update channel instruction" -> Channel gets updated ✅
+
+---> **Trying to figure out how to send large messages when transaction size is limited at 1200 bytes**
 
 
 

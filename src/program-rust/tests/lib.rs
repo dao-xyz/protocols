@@ -1,18 +1,16 @@
 
-use borsh::BorshDeserialize;
-use solvei::{ChannelAccount, ChatInstruction, NULL_KEY, address::{get_channel_address,get_channel_address_and_bump_seed}, process_instruction};
+use solvei::{ChannelAccount, ChatInstruction, NULL_KEY, address::{get_channel_address_and_bump_seed}, process_instruction};
 use solana_program::{instruction::{AccountMeta, Instruction}, system_program};
 use solana_program_test::*;
 use solana_sdk::{pubkey::Pubkey, signer::Signer, transaction::Transaction, borsh::try_from_slice_unchecked};
-use std::mem;
 mod test_program;
-use solana_program::msg;
+
+
 #[tokio::test]
 async fn test_create_update_channel() {
 
-
     let program_id = Pubkey::new_unique();
-    let mut program = test_program::program_test(program_id);
+    let program = test_program::program_test(program_id);
     let channel_name = "My channel";
     let (channel_address_pda, bump) = get_channel_address_and_bump_seed(channel_name,&program_id);
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
@@ -49,8 +47,8 @@ async fn test_create_update_channel() {
         NULL_KEY
     ); 
 
-    /* 
-    // Update channel, 
+    
+    // Update channel 
     let mut updated_channel = ChannelAccount::new(channel_name.into());
     let new_tail_message_key = Pubkey::new_unique();
     updated_channel.tail_message = new_tail_message_key;
@@ -65,8 +63,8 @@ async fn test_create_update_channel() {
     );
     transaction_update.sign(&[&payer], recent_blockhash);
     banks_client.process_transaction(transaction_update).await.unwrap(); 
-    dbg!("Rename done");
-    // Verify channel name
+
+    // Verify new tail message key
     let channel_account = banks_client
         .get_account(channel_address_pda)
         .await
@@ -80,13 +78,9 @@ async fn test_create_update_channel() {
         channel_name
     );   
 
-    // Check tail message is some new key
+    // Check tail s is some new key
     assert_eq!(
         account_data.tail_message,
         new_tail_message_key
     );   
- */
- 
-
-
 }

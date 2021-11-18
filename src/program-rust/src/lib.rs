@@ -37,28 +37,6 @@ impl AccountMaxSize for ChannelAccount
         None
     }
 }
-//pub const SIGNER_SEED: &[u8] = b"xyz";
-
-/* 
-
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
-pub struct OrganizationAccount
-{
-    pub name:String,
-}
-
-
-impl OrganizationAccount
-{
-    pub fn new(name:String) -> OrganizationAccount
-    {
-        OrganizationAccount {
-            name
-        }
-    }
-}
-
-*/
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub struct Message
@@ -120,41 +98,9 @@ pub fn process_instruction(
     {
         ChatInstruction::CreateChannel(channel)  => 
         {
-
-          
-
             let rent = Rent::get()?;   
-            /*l
-              let (channel_address_pda, bump) = get_channel_address_and_bump_seed(channel.name.as_str(), program_id);
-            let signer_seeds: &[&[_]] = &[ &channel.name.as_bytes(),    &[bump]];
+            create_and_serialize_account_signed(payer_account,channel_account_pda,&channel,&[channel.name.as_bytes()],program_id,system_account,&rent)?;  
 
-            let (serialized_data, account_size) = if let Some(max_size) = channel.get_max_size() {
-                (None, max_size)
-            } else {
-                let serialized_data = channel.try_to_vec()?;
-                let account_size = serialized_data.len();
-                (Some(serialized_data), account_size)
-            };
-
-
-            let new_account = system_instruction::create_account(payer_account.key, &channel_address_pda,rent.minimum_balance(account_size),
-            account_size as u64, program_id);
-
-            if channel_address_pda != *channel_account_pda.key {
-                msg!("Error: Channel address does not match seed derivation");
-                return Err(ProgramError::InvalidSeeds);
-            } 
-
-            invoke_signed(
-                &new_account, 
-                &[ system_account.clone(),program_account.clone(),payer_account.clone(),channel_account_pda.clone()],
-                &[signer_seeds],
-        
-            )?; 
-            channel.serialize(&mut  *channel_account_pda.data.borrow_mut())?;*/
-            create_and_serialize_account_signed(payer_account,channel_account_pda,&channel,&[channel.name.as_bytes()],program_id,system_account,&rent)?;
-           
-       
         },
         ChatInstruction::UpdateChannel(channel)  => 
         {
