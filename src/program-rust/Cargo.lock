@@ -2240,18 +2240,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "solana-bpf-helloworld"
-version = "0.0.1"
-dependencies = [
- "arrayref",
- "borsh",
- "borsh-derive",
- "solana-program",
- "solana-program-test",
- "solana-sdk",
-]
-
-[[package]]
 name = "solana-bpf-loader-program"
 version = "1.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2270,6 +2258,18 @@ dependencies = [
  "solana-sdk",
  "solana_rbpf",
  "thiserror",
+]
+
+[[package]]
+name = "solana-bpf-solvei"
+version = "0.0.1"
+dependencies = [
+ "arrayref",
+ "borsh",
+ "borsh-derive",
+ "solana-program",
+ "solana-program-test",
+ "solana-sdk",
 ]
 
 [[package]]

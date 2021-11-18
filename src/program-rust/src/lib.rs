@@ -1,6 +1,10 @@
-
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{system_program, account_info::{self, AccountInfo, next_account_info}, entrypoint, entrypoint::ProgramResult, instruction::{AccountMeta, Instruction}, msg, program::{invoke, invoke_signed}, program_error::ProgramError, program_pack::{IsInitialized, Pack, Sealed}, pubkey::{PUBKEY_BYTES, Pubkey}, system_instruction::{self, SystemInstruction}};
+use solana_program::{account_info::{self, AccountInfo, next_account_info}, entrypoint, entrypoint::ProgramResult, instruction::{AccountMeta, Instruction}, msg, program::{invoke, invoke_signed}, program_error::ProgramError, program_pack::{IsInitialized, Pack, Sealed}, pubkey::{PUBKEY_BYTES, Pubkey}, rent::Rent, system_instruction::{self, SystemInstruction}, system_program, sysvar::Sysvar};
+
+use crate::address::get_channel_address_and_bump_seed;
+
+pub mod address;
+
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub struct ChannelAccount
 {
@@ -19,7 +23,7 @@ impl ChannelAccount
     }
 }
 
-pub const SIGNER_SEED: &[u8] = b"xyz";
+//pub const SIGNER_SEED: &[u8] = b"xyz";
 
 /* 
 
@@ -54,6 +58,7 @@ pub enum ChatInstruction
 {
     
     CreateChannel(ChannelAccount),
+    UpdateChannel(ChannelAccount),
     SendMessage
     {
         message: String,
@@ -76,21 +81,22 @@ entrypoint!(process_instruction);
 
 // Program entrypoint's implementation
 pub fn process_instruction(
-    program_id: &Pubkey, // Public key of the account the hello world program was loaded into
+    program_id: &Pubkey, // Public key of the account the program was loaded into
     accounts: &[AccountInfo], // The account to say hello to
     input: &[u8],
 ) -> ProgramResult {
-    msg!("Hello World Rust program entrypoint");
+    msg!("Chat program entrypoint!");
+
     let instruction = ChatInstruction::try_from_slice(input)?;
-    msg!("Got instr");
 
     // Iterating accounts is safer then indexing
     let accounts_iter = &mut accounts.iter();
-    msg!("Got acc");
+
     let system_account = next_account_info(accounts_iter)?;
     let program_account = next_account_info(accounts_iter)?;
-    let domain_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
+    //let channel_account = next_account_info(accounts_iter)?;
+    let channel_account_pda= next_account_info(accounts_iter)?;
 
     // User account
 
@@ -101,33 +107,36 @@ pub fn process_instruction(
         ChatInstruction::CreateChannel(channel)  => 
         {
 
-            //let channel_account = Pubkey::create_with_seed(domain_account.key,channel.name.as_str(), program_id)?;
-            let new_account = system_instruction::create_account_with_seed(payer_account.key, &program_id,&domain_account.key,channel.name.as_str(), 30000, 1000000, program_id);
-            msg!("???");
-            msg!(program_account.key.to_string().as_str());
-            msg!(domain_account.key.to_string().as_str());
-            msg!(payer_account.key.to_string().as_str());
-            msg!(system_account.key.to_string().as_str());
+
+            let rent = Rent::get()?;   
+            let  account_size = channel.try_to_vec().unwrap().len();
+
+            let (channel_address_pda, bump) = get_channel_address_and_bump_seed(channel.name.as_str(), program_id);
+            let new_account = system_instruction::create_account(payer_account.key, &channel_address_pda,rent.minimum_balance(account_size),
+            account_size as u64, program_id);
+
+            let signer_seeds: &[&[_]] = &[ &channel.name.as_bytes(),    &[bump]];
+            if channel_address_pda != *channel_account_pda.key {
+                msg!("Error: Channel address does not match seed derivation");
+                return Err(ProgramError::InvalidSeeds);
+            } 
 
             invoke_signed(
                 &new_account, 
-                &[ system_account.clone()],
-                &[&[SIGNER_SEED, &[instruction_data[0]]]],
+                &[ system_account.clone(),program_account.clone(),payer_account.clone(),channel_account_pda.clone()],
+                &[signer_seeds],
         
-            )?; // pass accout meta to get accouifof!;
-            // Create channel on organization
-         //   organization_account.serialize(&mut &mut account_innnfo.data.borrow_mut()[..])?;
-          //  msg!("Created a new channel with name: {}, key: {}", channel.name,channel_account.to_string());
-            msg!("HELLO");
-            //let create_channel_instruction = system_instruction::create_account(user_account.key, &channel_account,  3000,10000, program_id);
-            //invoke(&create_channel_instruction, &accounts)?;
-            // invoke(&Instruction::new_with_bincode(program_id.clone(), &Message {
-            //     message: format!("Welcome to the {} channel", channel.name),
-            //     next: None
-            // }.try_to_vec()?,
-            // vec![AccountMeta::new(account_info.key.clone(), false)]), &accounts);
+            )?; 
+            channel.serialize(&mut  *channel_account_pda.data.borrow_mut())?
+       
         },
-        
+        ChatInstruction::UpdateChannel(channel)  => 
+        {
+
+            channel.serialize(&mut  *channel_account_pda.data.borrow_mut())?
+       
+        },
+
         ChatInstruction::SendMessage{ message, channel } =>
         {   
              // Iterating accounts is safer then indexing
@@ -332,7 +341,7 @@ impl Pack for OrganizationAccount {
 }*/
 
 // Sanity tests
-#[cfg(test)]
+/* #[cfg(test)]
 mod test {
     use super::*;
     use solana_program::clock::Epoch;
@@ -355,11 +364,18 @@ mod test {
             false,
             Epoch::default(),
         );
+
+        //AccountInfo::new(key, is_signer, is_writable, lamports, data, owner, executable, rent_epoch)
         let accounts = vec![account];
 
         let create_channel_instruction_1  = ChatInstruction::CreateChannel(ChannelAccount::new("1".into()));
         let ser = create_channel_instruction_1.try_to_vec().unwrap();
         process_instruction(&program_id, &accounts, &ser).unwrap();
+
+    }
+} */
+
+
 
 /*
         assert_eq!(
@@ -377,7 +393,3 @@ mod test {
                 .channels.len(),
             2
         );*/
-    }
-}
-
-
