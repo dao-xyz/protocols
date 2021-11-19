@@ -1,62 +1,115 @@
+
+use std::io::Error;
+
 use account::AccountMaxSize;
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{account_info::{self, AccountInfo, next_account_info}, entrypoint, entrypoint::ProgramResult, instruction::{AccountMeta, Instruction}, msg, program::{invoke, invoke_signed}, program_error::ProgramError, program_pack::{IsInitialized, Pack, Sealed}, pubkey::{PUBKEY_BYTES, Pubkey}, rent::Rent, system_instruction::{self, SystemInstruction}, system_program, sysvar::Sysvar};
+use solana_program::{
+    account_info::{self, next_account_info, AccountInfo},
+    entrypoint,
+    entrypoint::ProgramResult,
+    instruction::{AccountMeta, Instruction},
+    msg,
+    program::{invoke, invoke_signed},
+    program_error::ProgramError,
+    program_pack::{IsInitialized, Pack, Sealed},
+    pubkey::{Pubkey, PUBKEY_BYTES},
+    rent::Rent,
+    system_instruction::{self, SystemInstruction},
+    borsh::try_from_slice_unchecked,
+    system_program,
+    sysvar::Sysvar,
+};
 
-use crate::{account::create_and_serialize_account_signed, address::get_channel_address_and_bump_seed};
+use crate::{
+    account::create_and_serialize_account_signed,
+};
 
-pub static NULL_KEY:Pubkey = Pubkey::new_from_array([0_u8;32]);
+pub static NULL_KEY: Pubkey = Pubkey::new_from_array([0_u8; 32]);
 
-mod error;
-pub mod address;
 mod account;
+pub mod address;
+mod error;
 
 /// Trait for accounts to return their max size
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
-pub struct ChannelAccount
-{
-    pub name:String,
-    pub tail_message:Pubkey
+pub struct ChannelAccount {
+    pub name: String,
+    pub tail_message: Pubkey,
 }
 
-impl ChannelAccount
-{
-    pub fn new(name:String) -> ChannelAccount
-    {
+impl ChannelAccount {
+    pub fn new(name: String) -> ChannelAccount {
         ChannelAccount {
             name,
-            tail_message: NULL_KEY
-           // tail_message: None
+            tail_message: NULL_KEY, // tail_message: None
         }
     }
 }
 
-impl AccountMaxSize for ChannelAccount
-{
+impl AccountMaxSize for ChannelAccount {
     fn get_max_size(&self) -> Option<usize> {
         None
     }
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
-pub struct Message
-{
-    next: Option<Pubkey>,
-    message: String
+pub struct Message {
+    message: String,
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
-pub enum ChatInstruction
-{
-    
-    CreateChannel(ChannelAccount),
-    UpdateChannel(ChannelAccount),
-    SendMessage
-    {
-        message: String,
-        channel: Pubkey
-    }
+pub struct MessageAccount {
+    from: Pubkey,
+    message: String,
+    message_size: u64,
+    next: Pubkey // Next message in the channel
+}
 
+impl MessageAccount 
+{
+    pub fn new_short_message(message:String, from:Pubkey) -> Self 
+    {
+        let message_size = message.as_bytes().len() as u64; 
+        Self {
+            from,
+            message,
+            message_size,
+            next: NULL_KEY
+        }
+    }
+}
+impl AccountMaxSize for MessageAccount 
+{
+    fn get_max_size(&self) -> Option<usize> {
+        let message_size_borsh = self.message_size + 4; // 4 bytes for the length
+        let keys_size = 64;
+        let message_size_size = 8;
+        Some((message_size_borsh + keys_size + message_size_size) as usize)
+    }
+}
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+pub struct SubmitMessage {
+    from: Pubkey
+}
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+pub enum ChatInstruction {
+    // Create channel, that keep tracks of the message tail
+    CreateChannel(ChannelAccount),
+
+    // Update channel (the tail message)
+    UpdateChannel(ChannelAccount),
+
+    // Message builder is user to build a message that later can be submitted with the submitt message instruction
+    BuildMessageInitialize(MessageAccount),
+
+    // Add message to message builder
+    //BuildMessagePart(String),
+
+    // Submit message from BuildMessage invocations
+    SubmitMessage,
 }
 
 /*
@@ -73,7 +126,7 @@ entrypoint!(process_instruction);
 
 // Program entrypoint's implementation
 pub fn process_instruction(
-    program_id: &Pubkey, // Public key of the account the program was loaded into
+    program_id: &Pubkey,      // Public key of the account the program was loaded into
     accounts: &[AccountInfo], // The account to say hello to
     input: &[u8],
 ) -> ProgramResult {
@@ -85,63 +138,131 @@ pub fn process_instruction(
     let accounts_iter = &mut accounts.iter();
 
     let system_account = next_account_info(accounts_iter)?;
-    let program_account = next_account_info(accounts_iter)?;
+    let _program_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
-    //let channel_account = next_account_info(accounts_iter)?;
-    let channel_account_pda= next_account_info(accounts_iter)?;
 
-    // User account
+    match instruction {
+        ChatInstruction::CreateChannel(channel) => {
+            let channel_account_info = next_account_info(accounts_iter)?;
 
-    // Get the channeel account
-
-    match instruction
-    {
-        ChatInstruction::CreateChannel(channel)  => 
-        {
-            let rent = Rent::get()?;   
-            create_and_serialize_account_signed(payer_account,channel_account_pda,&channel,&[channel.name.as_bytes()],program_id,system_account,&rent)?;  
-
-        },
-        ChatInstruction::UpdateChannel(channel)  => 
-        {
+            /* msg!("CREATE CHANNEL ACCOUNT ");
+            msg!(channel.try_to_vec().unwrap().len().to_string().as_str()); */
+            let rent = Rent::get()?;
+            create_and_serialize_account_signed(
+                payer_account,
+                channel_account_info,
+                &channel,
+                &[channel.name.as_bytes()],
+                program_id,
+                system_account,
+                &rent,
+            )?;
+        }
+        ChatInstruction::UpdateChannel(channel) => {
+            let channel_account_info = next_account_info(accounts_iter)?;
 
             // Don't allow channel name to be updated, since it would require us to resize the account size
             // This would also mean that the PDA would change!
-            channel.serialize(&mut  *channel_account_pda.data.borrow_mut())?
-       
-        },
-
-        ChatInstruction::SendMessage{ message, channel } =>
-        {   
-             // Iterating accounts is safer then indexing
-            let accounts_iter = &mut accounts.iter();
-
-            // Get the channeel account
-            let channel_info = next_account_info(accounts_iter)?;
-
-            // The account must be owned by the program in order to modify its data
-            if channel_info.owner != program_id {
-                msg!("Channnel account does not have the correct program id");
-                return Err(ProgramError::IncorrectProgramId);
-            }
-
-            msg!("Send  message channel!");
-
-            let channel_account_metas = vec![AccountMeta::new(channel_info.key.clone(), false)];
-            invoke(&Instruction::new_with_bincode(program_id.clone(), &Message {
-                message: message,
-                next: None // should bee previorus
-            }.try_to_vec()?,
-            channel_account_metas), accounts)?;
-
-            msg!("Message sent to channel!");
-            
+            channel.serialize(&mut *channel_account_info.data.borrow_mut())?
         }
-    }
- 
 
+        ChatInstruction::BuildMessageInitialize(message) => {
+            // Initializes an account for us that lets us build an message
+            let message_account_info = next_account_info(accounts_iter)?;
+            let rent = Rent::get()?;
+            msg!("CREATE MESSAGE ACCOUNT ");
+            msg!(message.try_to_vec().unwrap().len().to_string().as_str());
+            msg!(message.get_max_size().unwrap().to_string().as_str());
+
+            create_and_serialize_account_signed(
+                payer_account,
+                message_account_info,
+                &message,
+                &[&payer_account.key.to_bytes()],
+                program_id,
+                system_account,
+                &rent,
+            )?;
+            if message.message_size  as usize == message.message.as_bytes().len()
+            {
+                // we have recieved the whole message, lets send it!
+                let channel_account_info = next_account_info(accounts_iter)?;
+                submit_message(message_account_info, channel_account_info)?;
+
+            }
+        }
+        ChatInstruction::SubmitMessage =>
+        {
+
+            let message_account_info = next_account_info(accounts_iter)?;
+            let channel_account_info = next_account_info(accounts_iter)?;
+            submit_message(message_account_info, channel_account_info)?;
+
+        }
+        
+        
+        /* ChatInstruction::SubmitMessage(submittable) =>
+          {
+               // Iterating accounts is safer then indexing
+              let accounts_iter = &mut accounts.iter();
+
+              // Get the channeel account
+              let channel_info = next_account_info(accounts_iter)?;
+
+              // The account must be owned by the program in order to modify its data
+              if channel_info.owner != program_id {
+                  msg!("Channnel account does not have the correct program id");
+                  return Err(ProgramError::IncorrectProgramId);
+              }
+
+              msg!("Send  message channel!");
+
+              let channel_account_metas = vec![AccountMeta::new(channel_info.key.clone(), false)];
+              invoke(&Instruction::new_with_bincode(program_id.clone(), &Message {
+                  message: message,
+                  next: None // should bee previorus
+              }.try_to_vec()?,
+              channel_account_metas), accounts)?;
+
+              msg!("Message sent to channel!");
+
+          } */
+    }
 
     Ok(())
+}
+
+pub fn submit_message(message_account_info: &AccountInfo, channel_account_info: &AccountInfo) -> Result<(),Error> {
+    
+    // Load accounts
+    // We can not deserialize message account with 'try_from_slice' since the account size is 
+    // larger than the actual size, hence we use try_from_slice_unchecked (?????)
+    let mut message_account_result = MessageAccount::try_from_slice(&message_account_info.data.borrow());
+
+    match message_account_result {
+        Ok(mut message_account ) => {
+            let mut channel_account = ChannelAccount::try_from_slice(&channel_account_info.data.borrow())?;
+
+            // Last message is newest message "next"
+            message_account.next = channel_account.tail_message;
+
+            // Replace last message with newset message
+            channel_account.tail_message = message_account_info.key.to_owned();
+
+            // Save message and channel
+            // message_account.serialize(&mut *message_account_info.data.borrow_mut())?;
+            // channel_account.serialize(&mut *channel_account_info.data.borrow_mut())?;
+            msg!("OK");
+            Ok(())
+        },
+        Err(error) => 
+        {
+            msg!("Failed to deserialize");
+            msg!(error.to_string().as_str());
+            return Err(error);
+        }
+    }
+    
 }
 /*
 const ORGANIZATION_LEN:usize = 1000;
@@ -349,21 +470,19 @@ mod test {
     }
 } */
 
-
-
 /*
-        assert_eq!(
-            OrganizationAccount::try_from_slice(&accounts[0].data.borrow())
-                .unwrap()
-                .channels.len(),
-            1
-        );
+assert_eq!(
+    OrganizationAccount::try_from_slice(&accounts[0].data.borrow())
+        .unwrap()
+        .channels.len(),
+    1
+);
 
-        let create_channel_instruction_2  = ChatInstruction::CreateChannel(Channel::new("2".into()));
-        process_instruction(&program_id, &accounts, &create_channel_instruction_2.try_to_vec().unwrap()).unwrap();
-        assert_eq!(
-            OrganizationAccount::try_from_slice(&accounts[0].data.borrow())
-                .unwrap()
-                .channels.len(),
-            2
-        );*/
+let create_channel_instruction_2  = ChatInstruction::CreateChannel(Channel::new("2".into()));
+process_instruction(&program_id, &accounts, &create_channel_instruction_2.try_to_vec().unwrap()).unwrap();
+assert_eq!(
+    OrganizationAccount::try_from_slice(&accounts[0].data.borrow())
+        .unwrap()
+        .channels.len(),
+    2
+);*/
