@@ -129,7 +129,7 @@ export async function checkProgram(): Promise<void> {
   if (programInfo === null) {
     if (fs.existsSync(PROGRAM_SO_PATH)) {
       throw new Error(
-        'Program needs to be deployed with `solana program deploy dist/program/helloworld.so`',
+        'Program needs to be deployed with `solana program deploy dist/program/solvei.so`',
       );
     } else {
       throw new Error('Program needs to be built and deployed');
@@ -140,20 +140,20 @@ export async function checkProgram(): Promise<void> {
   console.log(`Using program ${programId.toBase58()}`);
 
   // Derive the address (public key) of a greeting account from the program so that it's easy to find later.
-  const GREETING_SEED = 'hello';
-  greetedPubkey = await PublicKey.createWithSeed(
+  const channelName = 'Hello!';
+  const channelAccountPubkey = await PublicKey.createWithSeed(
     payer.publicKey,
-    GREETING_SEED,
+    channelName,
     programId,
   );
 
   // Check if the greeting account has already been created
-  const greetedAccount = await connection.getAccountInfo(greetedPubkey);
-  if (greetedAccount === null) {
+  const channelAccount = await connection.getAccountInfo(channelAccountPubkey);
+  if (channelAccount === null) {
     console.log(
       'Creating account',
-      greetedPubkey.toBase58(),
-      'to say hello to',
+      channelAccountPubkey.toBase58(),
+      'to send messages to',
     );
     const lamports = await connection.getMinimumBalanceForRentExemption(
       CHANNEL_ACCOUNT_SIZE,
@@ -216,7 +216,7 @@ export async function reportFindings(): Promise<void> {
   console.log(
     greetedPubkey.toBase58(),
     'has been created',
-    JSON.stringify(greeting),§
+    JSON.stringify(greeting),
     'time(s)',
   );
 }

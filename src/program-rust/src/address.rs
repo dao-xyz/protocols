@@ -11,7 +11,7 @@ pub fn get_channel_account_address_and_bump_seed(
 ) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[
-            &channel_name.as_bytes()
+            channel_name.as_bytes()
         ],
         program_id,
     )

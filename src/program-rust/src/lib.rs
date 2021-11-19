@@ -4,19 +4,12 @@ use std::io::Error;
 use account::AccountMaxSize;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::{self, next_account_info, AccountInfo},
+    account_info::{ next_account_info, AccountInfo},
     entrypoint,
     entrypoint::ProgramResult,
-    instruction::{AccountMeta, Instruction},
     msg,
-    program::{invoke, invoke_signed},
-    program_error::ProgramError,
-    program_pack::{IsInitialized, Pack, Sealed},
-    pubkey::{Pubkey, PUBKEY_BYTES},
+    pubkey::{Pubkey},
     rent::Rent,
-    system_instruction::{self, SystemInstruction},
-    borsh::try_from_slice_unchecked,
-    system_program,
     sysvar::Sysvar,
 };
 
@@ -29,6 +22,8 @@ pub static NULL_KEY: Pubkey = Pubkey::new_from_array([0_u8; 32]);
 mod account;
 pub mod address;
 mod error;
+
+pub static MESSAGE_TRANSACTION_MAX_SIZE: usize = 1200;
 
 /// Trait for accounts to return their max size
 
@@ -54,44 +49,102 @@ impl AccountMaxSize for ChannelAccount {
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
-pub struct Message {
-    message: String,
+pub enum Message
+{
+    String(String),
+    // image
+    // videos
+    // files etc
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub struct MessageAccount {
-    from: Pubkey,
-    message: String,
-    message_size: u64,
-    next: Pubkey // Next message in the channel
+    pub from: Pubkey,
+    pub message: Message,
+    pub size: u64,
+    pub parts: u64,
+    pub next: Pubkey // Next message in the channel
+}
+
+pub type MessageAccountSplitted = (MessageAccount, Vec<String>);
+pub enum MessageAccountSubmittable
+{
+    Split(MessageAccountSplitted),
+    Single(MessageAccount)
 }
 
 impl MessageAccount 
 {
-    pub fn new_short_message(message:String, from:Pubkey) -> Self 
+    /* 
+    // Is this message too large for one transaction?
+    pub fn must_split(&self) -> bool {
+        self.get_max_size().unwrap() > MESSAGE_TRANSACTION_MAX_SIZE
+    } */
+    
+    // A generic message that might have to be split into multiple transactions
+    pub fn new_message(message:Message, from:Pubkey) -> Self 
     {
-        let message_size = message.as_bytes().len() as u64; 
-        Self {
-            from,
-            message,
-            message_size,
-            next: NULL_KEY
+        match &message
+        {       
+             Message::String(string) => 
+             {
+                let message_size = string.as_bytes().len() as u64 + 4; // +4 because Borsh encodes length
+                Self {
+                    from,
+                    message,
+                    size:message_size,
+                    parts: 1,
+                    next: NULL_KEY
+                }
+             }
         }
+        
     }
+
+    /* pub fn to_submittable(mut self) -> MessageAccountSubmittable {
+        // Return 
+        // 1. MessageAccount, but modified with partial message
+        // 2. 3. 4... parts of just strings
+        if self.must_split()
+        {
+            let num_of_chunks = self.message.as_bytes().len() as f64 /  MESSAGE_TRANSACTION_MAX_SIZE as f64 ;
+            let mut strings = self.message
+                .chars()
+                .chunks(num_of_chunks.ceil() as usize )
+                .into_iter()
+                .map(|chunk| chunk.collect::<String>())
+                .collect::<Vec<String>>();
+            self.message = strings.remove(0);
+
+            return MessageAccountSubmittable::Split(
+                (
+                    self,
+                    strings
+                )
+            )
+        }
+        return MessageAccountSubmittable::Single(self)
+    } */
+
+
 }
+
 impl AccountMaxSize for MessageAccount 
 {
     fn get_max_size(&self) -> Option<usize> {
-        let message_size_borsh = self.message_size + 4; // 4 bytes for the length
+        // we calcualte this manually since, the max size of this MessageAccount might be greate
+        // than what it currently contains in the "message"
+        let message_size_borsh = self.size + 1; // 1 byte for the enum 
         let keys_size = 64;
         let message_size_size = 8;
-        Some((message_size_borsh + keys_size + message_size_size) as usize)
+        let parts_sizes = 8;
+        Some((message_size_borsh + keys_size + message_size_size + parts_sizes) as usize)
     }
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub struct SubmitMessage {
-    from: Pubkey
+    pub from: Pubkey
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
@@ -103,13 +156,13 @@ pub enum ChatInstruction {
     UpdateChannel(ChannelAccount),
 
     // Message builder is user to build a message that later can be submitted with the submitt message instruction
-    BuildMessageInitialize(MessageAccount),
+    SendMessage(MessageAccount),
 
     // Add message to message builder
     //BuildMessagePart(String),
 
     // Submit message from BuildMessage invocations
-    SubmitMessage,
+    //SubmitMessage,
 }
 
 /*
@@ -166,39 +219,46 @@ pub fn process_instruction(
             channel.serialize(&mut *channel_account_info.data.borrow_mut())?
         }
 
-        ChatInstruction::BuildMessageInitialize(message) => {
+        ChatInstruction::SendMessage(mut message_account) => {
             // Initializes an account for us that lets us build an message
             let message_account_info = next_account_info(accounts_iter)?;
             let rent = Rent::get()?;
-            msg!("CREATE MESSAGE ACCOUNT ");
-            msg!(message.try_to_vec().unwrap().len().to_string().as_str());
-            msg!(message.get_max_size().unwrap().to_string().as_str());
+
+            if message_account.parts == 1 // Message does only contain 1 part
+            {
+                // we have recieved the whole message, let modify it for submission
+                let channel_account_info = next_account_info(accounts_iter)?;
+
+                 // Load accounts
+                let mut channel_account = ChannelAccount::try_from_slice(&channel_account_info.data.borrow())?;
+                replace_tail_message(&mut message_account, message_account_info.key, &mut channel_account);
+
+                // serialize/save the channel account, 
+                channel_account.serialize(&mut *channel_account_info.data.borrow_mut())?;
+
+                // message account will be saved below
+            }
+
 
             create_and_serialize_account_signed(
                 payer_account,
                 message_account_info,
-                &message,
+                &message_account,
                 &[&payer_account.key.to_bytes()],
                 program_id,
                 system_account,
                 &rent,
             )?;
-            if message.message_size  as usize == message.message.as_bytes().len()
-            {
-                // we have recieved the whole message, lets send it!
-                let channel_account_info = next_account_info(accounts_iter)?;
-                submit_message(message_account_info, channel_account_info)?;
 
-            }
+           
         }
-        ChatInstruction::SubmitMessage =>
+        /* ChatInstruction::SubmitMessage =>
         {
 
             let message_account_info = next_account_info(accounts_iter)?;
             let channel_account_info = next_account_info(accounts_iter)?;
-            submit_message(message_account_info, channel_account_info)?;
-
-        }
+            submit_message(&message_account_info, &channel_account_info)?;
+        } */
         
         
         /* ChatInstruction::SubmitMessage(submittable) =>
@@ -232,38 +292,34 @@ pub fn process_instruction(
     Ok(())
 }
 
-pub fn submit_message(message_account_info: &AccountInfo, channel_account_info: &AccountInfo) -> Result<(),Error> {
+pub fn replace_tail_message(message_account: &mut MessageAccount, messsage_account_key:&Pubkey, channel_account: &mut  ChannelAccount) {
     
-    // Load accounts
-    // We can not deserialize message account with 'try_from_slice' since the account size is 
-    // larger than the actual size, hence we use try_from_slice_unchecked (?????)
-    let mut message_account_result = MessageAccount::try_from_slice(&message_account_info.data.borrow());
+    // Last message is newest message "next"
+    message_account.next = channel_account.tail_message;
 
-    match message_account_result {
-        Ok(mut message_account ) => {
-            let mut channel_account = ChannelAccount::try_from_slice(&channel_account_info.data.borrow())?;
-
-            // Last message is newest message "next"
-            message_account.next = channel_account.tail_message;
-
-            // Replace last message with newset message
-            channel_account.tail_message = message_account_info.key.to_owned();
-
-            // Save message and channel
-            // message_account.serialize(&mut *message_account_info.data.borrow_mut())?;
-            // channel_account.serialize(&mut *channel_account_info.data.borrow_mut())?;
-            msg!("OK");
-            Ok(())
-        },
-        Err(error) => 
-        {
-            msg!("Failed to deserialize");
-            msg!(error.to_string().as_str());
-            return Err(error);
-        }
-    }
+    // Replace last message with newset message
+    channel_account.tail_message = *messsage_account_key;
+            
     
 }
+
+pub fn submit_message(message_account_info: &AccountInfo, channel_account_info: &AccountInfo) -> Result<(),Error> {
+    
+
+    // Load accounts
+    let mut channel_account = ChannelAccount::try_from_slice(&channel_account_info.data.borrow())?;
+    let mut message_account = MessageAccount::try_from_slice(&message_account_info.data.borrow())?;
+
+    replace_tail_message(&mut message_account,message_account_info.key, &mut channel_account);
+    // Save message and channel
+    message_account.serialize(&mut *message_account_info.data.borrow_mut())?;
+    channel_account.serialize(&mut *channel_account_info.data.borrow_mut())?;
+                
+    Ok(())
+    
+}
+
+
 /*
 const ORGANIZATION_LEN:usize = 1000;
 impl Sealed for OrganizationAccount {}

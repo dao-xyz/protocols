@@ -1,4 +1,5 @@
 //! General purpose account utility functions
+#![allow(dead_code)]
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -130,10 +131,14 @@ pub fn create_and_serialize_account_signed<'a, T: BorshSerialize + AccountMaxSiz
             .copy_from_slice(&serialized_data);
     } else {
         account_data.serialize(&mut *account_info.data.borrow_mut())?;
+        // account_info.data will be empty after this even though some value has been serialized
     }
 
     Ok(())
 }
+
+
+
 
 /// Deserializes account and checks it's initialized and owned by the specified program
 pub fn get_account_data<T: BorshDeserialize + IsInitialized>(

@@ -1,4 +1,5 @@
 //! Error types
+#![allow(dead_code)]
 
 use num_derive::FromPrimitive;
 use solana_program::{
