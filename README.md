@@ -12,7 +12,7 @@
 
 # How? 
 
-![A sketch on how any size message could be sent](./controllers_brief.svg)
+![A sketch on how any size message could be sent](./infra.svg)
 <img src="./infra.svg">
 
 
