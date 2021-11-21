@@ -10,21 +10,17 @@ import {
   Transaction,
   SystemProgram,
   sendAndConfirmTransaction,
+  AccountInfo,
 } from '@solana/web3.js';
 import fs from 'mz/fs';
 import path from 'path';
 import {serialize, deserialize} from '@quantleaf/borsh';
 
-import { ChannelAccount, SCHEMAS } from './schema';
+import { ChannelAccount, MessageAccount, MessageString, SCHEMAS } from './schema';
 
 import {getPayer, getRpcUrl, createKeypairFromFile} from './utils';
 
 
-
-/**
- * Hello world's program id
- */
-let programId: PublicKey;
 
 /**
  * Path to program files
@@ -40,10 +36,48 @@ const PROGRAM_SO_PATH = path.join(PROGRAM_PATH, 'solvei.so');
 
 /**
  * Path to the keypair of the deployed program.
- * This file is created when running `solana program deploy dist/program/helloworld.so`
+ * This file is created when running `solana program deploy dist/program/solvei.so`
  */
 const PROGRAM_KEYPAIR_PATH = path.join(PROGRAM_PATH, 'solvei-keypair.json');
 
+export interface ProgramInfo
+{
+  key:PublicKey,
+  info: AccountInfo<Buffer>
+}
+export const getProgramInfo = async(connection:Connection):Promise<ProgramInfo> => {
+  let programId = undefined;
+
+  try {
+    const programKeypair = await createKeypairFromFile(PROGRAM_KEYPAIR_PATH);
+    programId = programKeypair.publicKey;
+  } catch (err) {
+    const errMsg = (err as Error).message;
+    throw new Error(
+      `Failed to read program keypair at '${PROGRAM_KEYPAIR_PATH}' due to error: ${errMsg}. Program may need to be deployed with \`solana program deploy dist/program/solvei.so\``,
+    );
+  }
+
+  // Check if the program has been deployed
+  
+  const programInfo = await connection.getAccountInfo(programId);
+  if (programInfo === null) {
+    if (fs.existsSync(PROGRAM_SO_PATH)) {
+      throw new Error(
+        'Program needs to be deployed with `solana program deploy dist/program/solvei.so`',
+      );
+    } else {
+      throw new Error('Program needs to be built and deployed');
+    }
+  } else if (!programInfo.executable) {
+    throw new Error(`Program is not executable`);
+  }
+  console.log(`Using program ${programId.toBase58()}`);
+  return {
+    info: programInfo,
+    key: programId
+  }
+}
 
 /**
  * Establish a connection to the cluster
@@ -55,6 +89,7 @@ export async function establishConnection(): Promise<Connection> {
   console.log('Connection to cluster established:', rpcUrl, version);
   return connection;
 }
+
 
 /**
  * Establish an account to pay for everything
@@ -97,32 +132,7 @@ export async function establishPayer(connection:Connection, payer?:Keypair): Pro
 /**
  * Check if the hello world BPF program has been deployed
  */
-export async function createChannelAccount(payer:Keypair, connection:Connection): Promise<PublicKey> {
-  // Read program id from keypair file
-  try {
-    const programKeypair = await createKeypairFromFile(PROGRAM_KEYPAIR_PATH);
-    programId = programKeypair.publicKey;
-  } catch (err) {
-    const errMsg = (err as Error).message;
-    throw new Error(
-      `Failed to read program keypair at '${PROGRAM_KEYPAIR_PATH}' due to error: ${errMsg}. Program may need to be deployed with \`solana program deploy dist/program/solvei.so\``,
-    );
-  }
-
-  // Check if the program has been deployed
-  const programInfo = await connection.getAccountInfo(programId);
-  if (programInfo === null) {
-    if (fs.existsSync(PROGRAM_SO_PATH)) {
-      throw new Error(
-        'Program needs to be deployed with `solana program deploy dist/program/solvei.so`',
-      );
-    } else {
-      throw new Error('Program needs to be built and deployed');
-    }
-  } else if (!programInfo.executable) {
-    throw new Error(`Program is not executable`);
-  }
-  console.log(`Using program ${programId.toBase58()}`);
+export async function createChannelAccount(payer:Keypair, connection:Connection, programId:PublicKey): Promise<PublicKey> {
 
   // Derive the address (public key) of a greeting account from the program so that it's easy to find later.
   const channelName = 'New channel!';
@@ -169,44 +179,28 @@ export async function createChannelAccount(payer:Keypair, connection:Connection)
 
 
 /**
- * Check if the hello world BPF program has been deployed
+ * Send hello world message to channel 
+ * @param payer
+ * @param connection 
+ * @param programId 
+ * @returns 
  */
- export async function sendMessage(payer:Keypair, connection:Connection): Promise<PublicKey> {
-  // Read program id from keypair file
-  try {
-    const programKeypair = await createKeypairFromFile(PROGRAM_KEYPAIR_PATH);
-    programId = programKeypair.publicKey;
-  } catch (err) {
-    const errMsg = (err as Error).message;
-    throw new Error(
-      `Failed to read program keypair at '${PROGRAM_KEYPAIR_PATH}' due to error: ${errMsg}. Program may need to be deployed with \`solana program deploy dist/program/solvei.so\``,
-    );
-  }
-
-  // Check if the program has been deployed
-  const programInfo = await connection.getAccountInfo(programId);
-  if (programInfo === null) {
-    if (fs.existsSync(PROGRAM_SO_PATH)) {
-      throw new Error(
-        'Program needs to be deployed with `solana program deploy dist/program/solvei.so`',
-      );
-    } else {
-      throw new Error('Program needs to be built and deployed');
-    }
-  } else if (!programInfo.executable) {
-    throw new Error(`Program is not executable`);
-  }
-  console.log(`Using program ${programId.toBase58()}`);
+ export async function sendMessage(message:string, channelAccountPubkey:PublicKey, payer:Keypair, connection:Connection, programId:PublicKey): Promise<PublicKey> {  
 
   // Derive the address (public key) of a greeting account from the program so that it's easy to find later.
-  const channelName = 'New channel!';
   const [messageAccountPubkey, _] = await PublicKey.findProgramAddress(
     [payer.publicKey.toBuffer()],
     programId,
   );
+  const s = SCHEMAS;
+  // Send a message to channel account
 
-  // Check if the greeting account has already been created
-
+  const messageAccount =     new MessageAccount({ from: payer.publicKey, message: new MessageString(message)});
+  const messageAccountSerialized = Uint8Array.of(0, ...serialize(
+    SCHEMAS,
+    messageAccount
+  ));
+  const pubkeySer = payer.publicKey.toBytes();
   const transanction = new TransactionInstruction({
     keys: [
       {
@@ -221,17 +215,18 @@ export async function createChannelAccount(payer:Keypair, connection:Connection)
       {
         pubkey: channelAccountPubkey, isSigner: false, isWritable: true
       }
-    
+      ,
+      {
+        pubkey: messageAccountPubkey, isSigner: false, isWritable: true
+      }
+
     ],
     programId,
-    data:Buffer.from(Uint8Array.of(0, ...serialize(
-      SCHEMAS,
-      new ChannelAccount({name: channelName, tail_message: PublicKey.default }),
-    )))
+    data: Buffer.from(messageAccountSerialized)
   });
   await sendAndConfirmTransaction(connection, new Transaction().add(transanction), [payer]);
-  
-  return channelAccountPubkey;
+
+  return messageAccountPubkey;
 
 }
 
@@ -255,20 +250,52 @@ export async function createChannelAccount(payer:Keypair, connection:Connection)
 /**
  * Report the number of times the greeted account has been said hello to
  */
-export async function reportFindings(channelAccount:PublicKey, connection:Connection): Promise<void> {
-  const accountInfo = await connection.getAccountInfo(channelAccount);
+export async function printChannelMessages(channelAccountKey:PublicKey, connection:Connection): Promise<void> {
+  const accountInfo = await connection.getAccountInfo(channelAccountKey);
   if (accountInfo === null) {
     throw 'Error: cannot find the greeted account';
   }
-  const greeting = deserialize(
+  const channelAccount = deserialize(
     SCHEMAS,
     ChannelAccount,
     accountInfo.data,
   );
   console.log(
-    channelAccount.toBase58(),
+    channelAccountKey.toBase58(),
     'has been created',
-    JSON.stringify(greeting),
+    JSON.stringify(channelAccount),
     'time(s)',
   );
+
+  // Read messages
+  const nextMessageAccountKey = channelAccount.tail_message
+  console.log("Latest messages: ");
+  if(nextMessageAccountKey == PublicKey.default)
+  {
+    // No message found 
+    return;
+
+  }
+
+  const getNextMessage = async (messageAccountKey: PublicKey): Promise<MessageAccount> => {
+    const messageAccountInfo = await connection.getAccountInfo(messageAccountKey)
+    const messageAccount = deserialize(
+      SCHEMAS,
+      MessageAccount,
+      accountInfo.data,
+    );
+    return messageAccount
+  }
+  while(true)
+  { 
+    const nextMessage = await getNextMessage(nextMessageAccountKey as PublicKey)
+    console.log(JSON.stringify(nextMessage)); 
+    if(nextMessage.next == PublicKey.default)
+    {
+      break
+    }
+  }
+
+  
+
 }

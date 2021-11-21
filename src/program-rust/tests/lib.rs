@@ -49,7 +49,7 @@ async fn test_create_channel_send_message() {
     let first_message = "Hello world";
 
     // Create a short message and submit it
-    let short_message = MessageAccount::new_message(Message::String(first_message.into()), payer.pubkey());
+    let short_message = MessageAccount::new(Message::String(first_message.into()), payer.pubkey());
     let (message_account_pda, _) = get_message_account_address_and_bump_seed(&payer.pubkey(),&program_id);
 
     // Create and submit message

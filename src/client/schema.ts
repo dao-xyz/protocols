@@ -12,7 +12,7 @@ export class ChannelAccount {
     name:string = "New channel";
 
     @field({type: PublicKey})
-    tail_message:PublicKey|undefined = undefined
+    tail_message:PublicKey|undefined = undefined // We should use option instead..
 
     constructor(fields: {name: string, tail_message: PublicKey}) {
         if (fields) {
@@ -28,38 +28,34 @@ export class Message {}
 @variant(0)
 export class MessageString extends Message
 {
+    @field({type: 'String'})
     string:string = ""   
+    constructor(string:string)
+    {
+        super();
+        this.string = string;
+    }
 }
 
 /**
- * The state of a greeting account managed by the hello world program
+ * A simple single message account (no parts)
  */
  export class MessageAccount {
 
     @field({type: PublicKey})
     from:PublicKey|undefined = undefined
 
+    @field({type: Message})
+    message:Message|undefined = undefined
+ 
     @field({type: PublicKey})
     next:PublicKey|undefined = undefined
-
-    @field({type: MessageString})
-    message:Message|undefined = undefined;
-
-    @field({type: 'u64'})
-    size: number|undefined = undefined;
-
-    @field({type: 'u64'})
-    parts: number|undefined = undefined;
- 
-
-    constructor(fields: {from: PublicKey, next:PublicKey, message: Message, parts:number }) {
+    
+    constructor(fields: {from: PublicKey,  message: Message }) {
         if (fields) {
             this.from = fields.from;
-            this.next = fields.next
+            this.next = PublicKey.default // We don't know (yet)
             this.message = fields.message
-            this.parts = fields.parts
-            this.size = 0 // temp
-
         }
     }
 }
@@ -96,7 +92,7 @@ const addDefaultSchemas = (schemas:Map<any,any>) => {
     });
     return schemas
 }
-export const SCHEMAS = addDefaultSchemas(generateSchemas([ChannelAccount]));
+export const SCHEMAS = addDefaultSchemas(generateSchemas([ChannelAccount, MessageAccount, MessageString]));
 
 
 

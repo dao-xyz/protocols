@@ -61,8 +61,9 @@ pub enum Message
 pub struct MessageAccount {
     pub from: Pubkey,
     pub message: Message,
+    #[borsh_skip]
     pub size: u64,
-    pub parts: u64,
+    //pub parts: u64,
     pub next: Pubkey // Next message in the channel
 }
 
@@ -82,7 +83,7 @@ impl MessageAccount
     } */
     
     // A generic message that might have to be split into multiple transactions
-    pub fn new_message(message:Message, from:Pubkey) -> Self 
+    pub fn new(message:Message, from:Pubkey) -> Self 
     {
         match &message
         {       
@@ -93,7 +94,7 @@ impl MessageAccount
                     from,
                     message,
                     size:message_size,
-                    parts: 1,
+                  //  parts: 1,
                     next: NULL_KEY
                 }
              }
@@ -224,7 +225,7 @@ pub fn process_instruction(
             let message_account_info = next_account_info(accounts_iter)?;
             let rent = Rent::get()?;
 
-            if message_account.parts == 1 // Message does only contain 1 part
+            if true // Assume that messages only contain 1 part for now
             {
                 // we have recieved the whole message, let modify it for submission
                 let channel_account_info = next_account_info(accounts_iter)?;
@@ -490,7 +491,23 @@ impl Pack for OrganizationAccount {
         })
     }
 }*/
+#[cfg(test)]
+mod test {
+    use std::str::FromStr;
 
+    use solana_program::pubkey::Pubkey;
+    use borsh::*;
+    use crate::{Message, MessageAccount};
+
+    #[test]
+    fn test_serialization() {
+        let message_account =  MessageAccount::new(Message::String("Hello world!".into()), Pubkey::from_str("6yFmQCDXxuKdrou1dnag8zqg9LZKuuhjhJwGzoeSghrM").unwrap());
+        let ser = message_account.try_to_vec().unwrap();
+        dbg!(ser);
+        let q = Pubkey::from_str("6yFmQCDXxuKdrou1dnag8zqg9LZKuuhjhJwGzoeSghrM").unwrap().try_to_vec().unwrap();
+        let x = 1;
+    }
+}
 // Sanity tests
 /* #[cfg(test)]
 mod test {
