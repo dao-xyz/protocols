@@ -23,9 +23,10 @@
     "pretty": "prettier --write '{,src/**/}*.ts'"
   },
   "dependencies": {
+    "@quantleaf/borsh": "^0.0.1",
     "@solana/web3.js": "^1.7.0",
-    "borsh": "^0.6.0",
     "mz": "^2.7.0",
+    "reflect-metadata": "^0.1.13",
     "yaml": "^1.10.2"
   },
   "devDependencies": {

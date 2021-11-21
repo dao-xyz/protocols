@@ -8,9 +8,10 @@ Learning solana by programming a fun app
 
 - Create channels (A) ✅
 - Send messages to channel (B) ✅
-- RPC (Web3 client) send and read messages (C)
-- Encryption (D)
-- Frontend (E)
+- Frontend - RPC (Web3 client) send and read messages (C) React(?) (C)
+- Encryption with symmetric keys(D)
+
+
 
 
 # How? 
@@ -19,11 +20,6 @@ Learning solana by programming a fun app
 <img src="./infra.svg">
 
 
-
-
-## In Progress C
-
-**In progres: Read messages from accounts using the RPC Web3 client (TypeScript)**
 
 
 

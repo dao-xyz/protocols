@@ -1,30 +1,73 @@
-import {Schema, serialize, deserializeUnchecked} from 'borsh';
-import BN from 'bn.js';
-import {Struct, Enum, PublicKey, SOLANA_SCHEMA} from '@solana/web3.js';
+import {PublicKey, SOLANA_SCHEMA} from '@solana/web3.js';
 
-import * as borsh from 'borsh';
+import * as borsh from '@quantleaf/borsh';
+import { field, generateSchemas, variant } from '@quantleaf/borsh/lib/schema';
 
 /**
  * The state of a greeting account managed by the hello world program
  */
 export class ChannelAccount {
+
+    @field({type: 'String'})
     name:string = "New channel";
+
+    @field({type: PublicKey})
     tail_message:PublicKey|undefined = undefined
-    constructor(fields: {name: string, tail_message?: PublicKey} | undefined = undefined) {
+
+    constructor(fields: {name: string, tail_message: PublicKey}) {
         if (fields) {
-        this.name = fields.name;
-        this.tail_message = fields.tail_message
+            this.name = fields.name;
+            this.tail_message = fields.tail_message
+        }
+    }
+}
+
+// A message instruction could potentially be many things, like string, image, videos, and so on.
+export class Message {}
+
+@variant(0)
+export class MessageString extends Message
+{
+    string:string = ""   
+}
+
+/**
+ * The state of a greeting account managed by the hello world program
+ */
+ export class MessageAccount {
+
+    @field({type: PublicKey})
+    from:PublicKey|undefined = undefined
+
+    @field({type: PublicKey})
+    next:PublicKey|undefined = undefined
+
+    @field({type: MessageString})
+    message:Message|undefined = undefined;
+
+    @field({type: 'u64'})
+    size: number|undefined = undefined;
+
+    @field({type: 'u64'})
+    parts: number|undefined = undefined;
+ 
+
+    constructor(fields: {from: PublicKey, next:PublicKey, message: Message, parts:number }) {
+        if (fields) {
+            this.from = fields.from;
+            this.next = fields.next
+            this.message = fields.message
+            this.parts = fields.parts
+            this.size = 0 // temp
+
         }
     }
 }
 
 
-export const addSolchatSchema = (schema: Schema) =>  {
-    /**
-     * Borsh requires something called a Schema,
-     * which is a Map (key-value pairs) that tell borsh how to deserialise the raw data
-     * This function adds a new schema to an existing schema object.
-     */
+
+/* export const addSolchatSchema = (schema: Schema) =>  {
+    
     schema.set(PublicKey, {
         kind: 'struct',
         fields: [['_bn', 'u256']],
@@ -37,17 +80,23 @@ export const addSolchatSchema = (schema: Schema) =>  {
 
     return schema
     
-}
+} 
 export const SOLCHAT_SCHEMA = addSolchatSchema(SOLANA_SCHEMA) 
 
-
+*/
 
 /**
  * The expected size of each greeting account.
  */
-export const CHANNEL_ACCOUNT_SIZE = borsh.serialize(
-    SOLCHAT_SCHEMA,
-    new ChannelAccount(),
-).length;
+
+const addDefaultSchemas = (schemas:Map<any,any>) => {
+    schemas.set(PublicKey, {
+        kind: 'struct',
+        fields: [['_bn', 'u256']],
+    });
+    return schemas
+}
+export const SCHEMAS = addDefaultSchemas(generateSchemas([ChannelAccount]));
+
 
 
