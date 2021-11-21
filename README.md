@@ -1,5 +1,6 @@
-# [<div style="display:flex; flex-direction:row; align-items:center" ><img src="./logo.png" style="width: 100px; margin-right: 20px"><span>Solvei - Social media app on Solana</span></div>](https://github.com/marcus-pousette/solvei)
+[<img  align="left" w src="./logo.png" style="width: 80px; height: 80px" alt="Resume application project app icon">](https://github.com/marcus-pousette/solvei)
 
+# Solvei - Social media app on Solana
 
 
 Learning solana by programming a fun app
