@@ -1,4 +1,4 @@
-# [<div style="display:flex; flex-direction:row; align-items:center" ><img src="./logo.png" style="width: 100px; margin-right: 10px"><span>Solvei - Social media app on Solana</span></div>](https://github.com/marcus-pousette/solvei)
+# [<div style="display:flex; flex-direction:row; align-items:center" ><img src="./logo.png" style="width: 100px; margin-right: 20px"><span>Solvei - Social media app on Solana</span></div>](https://github.com/marcus-pousette/solvei)
 
 
 
