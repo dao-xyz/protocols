@@ -13,7 +13,6 @@
 # How? 
 
 ![A sketch on how any size message could be sent](./infra.svg)
-<img src="./infra.svg">
 
 
 
