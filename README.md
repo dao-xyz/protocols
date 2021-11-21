@@ -2,9 +2,6 @@
 
 # Solvei - Social media app on Solana
 
-
-Learning solana by programming a fun app
-
 ## MVP idea
 
 - Create channels (A) ✅
