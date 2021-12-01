@@ -1,14 +1,14 @@
 {
-  "name": "helloworld",
-  "version": "0.0.1",
+  "name": "solvei",
+  "version": "0.0.0",
   "description": "",
   "repository": {
     "type": "git",
-    "url": "https://github.com/solana-labs/example-helloworld"
+    "url": "https://github.com/the-solvei/solvei-protocol"
   },
   "keywords": [],
   "author": "",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "scripts": {
     "start": "ts-node src/client/main.ts",
     "start-with-test-validator": "start-server-and-test 'solana-test-validator --reset --quiet' http://localhost:8899/health start",
