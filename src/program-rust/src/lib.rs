@@ -2,7 +2,7 @@ use accounts::{ChannelAccount, Message, UserAccount};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::{ next_account_info, AccountInfo}, entrypoint, entrypoint::ProgramResult, msg, program_error::ProgramError, pubkey::{Pubkey}, rent::Rent, sysvar::Sysvar};
 
-use crate::{account::{create_and_serialize_account_signed, create_and_serialize_account_signed_verify}, accounts::{AccountContainer, MessageAccount}, address::generate_seeds_from_string};
+use crate::{account::{create_and_serialize_account_signed, create_and_serialize_account_signed_verify}, accounts::{AccountContainer, MessageAccount, deserialize_user_account}, address::generate_seeds_from_string};
 
 pub static NULL_KEY: Pubkey = Pubkey::new_from_array([0_u8; 32]);
 
@@ -18,8 +18,9 @@ pub static MESSAGE_TRANSACTION_MAX_SIZE: usize = 1200;
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub struct SendMessage {
+    pub user: Pubkey,
     pub channel: Pubkey,
-    pub timestamp: i64,
+    pub timestamp: u64,
     pub message: Message,
     pub bump_seed: u8 
 }
@@ -40,9 +41,6 @@ pub enum ChatInstruction {
 
     // Create channel, that keep tracks of the message tail
     CreateChannel(ChannelAccount),
-
-    
-
 
     // Update channel (the tail message)
     UpdateChannel(ChannelAccount),
@@ -67,7 +65,7 @@ pub fn process_instruction(
     accounts: &[AccountInfo], // The account to say hello to
     input: &[u8],
 ) -> ProgramResult {
-    msg!("Chat program entrypoint!");
+    msg!("Chat program entrypoint ABC!");
 
     let instruction = ChatInstruction::try_from_slice(input)?;
 
@@ -80,10 +78,28 @@ pub fn process_instruction(
 
     match instruction {
         ChatInstruction::CreateUser(user ) => {
-            if user.name.len() == 0
+            msg!("Create user" );
+            msg!(user.name.as_str());
+            msg!(user.owner.to_string().as_str());
+
+            if user.name.len() == 0 
             {
                 return Err(ProgramError::InvalidArgument);
             }
+            // check if leading or trailing spaces, if so name is invalid
+            let mut chars = user.name.chars();
+            if chars.next().unwrap().is_whitespace() || chars.last().unwrap_or('a').is_whitespace()
+            { 
+                return Err(ProgramError::InvalidArgument);
+            }
+
+            if &user.owner != payer_account.key
+            {
+                return Err(ProgramError::IllegalOwner) // requires payer as owner (for now)
+            }   
+            msg!("Error checks done");
+
+
             let user_acount_info = next_account_info(accounts_iter)?;
             let rent = Rent::get()?;
             let seeds = generate_seeds_from_string(&user.name)?;
@@ -102,10 +118,15 @@ pub fn process_instruction(
 
         
         ChatInstruction::CreateChannel(channel) => {
-            let channel_account_info = next_account_info(accounts_iter)?;
+            let user_account_info = next_account_info(accounts_iter)?;
+            let user = deserialize_user_account(user_account_info.data.borrow().as_ref());
+            if &user.owner != payer_account.key
+            {
+                return Err(ProgramError::IllegalOwner) // requires payer as owner (for now)
+            }
 
-            /* msg!("CREATE CHANNEL ACCOUNT ");
-            msg!(channel.try_to_vec().unwrap().len().to_string().as_str()); */
+            let channel_account_info = next_account_info(accounts_iter)?;
+      
             let rent = Rent::get()?;
             let seeds = generate_seeds_from_string(&channel.name)?;
             let seed_slice = &seeds.iter().map(|x| &x[..]).collect::<Vec<&[u8]>>()[..];
@@ -130,17 +151,28 @@ pub fn process_instruction(
 
         ChatInstruction::SendMessage(mut send_message) => {
             // Initializes an account for us that lets us build an message
-            let mut message_account = MessageAccount::new(send_message.message,send_message.timestamp, *payer_account.key);
-            
+            let user_account_info = next_account_info(accounts_iter)?;
             let channel_account_info = next_account_info(accounts_iter)?;
+            let message_account = MessageAccount::new(send_message.user, send_message.channel, send_message.timestamp, send_message.message);
             let message_account_info = next_account_info(accounts_iter)?;
             let rent = Rent::get()?;
-        
+            let user = deserialize_user_account(user_account_info.data.borrow().as_ref());
+            if &user.owner != payer_account.key
+            {
+                return Err(ProgramError::IllegalOwner) // requires payer as owner (for now)
+            }
+   
+            let temp = AccountContainer::MessageAccount(message_account.clone());
+            let vec = temp.try_to_vec()?;
+            for v in vec
+            {
+                msg!(v.to_string().as_str());
+            }
             create_and_serialize_account_signed_verify(
                 payer_account,
                 message_account_info,
                 &AccountContainer::MessageAccount(message_account),
-                &[&payer_account.key.to_bytes(),&channel_account_info.key.to_bytes(),&send_message.timestamp.to_be_bytes()],
+                &[&user_account_info.key.to_bytes(),&channel_account_info.key.to_bytes(),&send_message.timestamp.to_le_bytes()],
                 program_id,
                 system_account,
                 &rent,
@@ -393,8 +425,23 @@ mod test {
 
     #[test]
     fn test_serialization() {
-        let message_account =  MessageAccount::new(Message::String("Hello world!".into()), 0, Pubkey::from_str("6yFmQCDXxuKdrou1dnag8zqg9LZKuuhjhJwGzoeSghrM").unwrap());
+
+        
+  /*       #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+        struct Struct {
+            u64: u64,
+            a: Message
+        }
+
+        let message_account =  Struct {
+            u64: 123,
+            a: Message::String("Hello world!".into())
+        };
         let ser = message_account.try_to_vec().unwrap();
+        let x = 123;  */
+        let message_account_2 =  MessageAccount::new(Pubkey::new_unique(), Pubkey::new_unique(),   123, Message::String("Hello world!".into()));
+        let ser2 = message_account_2.try_to_vec().unwrap();
+        let x2 = 123; 
     }
 }
 // Sanity tests

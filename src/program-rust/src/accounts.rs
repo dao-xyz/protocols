@@ -8,17 +8,27 @@ pub static NULL_KEY: Pubkey = Pubkey::new_from_array([0_u8; 32]);
 
 pub static MESSAGE_TRANSACTION_MAX_SIZE: usize = 1200;
 
-/// Trait for accounts to return their max size
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+pub enum Description
+{
+    String(String)
+}
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub struct ChannelAccount {
-    pub name: String
+    pub owner: Pubkey,
+    pub name: String,
+    pub description: Description
 }
 
+
+
 impl ChannelAccount {
-    pub fn new(name: String) -> ChannelAccount {
+    pub fn new(owner: Pubkey, name: String, description: Description) -> ChannelAccount {
         ChannelAccount {
-            name
+            owner,
+            name,
+            description
         }
     }
 }
@@ -44,7 +54,9 @@ pub enum Message
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub struct UserAccount {
 
+    pub owner: Pubkey,
     pub name: String
+    
 }
 
 impl MaxSize for UserAccount {
@@ -68,8 +80,9 @@ pub enum MessageAccountSubmittable
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub struct MessageAccount {
 
-    pub from: Pubkey,
-    pub timestamp: i64,
+    pub user: Pubkey,
+    pub channel: Pubkey,
+    pub timestamp: u64,
     pub message: Message,
 
     #[borsh_skip]
@@ -81,7 +94,7 @@ pub struct MessageAccount {
 impl MessageAccount 
 {
 
-    pub fn new(message:Message, timestamp:i64, from:Pubkey) -> Self 
+    pub fn new(user:Pubkey, channel:Pubkey, timestamp:u64,  message:Message ) -> Self 
     {
         match &message
         {       
@@ -90,7 +103,8 @@ impl MessageAccount
                 let message_size = string.as_bytes().len() as u64 + 4; // +4 because Borsh encodes length
                 Self {
                     timestamp,
-                    from,
+                    channel,
+                    user,
                     message,
                     size:message_size
                 }

@@ -2,37 +2,10 @@ use std::{io::Error, iter::FromIterator};
 use solana_program::pubkey::{MAX_SEEDS, MAX_SEED_LEN, Pubkey, PubkeyError};
 pub use solana_program;
 
-solana_program::declare_id!("c39Hxxzh7Sh3GgkZM1QzMDyT5Q5cjK5397sbqeBrB1C");
+solana_program::declare_id!("c39Hxxzh7Sh3GgkZM1QzMDyT5Q5cjK5397sbqeBrB1Q");
  
 
 
-pub fn get_channel_account_address_and_bump_seed(
-    channel_name: &str,  // we should also send organization key,
-    program_id: &Pubkey,
-) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[
-            channel_name.as_bytes()
-        ],
-        program_id,
-    )
-}
-
-pub fn get_message_account_address_and_bump_seed(
-    payer_account: &Pubkey,  // payer_account == from
-    channel_account: &Pubkey,
-    timestamp: &i64,
-    program_id: &Pubkey,
-) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[
-            &payer_account.to_bytes(),
-            &channel_account.to_bytes(),
-            &timestamp.to_be_bytes()
-        ],
-        program_id,
-    )
-}
 /**
  * Generete seed slices from string 
  * in correct length (max length 32 bytes)
@@ -55,7 +28,7 @@ pub fn generate_seeds_from_string<'a> (str: &'a str) -> Result<Vec<Vec<u8>>, Pub
 mod test {
     use solana_program::pubkey::{MAX_SEEDS, MAX_SEED_LEN};
 
-    use crate::address::generate_seeds_from_string;
+    use crate::address::{generate_seeds_from_string};
 
 
     #[test]

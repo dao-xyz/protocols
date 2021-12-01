@@ -104,6 +104,15 @@ pub fn create_and_serialize_account_signed_verify<'a >(
     let mut seeds_with_bump = account_address_seeds.to_vec();
     let bump_seeds = [bump_seed];
     seeds_with_bump.push(&bump_seeds);
+    let (account_address_pda_debug, bump_debug) =
+        Pubkey::find_program_address(account_address_seeds, program_id);
+
+    msg!("-----");
+
+    msg!(account_address_pda_debug.to_string().as_str());
+    msg!(bump_debug.to_string().as_str());
+    msg!(bump_seed.to_string().as_str());
+
     let account_address_pda =
         Pubkey::create_program_address(seeds_with_bump.as_slice(), program_id)?;
     if account_address != account_address_pda
