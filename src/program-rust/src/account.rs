@@ -18,8 +18,6 @@ pub trait MaxSize {
     }
 }
 
-
-
 /// Creates a new account and serializes data into it using AccountMaxSize to determine the account's size
 pub fn create_and_serialize_account<'a, T: BorshSerialize + MaxSize>(
     payer_info: &AccountInfo<'a>,
@@ -83,13 +81,22 @@ pub fn create_and_serialize_account_signed<'a>(
 ) -> Result<(), ProgramError> {
     let (account_address, bump_seed) =
         Pubkey::find_program_address(account_address_seeds, program_id);
-    return create_and_serialize_account_signed_from_pda(payer_info, account_info, account_data, account_address_seeds, program_id, system_info, rent,account_address, bump_seed);
+    return create_and_serialize_account_signed_from_pda(
+        payer_info,
+        account_info,
+        account_data,
+        account_address_seeds,
+        program_id,
+        system_info,
+        rent,
+        account_address,
+        bump_seed,
+    );
 }
-
 
 /// Creates a new account and serializes data into it using the provided seeds to invoke signed CPI call
 /// Note: This functions also checks the provided account PDA matches the supplied seeds
-pub fn create_and_serialize_account_signed_verify<'a >(
+pub fn create_and_serialize_account_signed_verify<'a>(
     payer_info: &AccountInfo<'a>,
     account_info: &AccountInfo<'a>,
     account_data: &AccountContainer,
@@ -97,10 +104,9 @@ pub fn create_and_serialize_account_signed_verify<'a >(
     program_id: &Pubkey,
     system_info: &AccountInfo<'a>,
     rent: &Rent,
-    account_address:Pubkey, 
-    bump_seed: u8
+    account_address: Pubkey,
+    bump_seed: u8,
 ) -> Result<(), ProgramError> {
-    
     let mut seeds_with_bump = account_address_seeds.to_vec();
     let bump_seeds = [bump_seed];
     seeds_with_bump.push(&bump_seeds);
@@ -115,8 +121,7 @@ pub fn create_and_serialize_account_signed_verify<'a >(
 
     let account_address_pda =
         Pubkey::create_program_address(seeds_with_bump.as_slice(), program_id)?;
-    if account_address != account_address_pda
-    {
+    if account_address != account_address_pda {
         msg!(
             "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
             account_address_pda,
@@ -124,13 +129,22 @@ pub fn create_and_serialize_account_signed_verify<'a >(
         );
         return Err(ProgramError::InvalidSeeds);
     }
-    return create_and_serialize_account_signed_from_pda(payer_info, account_info, account_data, account_address_seeds, program_id, system_info, rent,account_address, bump_seed);
+    return create_and_serialize_account_signed_from_pda(
+        payer_info,
+        account_info,
+        account_data,
+        account_address_seeds,
+        program_id,
+        system_info,
+        rent,
+        account_address,
+        bump_seed,
+    );
 }
-
 
 /// Creates a new account and serializes data into it using the provided seeds to invoke signed CPI call
 /// Note: This functions also checks the provided account PDA matches the supplied seeds
-fn create_and_serialize_account_signed_from_pda<'a, T: BorshSerialize + MaxSize >(
+fn create_and_serialize_account_signed_from_pda<'a, T: BorshSerialize + MaxSize>(
     payer_info: &AccountInfo<'a>,
     account_info: &AccountInfo<'a>,
     account_data: &T,
@@ -138,10 +152,9 @@ fn create_and_serialize_account_signed_from_pda<'a, T: BorshSerialize + MaxSize 
     program_id: &Pubkey,
     system_info: &AccountInfo<'a>,
     rent: &Rent,
-    account_address:Pubkey, 
-    bump_seed: u8
+    account_address: Pubkey,
+    bump_seed: u8,
 ) -> Result<(), ProgramError> {
-    
     // Get PDA and assert it's the same as the requested account address
     if account_address != *account_info.key {
         msg!(
@@ -188,15 +201,12 @@ fn create_and_serialize_account_signed_from_pda<'a, T: BorshSerialize + MaxSize 
             .borrow_mut()
             .copy_from_slice(&serialized_data);
     } else {
-        account_data.serialize( &mut *account_info.data.borrow_mut())?;
+        account_data.serialize(&mut *account_info.data.borrow_mut())?;
         // account_info.data will be empty after this even though some value has been serialized
     }
 
     Ok(())
 }
-
-
-
 
 /// Deserializes account and checks it's initialized and owned by the specified program
 pub fn get_account_data<T: BorshDeserialize + IsInitialized>(

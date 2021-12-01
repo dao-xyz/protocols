@@ -7,25 +7,27 @@ use solana_program::{
 use solana_program_test::*;
 use solana_sdk::{account::Account, transaction::TransactionError, transport::TransportError};
 use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction};
-use solvei::{ChatInstruction, SendMessage, accounts::{ChannelAccount, Description, Message, UserAccount, deserialize_channel_account, deserialize_message_account, deserialize_user_account}, address::generate_seeds_from_string};
+use solvei::{
+    accounts::{
+        deserialize_channel_account, deserialize_message_account, deserialize_user_account,
+        ChannelAccount, Description, Message, UserAccount,
+    },
+    address::generate_seeds_from_string,
+    ChatInstruction, SendMessage,
+};
 mod test_program;
 
-
-
 pub fn get_channel_account_address_and_bump_seed(
-    channel_name: &str,  // we should also send organization key,
+    channel_name: &str, // we should also send organization key,
     program_id: &Pubkey,
 ) -> (Pubkey, u8) {
     let seeds = generate_seeds_from_string(channel_name).unwrap();
     let seed_slice = &seeds.iter().map(|x| &x[..]).collect::<Vec<&[u8]>>()[..];
-    Pubkey::find_program_address(
-        seed_slice,
-        program_id,
-    )
+    Pubkey::find_program_address(seed_slice, program_id)
 }
 
 pub fn get_message_account_address_and_bump_seed(
-    user_account: &Pubkey,  // payer_account == from
+    user_account: &Pubkey, // payer_account == from
     channel_account: &Pubkey,
     timestamp: &u64,
     program_id: &Pubkey,
@@ -34,29 +36,24 @@ pub fn get_message_account_address_and_bump_seed(
         &[
             &user_account.to_bytes(),
             &channel_account.to_bytes(),
-            &timestamp.to_le_bytes()
+            &timestamp.to_le_bytes(),
         ],
         program_id,
     )
 }
 
-
-pub fn get_user_account_address_and_bump_seed(
-    username: &str,
-    program_id: &Pubkey
-) -> (Pubkey, u8) {
+pub fn get_user_account_address_and_bump_seed(username: &str, program_id: &Pubkey) -> (Pubkey, u8) {
     let seeds = generate_seeds_from_string(username).unwrap();
     let seed_slice = &seeds.iter().map(|x| &x[..]).collect::<Vec<&[u8]>>()[..];
-    Pubkey::find_program_address(
-        seed_slice,
-        program_id
-    )
+    Pubkey::find_program_address(seed_slice, program_id)
 }
 
-async fn create_user_transaction(username:&str,
+async fn create_user_transaction(
+    username: &str,
     payer: &Keypair,
     recent_blockhash: &Hash,
-    program_id: &Pubkey) -> (Transaction, Pubkey) {
+    program_id: &Pubkey,
+) -> (Transaction, Pubkey) {
     let (user_address_pda, bump) = get_user_account_address_and_bump_seed(username, &program_id);
 
     let mut transaction_create = Transaction::new_with_payer(
@@ -78,7 +75,6 @@ async fn create_user_transaction(username:&str,
 
     transaction_create.sign(&[payer], recent_blockhash.clone());
     (transaction_create, user_address_pda)
-
 }
 
 async fn create_and_verify_user(
@@ -90,14 +86,15 @@ async fn create_and_verify_user(
     // Create user
     let username = "Me";
 
-    let (transaction, user_address_pda) = create_user_transaction(username, payer,recent_blockhash,program_id).await;
+    let (transaction, user_address_pda) =
+        create_user_transaction(username, payer, recent_blockhash, program_id).await;
     banks_client
         .process_transaction(transaction)
         .await
         .unwrap_or_else(|err| {
             dbg!(err.to_string());
         });
-    
+
     // Verify username name
     let user_account_info = banks_client
         .get_account(user_address_pda)
@@ -126,7 +123,7 @@ async fn create_and_verify_channel(
             &ChatInstruction::CreateChannel(ChannelAccount::new(
                 user_account.clone(),
                 channel_name.into(),
-                Description::String("This channel lets you channel channels".into())
+                Description::String("This channel lets you channel channels".into()),
             )),
             vec![
                 AccountMeta::new(system_program::id(), false),
@@ -313,10 +310,8 @@ async fn test_only_payer_can_be_user() {
             0,
             InstructionError::IllegalOwner
         ))
-    )); 
+    ));
 }
-
-
 
 #[tokio::test]
 async fn test_invalid_username() {
@@ -332,10 +327,12 @@ async fn test_invalid_username() {
     );
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
 
-    let (transaction, _) = create_user_transaction(" x", &payer,&recent_blockhash,&program_id).await;
-    let error =banks_client
+    let (transaction, _) =
+        create_user_transaction(" x", &payer, &recent_blockhash, &program_id).await;
+    let error = banks_client
         .process_transaction(transaction)
-        .await.unwrap_err();
+        .await
+        .unwrap_err();
 
     assert!(matches!(
         error,
@@ -343,13 +340,14 @@ async fn test_invalid_username() {
             0,
             InstructionError::InvalidArgument
         ))
-    )); 
+    ));
 
-
-    let (transaction, _) = create_user_transaction("x ", &payer,&recent_blockhash,&program_id).await;
-    let error =banks_client
+    let (transaction, _) =
+        create_user_transaction("x ", &payer, &recent_blockhash, &program_id).await;
+    let error = banks_client
         .process_transaction(transaction)
-        .await.unwrap_err();
+        .await
+        .unwrap_err();
 
     assert!(matches!(
         error,
@@ -357,10 +355,5 @@ async fn test_invalid_username() {
             0,
             InstructionError::InvalidArgument
         ))
-    )); 
-
+    ));
 }
-
-
-
-

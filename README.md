@@ -4,15 +4,19 @@
 
 ## MVP idea
 
-- Create channels (A) ✅
-- Send messages to channel (B) ✅
-- Frontend - RPC (Web3 client) send and read messages React(?) (C)
-- Encryption with symmetric keys(D)
+- Create and search functionality users, channels and messages ✅
+- Frontend in React (In progress)
+- Encryption with symmetric keys, or asymmetrically with a decentralized key storage service
 
 
 # How? 
 
-![A sketch on how any size message could be sent](./infra.svg)
+With DeFi on Solana we can build programs that lets user store data in a predicable way for little cost. This allows us to build all elementary functionality for a social media platform entirely on chain. 
+
+# Contribute? 
+
+[Contact me](https://github.com/marcus-pousette)
+
 
 
 
