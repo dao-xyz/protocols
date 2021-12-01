@@ -8,21 +8,23 @@ use solana_program::{
     pubkey::Pubkey, rent::Rent, system_instruction::create_account, system_program, sysvar::Sysvar,
 };
 
-use crate::error::AccountError;
+use crate::{accounts::AccountContainer, error::AccountError};
 
 /// Trait for accounts to return their max size
-pub trait AccountMaxSize {
+pub trait MaxSize {
     /// Returns max account size or None if max size is not known and actual instance size should be used
     fn get_max_size(&self) -> Option<usize> {
         None
     }
 }
 
+
+
 /// Creates a new account and serializes data into it using AccountMaxSize to determine the account's size
-pub fn create_and_serialize_account<'a, T: BorshSerialize + AccountMaxSize>(
+pub fn create_and_serialize_account<'a, T: BorshSerialize + MaxSize>(
     payer_info: &AccountInfo<'a>,
     account_info: &AccountInfo<'a>,
-    account_data: &T,
+    account_data: &AccountContainer,
     program_id: &Pubkey,
     system_info: &AccountInfo<'a>,
 ) -> Result<(), ProgramError> {
@@ -57,7 +59,6 @@ pub fn create_and_serialize_account<'a, T: BorshSerialize + AccountMaxSize>(
             system_info.clone(),
         ],
     )?;
-
     if let Some(serialized_data) = serialized_data {
         account_info
             .data
@@ -69,10 +70,67 @@ pub fn create_and_serialize_account<'a, T: BorshSerialize + AccountMaxSize>(
 
     Ok(())
 }
+/// Creates a new account and serializes data into it using the provided seeds to invoke signed CPI call
+/// Note: This functions also checks the provided account PDA matches the supplied seeds
+pub fn create_and_serialize_account_signed<'a>(
+    payer_info: &AccountInfo<'a>,
+    account_info: &AccountInfo<'a>,
+    account_data: &AccountContainer,
+    account_address_seeds: &[&[u8]],
+    program_id: &Pubkey,
+    system_info: &AccountInfo<'a>,
+    rent: &Rent,
+) -> Result<(), ProgramError> {
+    let (account_address, bump_seed) =
+        Pubkey::find_program_address(account_address_seeds, program_id);
+    return create_and_serialize_account_signed_from_pda(payer_info, account_info, account_data, account_address_seeds, program_id, system_info, rent,account_address, bump_seed);
+}
+
 
 /// Creates a new account and serializes data into it using the provided seeds to invoke signed CPI call
 /// Note: This functions also checks the provided account PDA matches the supplied seeds
-pub fn create_and_serialize_account_signed<'a, T: BorshSerialize + AccountMaxSize>(
+pub fn create_and_serialize_account_signed_verify<'a >(
+    payer_info: &AccountInfo<'a>,
+    account_info: &AccountInfo<'a>,
+    account_data: &AccountContainer,
+    account_address_seeds: &[&[u8]],
+    program_id: &Pubkey,
+    system_info: &AccountInfo<'a>,
+    rent: &Rent,
+    account_address:Pubkey, 
+    bump_seed: u8
+) -> Result<(), ProgramError> {
+    
+    let mut seeds_with_bump = account_address_seeds.to_vec();
+    let bump_seeds = [bump_seed];
+    seeds_with_bump.push(&bump_seeds);
+    let (account_address_pda_debug, bump_debug) =
+        Pubkey::find_program_address(account_address_seeds, program_id);
+
+    msg!("-----");
+
+    msg!(account_address_pda_debug.to_string().as_str());
+    msg!(bump_debug.to_string().as_str());
+    msg!(bump_seed.to_string().as_str());
+
+    let account_address_pda =
+        Pubkey::create_program_address(seeds_with_bump.as_slice(), program_id)?;
+    if account_address != account_address_pda
+    {
+        msg!(
+            "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
+            account_address_pda,
+            account_address
+        );
+        return Err(ProgramError::InvalidSeeds);
+    }
+    return create_and_serialize_account_signed_from_pda(payer_info, account_info, account_data, account_address_seeds, program_id, system_info, rent,account_address, bump_seed);
+}
+
+
+/// Creates a new account and serializes data into it using the provided seeds to invoke signed CPI call
+/// Note: This functions also checks the provided account PDA matches the supplied seeds
+fn create_and_serialize_account_signed_from_pda<'a, T: BorshSerialize + MaxSize >(
     payer_info: &AccountInfo<'a>,
     account_info: &AccountInfo<'a>,
     account_data: &T,
@@ -80,11 +138,11 @@ pub fn create_and_serialize_account_signed<'a, T: BorshSerialize + AccountMaxSiz
     program_id: &Pubkey,
     system_info: &AccountInfo<'a>,
     rent: &Rent,
+    account_address:Pubkey, 
+    bump_seed: u8
 ) -> Result<(), ProgramError> {
+    
     // Get PDA and assert it's the same as the requested account address
-    let (account_address, bump_seed) =
-        Pubkey::find_program_address(account_address_seeds, program_id);
-
     if account_address != *account_info.key {
         msg!(
             "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
@@ -124,13 +182,13 @@ pub fn create_and_serialize_account_signed<'a, T: BorshSerialize + AccountMaxSiz
         &[&signers_seeds[..]],
     )?;
 
-    if let Some(serialized_data) = serialized_data {
+    if let Some(mut serialized_data) = serialized_data {
         account_info
             .data
             .borrow_mut()
             .copy_from_slice(&serialized_data);
     } else {
-        account_data.serialize(&mut *account_info.data.borrow_mut())?;
+        account_data.serialize( &mut *account_info.data.borrow_mut())?;
         // account_info.data will be empty after this even though some value has been serialized
     }
 
