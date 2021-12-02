@@ -13,8 +13,9 @@ use solana_program::{
 
 use crate::{
     account::{create_and_serialize_account_signed, create_and_serialize_account_signed_verify},
-    accounts::{deserialize_user_account, AccountContainer, MessageAccount},
+    accounts::{deserialize_user_account, AccountContainer, MessageAccount, PostAccount},
     address::generate_seeds_from_string,
+    instruction::ChatInstruction,
 };
 
 pub static NULL_KEY: Pubkey = Pubkey::new_from_array([0_u8; 32]);
@@ -24,42 +25,10 @@ pub mod accounts;
 
 pub mod address;
 mod error;
+mod instruction;
+mod token;
 
 pub static MESSAGE_TRANSACTION_MAX_SIZE: usize = 1200;
-
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
-pub struct SendMessage {
-    pub user: Pubkey,
-    pub channel: Pubkey,
-    pub timestamp: u64,
-    pub message: Message,
-    pub bump_seed: u8,
-}
-
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
-pub struct SubmitMessage {
-    pub from: Pubkey,
-}
-
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
-pub enum ChatInstruction {
-    // Message builder is user to build a message that later can be submitted with the submitt message instruction
-    CreateUser(UserAccount),
-
-    // Create channel, that keep tracks of the message tail
-    CreateChannel(ChannelAccount),
-
-    // Update channel (the tail message)
-    UpdateChannel(ChannelAccount),
-
-    // Message builder is user to build a message that later can be submitted with the submitt message instruction
-    SendMessage(SendMessage),
-    // Add message to message builder
-    //BuildMessagePart(String),
-
-    // Submit message from BuildMessage invocations
-    //SubmitMessage,
-}
 
 // Declare and export the program's entrypoint
 entrypoint!(process_instruction);
@@ -185,40 +154,80 @@ pub fn process_instruction(
                 send_message.bump_seed,
             )?;
         } /* ChatInstruction::SubmitMessage =>
-          {
+        {
 
-              let message_account_info = next_account_info(accounts_iter)?;
-              let channel_account_info = next_account_info(accounts_iter)?;
-              submit_message(&message_account_info, &channel_account_info)?;
-          } */
+        let message_account_info = next_account_info(accounts_iter)?;
+        let channel_account_info = next_account_info(accounts_iter)?;
+        submit_message(&message_account_info, &channel_account_info)?;
+        } */
 
+        /* ChatInstruction::SubmitMessage(submittable) =>
+        {
+             // Iterating accounts is safer then indexing
+            let accounts_iter = &mut accounts.iter();
 
-          /* ChatInstruction::SubmitMessage(submittable) =>
-            {
-                 // Iterating accounts is safer then indexing
-                let accounts_iter = &mut accounts.iter();
+            // Get the channeel account
+            let channel_info = next_account_info(accounts_iter)?;
 
-                // Get the channeel account
-                let channel_info = next_account_info(accounts_iter)?;
+            // The account must be owned by the program in order to modify its data
+            if channel_info.owner != program_id {
+                msg!("Channnel account does not have the correct program id");
+                return Err(ProgramError::IncorrectProgramId);
+            }
 
-                // The account must be owned by the program in order to modify its data
-                if channel_info.owner != program_id {
-                    msg!("Channnel account does not have the correct program id");
-                    return Err(ProgramError::IncorrectProgramId);
-                }
+            msg!("Send  message channel!");
 
-                msg!("Send  message channel!");
+            let channel_account_metas = vec![AccountMeta::new(channel_info.key.clone(), false)];
+            invoke(&Instruction::new_with_bincode(program_id.clone(), &Message {
+                message: message,
+                next: None // should bee previorus
+            }.try_to_vec()?,
+            channel_account_metas), accounts)?;
 
-                let channel_account_metas = vec![AccountMeta::new(channel_info.key.clone(), false)];
-                invoke(&Instruction::new_with_bincode(program_id.clone(), &Message {
-                    message: message,
-                    next: None // should bee previorus
-                }.try_to_vec()?,
-                channel_account_metas), accounts)?;
+            msg!("Message sent to channel!");
 
-                msg!("Message sent to channel!");
+        } */
+        ChatInstruction::CreatePost(post) => {
+            let user_account_info = next_account_info(accounts_iter)?;
+            let channel_account_info = next_account_info(accounts_iter)?;
 
-            } */
+            // Create new SPL token, mint proportianlly to the owned share (100%)
+            // Likes are creating additional mint proportianly to total share.
+
+            let message_account = PostAccount {
+                user: post.user,
+                channel: post.channel,
+                timestamp: post.timestamp,
+                content: None,
+            };
+            let message_account_info = next_account_info(accounts_iter)?;
+            let rent = Rent::get()?;
+            let user = deserialize_user_account(user_account_info.data.borrow().as_ref());
+            if &user.owner != payer_account.key {
+                return Err(ProgramError::IllegalOwner); // requires payer as owner (for now)
+            }
+
+            let temp = AccountContainer::MessageAccount(message_account.clone());
+            let vec = temp.try_to_vec()?;
+            for v in vec {
+                msg!(v.to_string().as_str());
+            }
+            create_and_serialize_account_signed_verify(
+                payer_account,
+                message_account_info,
+                &AccountContainer::MessageAccount(message_account),
+                &[
+                    &user_account_info.key.to_bytes(),
+                    &channel_account_info.key.to_bytes(),
+                    &send_message.timestamp.to_le_bytes(),
+                ],
+                program_id,
+                system_account,
+                &rent,
+                message_account_info.key.clone(),
+                send_message.bump_seed,
+            )?;
+        }
     }
 
     Ok(())

@@ -103,6 +103,15 @@ impl MaxSize for MessageAccount {
     }
 }
 
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+pub struct PostAccount {
+    pub user: Pubkey,
+    pub channel: Pubkey,
+    pub timestamp: u64,
+    pub content: Option<Pubkey>,
+    pub token: Pubkey,
+}
+
 // Used to serialization and deserialization to keep track of account types
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 

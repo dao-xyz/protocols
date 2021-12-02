@@ -1,0 +1,47 @@
+use borsh::{BorshDeserialize, BorshSerialize};
+use solana_program::pubkey::Pubkey;
+
+use crate::accounts::{ChannelAccount, Message, UserAccount};
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+pub struct SendMessage {
+    pub user: Pubkey,
+    pub channel: Pubkey,
+    pub timestamp: u64,
+    pub message: Message,
+    pub bump_seed: u8,
+}
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+pub struct SubmitMessage {
+    pub from: Pubkey,
+}
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+pub struct CreatePost {
+    pub user: Pubkey,
+    pub channel: Pubkey,
+    pub timestamp: u64,
+    pub post: Option<Message>,
+}
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+pub enum ChatInstruction {
+    // Message builder is user to build a message that later can be submitted with the submitt message instruction
+    CreateUser(UserAccount),
+
+    // Create channel, that keep tracks of the message tail
+    CreateChannel(ChannelAccount),
+
+    // Update channel (the tail message)
+    UpdateChannel(ChannelAccount),
+
+    // Message builder is user to build a message that later can be submitted with the submitt message instruction
+    SendMessage(SendMessage),
+    // Add message to message builder
+    //BuildMessagePart(String),
+
+    // Submit message from BuildMessage invocations
+    //SubmitMessage,
+    CreatePost(CreatePost),
+}
