@@ -25,7 +25,7 @@ jobs:
       - run: >-
           sudo apt-add-repository "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-10 main"
       - name: Build test and deploy dev
-        working-directory: ./scr/program-rust
+        working-directory: ./src/program-rust
         run: |
           sudo apt-get update
           sudo apt-get install -y openssl --allow-unauthenticated
