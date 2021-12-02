@@ -24,8 +24,9 @@ jobs:
           wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
       - run: >-
           sudo apt-add-repository "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-10 main"
-      - run: |
-          working-directory: ./scr/program-rust
+      - name: Build test and deploy dev
+        working-directory: ./scr/program-rust
+        run: |
           sudo apt-get update
           sudo apt-get install -y openssl --allow-unauthenticated
           sudo apt-get install -y libssl-dev --allow-unauthenticated
