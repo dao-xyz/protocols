@@ -40,4 +40,5 @@ jobs:
           cargo build-bpf
           cargo test-bpf
           solana config set --url https://api.devnet.solana.com
+          (ls /home/runner/.config/solana/cli/config.yml && echo yes) || echo no 
           solana program deploy target/deploy/program/solvei.so
