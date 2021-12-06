@@ -39,5 +39,5 @@ jobs:
           echo ${{secrets.SOLANA_DEVELOPMENT_KEY}} >> /home/runner/.config/solana/id.json
           cargo build-bpf
           cargo test-bpf
-          solana config set --url localhost
+          solana config set --url https://api.devnet.solana.com
           solana program deploy target/deploy/program/solvei.so
