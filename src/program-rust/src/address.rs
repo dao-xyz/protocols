@@ -29,9 +29,9 @@ pub fn generate_seeds_from_string(str: &str) -> Result<Vec<Vec<u8>>, PubkeyError
 
 #[cfg(test)]
 mod test {
-    use solana_program::pubkey::{MAX_SEEDS, MAX_SEED_LEN};
 
     use crate::address::generate_seeds_from_string;
+    use solana_program::pubkey::{MAX_SEEDS, MAX_SEED_LEN};
 
     #[test]
     fn test_generate_seeds_from_string() {
