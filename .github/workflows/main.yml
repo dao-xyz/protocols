@@ -40,5 +40,5 @@ jobs:
           cargo build-bpf
           cargo test-bpf
           solana config set --url https://api.devnet.solana.com
-          solana airdrop 10
+          solana airdrop 5
           solana program deploy /home/runner/work/solvei-protocol/solvei-protocol/src/program-rust/target/deploy/solvei.so
