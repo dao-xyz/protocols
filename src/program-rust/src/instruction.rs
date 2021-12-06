@@ -19,10 +19,29 @@ pub struct SubmitMessage {
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub struct CreatePost {
-    pub user: Pubkey,
     pub channel: Pubkey,
     pub timestamp: u64,
-    pub post: Option<Message>,
+    pub stagnation_factor: u64,
+    pub content: Option<Pubkey>,
+    pub post_bump_seed: u8,
+    pub mint_bump_seed: u8,
+    pub mint_authority_bump_seed: u8,
+}
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+pub struct CreatePostContent {
+    pub message: Message,
+    pub bump_seed: u8,
+}
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+pub struct StakePost {
+    pub user: Pubkey,
+    pub post: Pubkey,
+    pub stake: u64,
+    pub user_post_token_account_bump_seed: u8,
+    pub mint_authority_bump_seed: u8,
+    pub escrow_account_bump_seed: u8,
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
@@ -44,4 +63,9 @@ pub enum ChatInstruction {
     // Submit message from BuildMessage invocations
     //SubmitMessage,
     CreatePost(CreatePost),
+
+    CreatePostContent(CreatePostContent),
+
+    // "Like" the post with an amount
+    StakePost(StakePost),
 }

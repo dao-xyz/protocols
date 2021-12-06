@@ -13,9 +13,13 @@ use solvei::{
         ChannelAccount, Description, Message, UserAccount,
     },
     address::generate_seeds_from_string,
-    ChatInstruction, SendMessage,
+    instruction::{ChatInstruction, CreatePost, SendMessage},
+    processor::process,
 };
-mod test_program;
+
+pub fn program_test(program_id: Pubkey) -> ProgramTest {
+    ProgramTest::new("solvei", program_id, processor!(process))
+}
 
 pub fn get_channel_account_address_and_bump_seed(
     channel_name: &str, // we should also send organization key,
@@ -40,70 +44,6 @@ pub fn get_message_account_address_and_bump_seed(
         ],
         program_id,
     )
-}
-
-pub fn get_user_account_address_and_bump_seed(username: &str, program_id: &Pubkey) -> (Pubkey, u8) {
-    let seeds = generate_seeds_from_string(username).unwrap();
-    let seed_slice = &seeds.iter().map(|x| &x[..]).collect::<Vec<&[u8]>>()[..];
-    Pubkey::find_program_address(seed_slice, program_id)
-}
-
-async fn create_user_transaction(
-    username: &str,
-    payer: &Keypair,
-    recent_blockhash: &Hash,
-    program_id: &Pubkey,
-) -> (Transaction, Pubkey) {
-    let (user_address_pda, bump) = get_user_account_address_and_bump_seed(username, &program_id);
-
-    let mut transaction_create = Transaction::new_with_payer(
-        &[Instruction::new_with_borsh(
-            program_id.clone(),
-            &ChatInstruction::CreateUser(UserAccount {
-                name: username.into(),
-                owner: payer.pubkey(),
-            }),
-            vec![
-                AccountMeta::new(system_program::id(), false),
-                AccountMeta::new(program_id.clone(), false),
-                AccountMeta::new(payer.pubkey(), true),
-                AccountMeta::new(user_address_pda, false),
-            ], // WE SHOULD PASS PDA
-        )],
-        Some(&payer.pubkey()),
-    );
-
-    transaction_create.sign(&[payer], recent_blockhash.clone());
-    (transaction_create, user_address_pda)
-}
-
-async fn create_and_verify_user(
-    banks_client: &mut BanksClient,
-    payer: &Keypair,
-    recent_blockhash: &Hash,
-    program_id: &Pubkey,
-) -> Pubkey {
-    // Create user
-    let username = "Me";
-
-    let (transaction, user_address_pda) =
-        create_user_transaction(username, payer, recent_blockhash, program_id).await;
-    banks_client
-        .process_transaction(transaction)
-        .await
-        .unwrap_or_else(|err| {
-            dbg!(err.to_string());
-        });
-
-    // Verify username name
-    let user_account_info = banks_client
-        .get_account(user_address_pda)
-        .await
-        .expect("get_user")
-        .expect("user not found");
-    let user = deserialize_user_account(&user_account_info.data);
-    assert_eq!(user.name, username);
-    return user_address_pda;
 }
 
 async fn create_and_verify_channel(
@@ -156,11 +96,16 @@ async fn create_and_verify_channel(
 #[tokio::test]
 async fn test_create_channel_send_message() {
     let program_id = Pubkey::new_unique();
-    let program = test_program::program_test(program_id);
+    let program = program_test(program_id);
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
 
-    let user_address_pda =
-        create_and_verify_user(&mut banks_client, &payer, &recent_blockhash, &program_id).await;
+    let user_address_pda = crate::utils::create_and_verify_user(
+        &mut banks_client,
+        &payer,
+        &recent_blockhash,
+        &program_id,
+    )
+    .await;
 
     let channel_address_pda = create_and_verify_channel(
         &mut banks_client,
@@ -226,7 +171,7 @@ async fn test_create_channel_send_message() {
         .get_account(message_account_pda)
         .await
         .expect("get_account")
-        .expect("channel_account not found");
+        .expect("message_account not found");
     let message_account = deserialize_message_account(&message_account_info.data);
 
     assert_eq!(
@@ -240,7 +185,7 @@ async fn test_create_channel_send_message() {
 #[tokio::test]
 async fn test_only_payer_can_be_user() {
     let program_id = Pubkey::new_unique();
-    let mut program = test_program::program_test(program_id);
+    let mut program = program_test(program_id);
     let another_payer = Keypair::new();
     program.add_account(
         another_payer.pubkey(),
@@ -251,8 +196,13 @@ async fn test_only_payer_can_be_user() {
     );
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
 
-    let user_address_pda =
-        create_and_verify_user(&mut banks_client, &payer, &recent_blockhash, &program_id).await;
+    let user_address_pda = crate::utils::create_and_verify_user(
+        &mut banks_client,
+        &payer,
+        &recent_blockhash,
+        &program_id,
+    )
+    .await;
     let channel_address_pda = create_and_verify_channel(
         &mut banks_client,
         &payer,
@@ -316,7 +266,7 @@ async fn test_only_payer_can_be_user() {
 #[tokio::test]
 async fn test_invalid_username() {
     let program_id = Pubkey::new_unique();
-    let mut program = test_program::program_test(program_id);
+    let mut program = program_test(program_id);
     let another_payer = Keypair::new();
     program.add_account(
         another_payer.pubkey(),
@@ -328,7 +278,7 @@ async fn test_invalid_username() {
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
 
     let (transaction, _) =
-        create_user_transaction(" x", &payer, &recent_blockhash, &program_id).await;
+        crate::utils::create_user_transaction(" x", &payer, &recent_blockhash, &program_id).await;
     let error = banks_client
         .process_transaction(transaction)
         .await
@@ -343,7 +293,7 @@ async fn test_invalid_username() {
     ));
 
     let (transaction, _) =
-        create_user_transaction("x ", &payer, &recent_blockhash, &program_id).await;
+        crate::utils::create_user_transaction("x ", &payer, &recent_blockhash, &program_id).await;
     let error = banks_client
         .process_transaction(transaction)
         .await
