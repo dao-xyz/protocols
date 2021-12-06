@@ -1,5 +1,5 @@
-use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::hash::hashv;
+use borsh::BorshDeserialize;
+
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -40,7 +40,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> P
 
     match instruction {
         ChatInstruction::CreateUser(user) => {
-            if user.name.len() == 0 {
+            if user.name.is_empty() {
                 return Err(ProgramError::InvalidArgument);
             }
             // check if leading or trailing spaces, if so name is invalid
@@ -155,8 +155,8 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> P
                     content: post.content,
                     stagnation_factor: post.stagnation_factor,
                     timestamp: post.timestamp,
-                    token: mint_account_info.key.clone(),
-                    user: user_account_info.key.clone(),
+                    token: *mint_account_info.key,
+                    user: *user_account_info.key,
                 }),
                 &[
                     user_account_info.key.as_ref(),

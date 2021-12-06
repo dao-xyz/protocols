@@ -9,11 +9,11 @@ use solana_sdk::{account::Account, transaction::TransactionError, transport::Tra
 use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction};
 use solvei::{
     accounts::{
-        deserialize_channel_account, deserialize_message_account, deserialize_user_account,
-        ChannelAccount, Description, Message, UserAccount,
+        deserialize_channel_account, deserialize_message_account,
+        ChannelAccount, Description, Message,
     },
     address::generate_seeds_from_string,
-    instruction::{ChatInstruction, CreatePost, SendMessage},
+    instruction::{ChatInstruction, SendMessage},
     processor::process,
 };
 
@@ -54,28 +54,28 @@ async fn create_and_verify_channel(
     user_account: &Pubkey,
 ) -> Pubkey {
     let channel_name = "My channel";
-    let (channel_address_pda, bump) =
-        get_channel_account_address_and_bump_seed(channel_name, &program_id);
+    let (channel_address_pda, _bump) =
+        get_channel_account_address_and_bump_seed(channel_name, program_id);
 
     let mut transaction_create = Transaction::new_with_payer(
         &[Instruction::new_with_borsh(
-            program_id.clone(),
+            *program_id,
             &ChatInstruction::CreateChannel(ChannelAccount::new(
-                user_account.clone(),
+                *user_account,
                 channel_name.into(),
                 Description::String("This channel lets you channel channels".into()),
             )),
             vec![
                 AccountMeta::new(system_program::id(), false),
-                AccountMeta::new(program_id.clone(), false),
+                AccountMeta::new(*program_id, false),
                 AccountMeta::new(payer.pubkey(), true),
-                AccountMeta::new(user_account.clone(), false),
+                AccountMeta::new(*user_account, false),
                 AccountMeta::new(channel_address_pda, false),
             ], // WE SHOULD PASS PDA
         )],
         Some(&payer.pubkey()),
     );
-    transaction_create.sign(&[payer], recent_blockhash.clone());
+    transaction_create.sign(&[payer], *recent_blockhash);
     banks_client
         .process_transaction(transaction_create)
         .await
@@ -90,7 +90,7 @@ async fn create_and_verify_channel(
     let channel_account = deserialize_channel_account(&channel_account_info.data);
 
     assert_eq!(channel_account.name.as_str(), channel_name);
-    return channel_address_pda;
+    channel_address_pda
 }
 
 #[tokio::test]

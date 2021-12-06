@@ -16,8 +16,8 @@ use spl_token::{
     state::Mint,
 };
 
-static MINT_ACCOUNT_SEED_PREFIX: &'static str = "mint";
-static ESCROW_ACCOUNT_SEED_PREFIX: &'static str = "escrow";
+static MINT_ACCOUNT_SEED_PREFIX: &str = "mint";
+static ESCROW_ACCOUNT_SEED_PREFIX: &str = "escrow";
 
 pub fn create_mint_account_seeds<'a>(
     post_account: &'a Pubkey,
@@ -89,8 +89,8 @@ pub fn create_program_mint_account<'a>(
 
     invoke_signed(
         &system_instruction::create_account(
-            &payer_info.key,
-            &mint_info.key,
+            payer_info.key,
+            mint_info.key,
             mint_rent,
             Mint::LEN as u64,
             &spl_token::id(),
@@ -107,9 +107,9 @@ pub fn create_program_mint_account<'a>(
     invoke(
         &initialize_mint(
             &spl_token::id(),
-            &mint_info.key,
-            &mint_authority_info.key,
-            Some(&mint_authority_info.key), //freeze_authority_pubkey.as_ref(),
+            mint_info.key,
+            mint_authority_info.key,
+            Some(mint_authority_info.key), //freeze_authority_pubkey.as_ref(),
             decimals,
         )?,
         &[mint_info.clone(), rent_info.clone()],
@@ -155,8 +155,8 @@ pub fn create_user_post_token_account<'a>(
 
     invoke_signed(
         &system_instruction::create_account(
-            &payer_info.key,
-            &user_post_token_account.key,
+            payer_info.key,
+            user_post_token_account.key,
             rent.minimum_balance(spl_token::state::Account::LEN),
             spl_token::state::Account::LEN as u64,
             &spl_token::id(),
@@ -172,9 +172,9 @@ pub fn create_user_post_token_account<'a>(
 
     invoke(
         &initialize_account(
-            &token_program_info.key,
-            &user_post_token_account.key,
-            &mint_info.key,
+            token_program_info.key,
+            user_post_token_account.key,
+            mint_info.key,
             mint_authority_info.key, //freeze_authority_pubkey.as_ref(),
         )?,
         &[
@@ -213,7 +213,7 @@ pub fn spl_mint_to<'a>(
         &spl_token::id(),
         mint_info.key,
         mint_to_account.key,
-        &mint_authority_info.key,
+        mint_authority_info.key,
         &[],
         amount,
     )?;
@@ -238,8 +238,8 @@ pub fn transfer_to<'a>(
     // take from payer
     invoke(
         &system_instruction::transfer(
-            &payer_info.key, // mby this should be program id
-            &to_account_info.key,
+            payer_info.key, // mby this should be program id
+            to_account_info.key,
             amount,
         ),
         &[payer_info.clone(), to_account_info.clone()],

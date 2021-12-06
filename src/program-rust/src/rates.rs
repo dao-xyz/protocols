@@ -1,8 +1,8 @@
-use solana_program::{account_info::AccountInfo, program_error::ProgramError, program_pack::Pack};
+use solana_program::{account_info::AccountInfo, program_error::ProgramError};
 static LAMPORT_SOL_FACTOR: f64 = 1_f64 / 1000000000_f64;
 
 fn get_exchange_rate_at_stake(supply: f64, stagnation_factor: f64) -> f64 {
-    return 1_f64 / (1_f64 + supply * stagnation_factor * LAMPORT_SOL_FACTOR);
+    1_f64 / (1_f64 + supply * stagnation_factor * LAMPORT_SOL_FACTOR)
 }
 
 fn get_allowed_mint_amount_from_sol_supply_and_sol_stake(
@@ -15,7 +15,7 @@ fn get_allowed_mint_amount_from_sol_supply_and_sol_stake(
     let half_stake = sol_stake_float / 2_f64;
     let rate = get_exchange_rate_at_stake(sol_supply as f64 + half_stake, spread as f64);
     // This should be fine tuned to promote wanted behaviours of the system
-    return Ok((rate * sol_stake_float) as u64);
+    Ok((rate * sol_stake_float) as u64)
 }
 
 pub fn get_allowed_mint_amount<'a>(
@@ -28,8 +28,8 @@ pub fn get_allowed_mint_amount<'a>(
     // let token_supply = Mint::unpack_from_slice(&mint_account_info.data.borrow())?.supply;
 
     // This should be fine tuned to promote wanted behaviours of the system
-    return get_allowed_mint_amount_from_sol_supply_and_sol_stake(supply, stake, stagnation_factor)
-        .unwrap();
+    get_allowed_mint_amount_from_sol_supply_and_sol_stake(supply, stake, stagnation_factor)
+        .unwrap()
     //get_allowed_mint_amount_from_sol_supply_and_sol_stake(sol_supply, sol_stake);
 }
 

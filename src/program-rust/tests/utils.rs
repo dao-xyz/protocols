@@ -1,20 +1,18 @@
 use solana_program::{
     hash::Hash,
-    instruction::{AccountMeta, Instruction, InstructionError},
+    instruction::{AccountMeta, Instruction},
     system_program,
 };
 
 use solana_program_test::*;
-use solana_sdk::{account::Account, transaction::TransactionError, transport::TransportError};
+
 use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction};
 use solvei::{
     accounts::{
-        deserialize_channel_account, deserialize_message_account, deserialize_user_account,
-        ChannelAccount, Description, Message, UserAccount,
+        deserialize_user_account, UserAccount,
     },
     address::generate_seeds_from_string,
-    instruction::{ChatInstruction, CreatePost, SendMessage},
-    processor::process,
+    instruction::{ChatInstruction},
 };
 
 pub fn get_user_account_address_and_bump_seed(username: &str, program_id: &Pubkey) -> (Pubkey, u8) {
@@ -29,18 +27,18 @@ pub async fn create_user_transaction(
     recent_blockhash: &Hash,
     program_id: &Pubkey,
 ) -> (Transaction, Pubkey) {
-    let (user_address_pda, _) = get_user_account_address_and_bump_seed(username, &program_id);
+    let (user_address_pda, _) = get_user_account_address_and_bump_seed(username, program_id);
 
     let mut transaction_create = Transaction::new_with_payer(
         &[Instruction::new_with_borsh(
-            program_id.clone(),
+            *program_id,
             &ChatInstruction::CreateUser(UserAccount {
                 name: username.into(),
                 owner: payer.pubkey(),
             }),
             vec![
                 AccountMeta::new(system_program::id(), false),
-                AccountMeta::new(program_id.clone(), false),
+                AccountMeta::new(*program_id, false),
                 AccountMeta::new(payer.pubkey(), true),
                 AccountMeta::new(user_address_pda, false),
             ], // WE SHOULD PASS PDA
@@ -48,7 +46,7 @@ pub async fn create_user_transaction(
         Some(&payer.pubkey()),
     );
 
-    transaction_create.sign(&[payer], recent_blockhash.clone());
+    transaction_create.sign(&[payer], *recent_blockhash);
     (transaction_create, user_address_pda)
 }
 
@@ -78,5 +76,5 @@ pub async fn create_and_verify_user(
         .expect("user not found");
     let user = deserialize_user_account(&user_account_info.data);
     assert_eq!(user.name, username);
-    return user_address_pda;
+    user_address_pda
 }

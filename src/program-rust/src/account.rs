@@ -90,7 +90,7 @@ pub fn create_and_serialize_account_signed<'a>(
         );
         return Err(ProgramError::InvalidSeeds);
     }
-    return create_and_serialize_account_signed_from_pda(
+    create_and_serialize_account_signed_from_pda(
         payer_info,
         account_info,
         account_data,
@@ -99,7 +99,7 @@ pub fn create_and_serialize_account_signed<'a>(
         system_info,
         rent,
         bump_seed,
-    );
+    )
 }
 
 /// Creates a new account and serializes data into it using the provided seeds to invoke signed CPI call
@@ -128,7 +128,7 @@ pub fn create_and_serialize_account_signed_verify<'a>(
         );
         return Err(ProgramError::InvalidSeeds);
     }
-    return create_and_serialize_account_signed_from_pda(
+    create_and_serialize_account_signed_from_pda(
         payer_info,
         account_info,
         account_data,
@@ -137,7 +137,7 @@ pub fn create_and_serialize_account_signed_verify<'a>(
         system_info,
         rent,
         bump_seed,
-    );
+    )
 }
 
 /// Creates a new account and serializes data into it using the provided seeds to invoke signed CPI call
@@ -182,7 +182,7 @@ fn create_and_serialize_account_signed_from_pda<'a, T: BorshSerialize + MaxSize>
         &[&signers_seeds[..]],
     )?;
 
-    if let Some(mut serialized_data) = serialized_data {
+    if let Some(serialized_data) = serialized_data {
         account_info
             .data
             .borrow_mut()

@@ -1,6 +1,5 @@
 use solana_program::{
-    hash::{hashv, Hash},
-    instruction::{AccountMeta, Instruction, InstructionError},
+    instruction::{AccountMeta, Instruction},
     program_pack::Pack,
     system_program,
 };
@@ -75,19 +74,19 @@ async fn test_create_post() {
     let mut transaction_post = Transaction::new_with_payer(
         &[
             Instruction::new_with_borsh(
-                program_id.clone(),
+                program_id,
                 &ChatInstruction::CreatePost(CreatePost {
-                    channel: channel,
+                    channel,
                     mint_bump_seed,
                     mint_authority_bump_seed,
                     stagnation_factor,
                     timestamp,
                     content: Some(post_content_account),
-                    post_bump_seed: post_bump_seed,
+                    post_bump_seed,
                 }),
                 vec![
                     AccountMeta::new(system_program::id(), false),
-                    AccountMeta::new(program_id.clone(), false),
+                    AccountMeta::new(program_id, false),
                     AccountMeta::new(payer.pubkey(), true),
                     AccountMeta::new(user, false),
                     AccountMeta::new(post_account_pda, false),
@@ -98,20 +97,20 @@ async fn test_create_post() {
                 ],
             ),
             Instruction::new_with_borsh(
-                program_id.clone(),
+                program_id,
                 &ChatInstruction::CreatePostContent(CreatePostContent {
                     bump_seed: post_content_account_bump_seed,
-                    message: message,
+                    message,
                 }),
                 vec![
                     AccountMeta::new(system_program::id(), false),
-                    AccountMeta::new(program_id.clone(), false),
+                    AccountMeta::new(program_id, false),
                     AccountMeta::new(payer.pubkey(), true),
                     AccountMeta::new(post_content_account, false),
                 ],
             ),
             Instruction::new_with_borsh(
-                program_id.clone(),
+                program_id,
                 &ChatInstruction::StakePost(StakePost {
                     mint_authority_bump_seed,
                     user_post_token_account_bump_seed,
@@ -122,7 +121,7 @@ async fn test_create_post() {
                 }),
                 vec![
                     AccountMeta::new(system_program::id(), false),
-                    AccountMeta::new(program_id.clone(), false),
+                    AccountMeta::new(program_id, false),
                     AccountMeta::new(payer.pubkey(), true),
                     AccountMeta::new(post_account_pda, false),
                     AccountMeta::new(escrow_account_info, false),
@@ -137,7 +136,7 @@ async fn test_create_post() {
         Some(&payer.pubkey()),
     );
 
-    transaction_post.sign(&[&payer], recent_blockhash.clone());
+    transaction_post.sign(&[&payer], recent_blockhash);
     banks_client
         .process_transaction(transaction_post)
         .await
@@ -151,7 +150,7 @@ async fn test_create_post() {
     // Stake more
     let mut transaction_stake = Transaction::new_with_payer(
         &[Instruction::new_with_borsh(
-            program_id.clone(),
+            program_id,
             &ChatInstruction::StakePost(StakePost {
                 mint_authority_bump_seed,
                 user_post_token_account_bump_seed,
@@ -162,7 +161,7 @@ async fn test_create_post() {
             }),
             vec![
                 AccountMeta::new(system_program::id(), false),
-                AccountMeta::new(program_id.clone(), false),
+                AccountMeta::new(program_id, false),
                 AccountMeta::new(payer.pubkey(), true),
                 AccountMeta::new(post_account_pda, false),
                 AccountMeta::new(escrow_account_info, false),
@@ -176,7 +175,7 @@ async fn test_create_post() {
         Some(&payer.pubkey()),
     );
 
-    transaction_stake.sign(&[&payer], recent_blockhash.clone());
+    transaction_stake.sign(&[&payer], recent_blockhash);
     banks_client
         .process_transaction(transaction_stake)
         .await

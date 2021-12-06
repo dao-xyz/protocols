@@ -1,10 +1,8 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::AccountInfo, borsh::try_from_slice_unchecked, entrypoint,
-    entrypoint::ProgramResult, hash::hashv, msg, program_error::ProgramError, pubkey::Pubkey,
-    rent::Rent, sysvar::Sysvar,
+    borsh::try_from_slice_unchecked, hash::hashv, pubkey::Pubkey,
 };
-use std::io::Error;
+
 
 use crate::account::MaxSize;
 
@@ -107,7 +105,7 @@ impl MessageAccount {
 
 impl MaxSize for MessageAccount {
     fn get_max_size(&self) -> Option<usize> {
-        return None;
+        None
     }
 }
 
@@ -139,35 +137,35 @@ pub enum AccountContainer {
 
 impl MaxSize for AccountContainer {
     fn get_max_size(&self) -> Option<usize> {
-        return None;
+        None
     }
 }
 
 // Ugly helper methods below to reduce some bloat
 
 pub fn deserialize_user_account(data: &[u8]) -> UserAccount {
-    if let AccountContainer::UserAccount(account) = try_from_slice_unchecked(&data).unwrap() {
+    if let AccountContainer::UserAccount(account) = try_from_slice_unchecked(data).unwrap() {
         return account;
     }
     panic!();
 }
 
 pub fn deserialize_channel_account(data: &[u8]) -> ChannelAccount {
-    if let AccountContainer::ChannelAccount(account) = try_from_slice_unchecked(&data).unwrap() {
+    if let AccountContainer::ChannelAccount(account) = try_from_slice_unchecked(data).unwrap() {
         return account;
     }
     panic!();
 }
 
 pub fn deserialize_message_account(data: &[u8]) -> MessageAccount {
-    if let AccountContainer::MessageAccount(account) = try_from_slice_unchecked(&data).unwrap() {
+    if let AccountContainer::MessageAccount(account) = try_from_slice_unchecked(data).unwrap() {
         return account;
     }
     panic!();
 }
 
 pub fn deserialize_post_account(data: &[u8]) -> PostAccount {
-    if let AccountContainer::PostAccount(account) = try_from_slice_unchecked(&data).unwrap() {
+    if let AccountContainer::PostAccount(account) = try_from_slice_unchecked(data).unwrap() {
         return account;
     }
     panic!();
