@@ -36,7 +36,7 @@ jobs:
           sh -c "$(curl -sSfL https://release.solana.com/v1.7.8/install)"
           export PATH=~/.local/share/solana/install/active_release/bin:$PATH
           solana-install info
-          solana-keygen new --no-bip39-passphrase
+          echo ${{secrets.SOLANA_DEVELOPMENT_KEY}} >> /home/runner/.config/solana/id.json
           cargo build-bpf
           cargo test-bpf
           solana config set --url localhost
