@@ -1,8 +1,8 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo, borsh::try_from_slice_unchecked, entrypoint,
-    entrypoint::ProgramResult, msg, program_error::ProgramError, pubkey::Pubkey, rent::Rent,
-    sysvar::Sysvar,
+    entrypoint::ProgramResult, hash::hashv, msg, program_error::ProgramError, pubkey::Pubkey,
+    rent::Rent, sysvar::Sysvar,
 };
 use std::io::Error;
 
@@ -46,6 +46,14 @@ pub enum Message {
     // image
     // videos
     // files etc
+}
+
+impl Message {
+    pub fn hash(&self) -> [u8; 32] {
+        match &self {
+            Message::String(string) => return hashv(&[string.as_bytes()]).0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
@@ -103,6 +111,21 @@ impl MaxSize for MessageAccount {
     }
 }
 
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+pub struct PostAccount {
+    pub user: Pubkey,
+    pub channel: Pubkey,
+    pub timestamp: u64,
+    pub content: Option<Pubkey>,
+    pub token: Pubkey,
+    pub stagnation_factor: u64,
+}
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+pub struct PostContentAccount {
+    pub message: Message,
+}
+
 // Used to serialization and deserialization to keep track of account types
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 
@@ -110,6 +133,8 @@ pub enum AccountContainer {
     UserAccount(UserAccount),
     ChannelAccount(ChannelAccount),
     MessageAccount(MessageAccount),
+    PostAccount(PostAccount),
+    PostContentAccount(PostContentAccount),
 }
 
 impl MaxSize for AccountContainer {
@@ -136,6 +161,13 @@ pub fn deserialize_channel_account(data: &[u8]) -> ChannelAccount {
 
 pub fn deserialize_message_account(data: &[u8]) -> MessageAccount {
     if let AccountContainer::MessageAccount(account) = try_from_slice_unchecked(&data).unwrap() {
+        return account;
+    }
+    panic!();
+}
+
+pub fn deserialize_post_account(data: &[u8]) -> PostAccount {
+    if let AccountContainer::PostAccount(account) = try_from_slice_unchecked(&data).unwrap() {
         return account;
     }
     panic!();
