@@ -22,7 +22,7 @@ pub struct CreatePost {
     pub channel: Pubkey,
     pub timestamp: u64,
     pub stagnation_factor: u64,
-    pub content: Option<Pubkey>,
+    pub content: Pubkey,
     pub post_bump_seed: u8,
     pub mint_bump_seed: u8,
     pub mint_authority_bump_seed: u8,

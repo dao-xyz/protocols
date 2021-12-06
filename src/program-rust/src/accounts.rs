@@ -1,8 +1,5 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{
-    borsh::try_from_slice_unchecked, hash::hashv, pubkey::Pubkey,
-};
-
+use solana_program::{borsh::try_from_slice_unchecked, hash::hashv, pubkey::Pubkey};
 
 use crate::account::MaxSize;
 
@@ -114,9 +111,9 @@ pub struct PostAccount {
     pub user: Pubkey,
     pub channel: Pubkey,
     pub timestamp: u64,
-    pub content: Option<Pubkey>,
-    pub token: Pubkey,
     pub stagnation_factor: u64,
+    pub token: Pubkey,
+    pub content: Pubkey,
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]

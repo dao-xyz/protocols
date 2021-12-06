@@ -81,7 +81,7 @@ async fn test_create_post() {
                     mint_authority_bump_seed,
                     stagnation_factor,
                     timestamp,
-                    content: Some(post_content_account),
+                    content: post_content_account,
                     post_bump_seed,
                 }),
                 vec![
