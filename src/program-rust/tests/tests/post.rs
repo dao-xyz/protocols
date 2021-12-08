@@ -1,6 +1,7 @@
 use solana_program::{
     instruction::{AccountMeta, Instruction},
     program_pack::Pack,
+    rent::Rent,
     system_program,
 };
 
@@ -68,8 +69,12 @@ async fn test_create_post() {
 
     let (post_content_account, post_content_account_bump_seed) =
         Pubkey::find_program_address(&[&hash], &program_id);
-    let stake = 100;
-    let stagnation_factor = 100000;
+
+    let stake = 1000000000; // 1 sol
+
+    // for testing purposes lets calcualte min rent
+    let rent = Rent::default();
+    let empty_account_minimum_balance = rent.minimum_balance(0);
 
     let mut transaction_post = Transaction::new_with_payer(
         &[
@@ -79,10 +84,12 @@ async fn test_create_post() {
                     channel,
                     mint_bump_seed,
                     mint_authority_bump_seed,
-                    stagnation_factor,
+                    spread_factor: None,
                     timestamp,
                     content: post_content_account,
                     post_bump_seed,
+                    escrow_account_bump_seed,
+                    user_post_token_account_bump_seed,
                 }),
                 vec![
                     AccountMeta::new(system_program::id(), false),
@@ -90,8 +97,10 @@ async fn test_create_post() {
                     AccountMeta::new(payer.pubkey(), true),
                     AccountMeta::new(user, false),
                     AccountMeta::new(post_account_pda, false),
+                    AccountMeta::new(escrow_account_info, false),
                     AccountMeta::new(mint_account_pda, false),
                     AccountMeta::new(mint_authority_account_pda, false),
+                    AccountMeta::new(user_post_token_account, false),
                     AccountMeta::new(solana_program::sysvar::rent::id(), false),
                     AccountMeta::new_readonly(spl_token::id(), false),
                 ],
@@ -143,9 +152,9 @@ async fn test_create_post() {
         .unwrap();
 
     let post_token_balance = get_token_balance(&mut banks_client, &user_post_token_account).await;
-    assert_eq!(post_token_balance, 98); // stagnation factor non zero
+    assert_eq!(post_token_balance, stake + empty_account_minimum_balance); // stagnation factor non zero
     let escrow_balance = banks_client.get_balance(escrow_account_info).await.unwrap();
-    assert_eq!(escrow_balance, stake);
+    assert_eq!(escrow_balance, stake + empty_account_minimum_balance);
 
     // Stake more
     let mut transaction_stake = Transaction::new_with_payer(
@@ -183,9 +192,15 @@ async fn test_create_post() {
 
     let new_expected_staked_amount = stake * 2;
     let post_token_balance = get_token_balance(&mut banks_client, &user_post_token_account).await;
-    assert_eq!(post_token_balance, 195); // stagnation factor non zero
+    assert_eq!(
+        post_token_balance,
+        new_expected_staked_amount + empty_account_minimum_balance
+    ); // stagnation factor non zero
     let escrow_balance = banks_client.get_balance(escrow_account_info).await.unwrap();
-    assert_eq!(escrow_balance, new_expected_staked_amount);
+    assert_eq!(
+        escrow_balance,
+        new_expected_staked_amount + empty_account_minimum_balance
+    );
 
     // Unstake
 }

@@ -90,7 +90,7 @@ pub fn create_and_serialize_account_signed<'a>(
         );
         return Err(ProgramError::InvalidSeeds);
     }
-    create_and_serialize_account_signed_from_pda(
+    create_and_serialize_account_signed_verify_with_bump(
         payer_info,
         account_info,
         account_data,
@@ -104,7 +104,7 @@ pub fn create_and_serialize_account_signed<'a>(
 
 /// Creates a new account and serializes data into it using the provided seeds to invoke signed CPI call
 /// Note: This functions also checks the provided account PDA matches the supplied seeds
-pub fn create_and_serialize_account_signed_verify<'a>(
+pub fn create_and_serialize_account_signed_verify_with_bump<'a>(
     payer_info: &AccountInfo<'a>,
     account_info: &AccountInfo<'a>,
     account_data: &AccountContainer,
@@ -118,8 +118,29 @@ pub fn create_and_serialize_account_signed_verify<'a>(
     let bump_seeds = [bump_seed];
     seeds_with_bump.push(&bump_seeds);
 
-    let account_address_pda =
-        Pubkey::create_program_address(seeds_with_bump.as_slice(), program_id)?;
+    create_and_serialize_account_signed_verify(
+        payer_info,
+        account_info,
+        account_data,
+        seeds_with_bump.as_slice(),
+        program_id,
+        system_info,
+        rent,
+    )
+}
+
+/// Creates a new account and serializes data into it using the provided seeds to invoke signed CPI call
+/// Note: This functions also checks the provided account PDA matches the supplied seeds
+pub fn create_and_serialize_account_signed_verify<'a>(
+    payer_info: &AccountInfo<'a>,
+    account_info: &AccountInfo<'a>,
+    account_data: &AccountContainer,
+    seeds: &[&[u8]],
+    program_id: &Pubkey,
+    system_info: &AccountInfo<'a>,
+    rent: &Rent,
+) -> Result<(), ProgramError> {
+    let account_address_pda = Pubkey::create_program_address(seeds, program_id)?;
     if account_info.key != &account_address_pda {
         msg!(
             "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
@@ -132,11 +153,10 @@ pub fn create_and_serialize_account_signed_verify<'a>(
         payer_info,
         account_info,
         account_data,
-        account_address_seeds,
+        seeds,
         program_id,
         system_info,
         rent,
-        bump_seed,
     )
 }
 
@@ -146,11 +166,10 @@ fn create_and_serialize_account_signed_from_pda<'a, T: BorshSerialize + MaxSize>
     payer_info: &AccountInfo<'a>,
     account_info: &AccountInfo<'a>,
     account_data: &T,
-    account_address_seeds: &[&[u8]],
+    seeds: &[&[u8]],
     program_id: &Pubkey,
     system_info: &AccountInfo<'a>,
     rent: &Rent,
-    bump_seed: u8,
 ) -> Result<(), ProgramError> {
     let (serialized_data, account_size) = if let Some(max_size) = account_data.get_max_size() {
         (None, max_size)
@@ -167,11 +186,6 @@ fn create_and_serialize_account_signed_from_pda<'a, T: BorshSerialize + MaxSize>
         account_size as u64,
         program_id,
     );
-
-    let mut signers_seeds = account_address_seeds.to_vec();
-    let bump = &[bump_seed];
-    signers_seeds.push(bump);
-
     invoke_signed(
         &create_account_instruction,
         &[
@@ -179,7 +193,7 @@ fn create_and_serialize_account_signed_from_pda<'a, T: BorshSerialize + MaxSize>
             account_info.clone(),
             system_info.clone(),
         ],
-        &[&signers_seeds[..]],
+        &[&seeds[..]],
     )?;
 
     if let Some(serialized_data) = serialized_data {

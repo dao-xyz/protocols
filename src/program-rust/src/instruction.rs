@@ -21,11 +21,13 @@ pub struct SubmitMessage {
 pub struct CreatePost {
     pub channel: Pubkey,
     pub timestamp: u64,
-    pub stagnation_factor: u64,
+    pub spread_factor: Option<u64>,
     pub content: Pubkey,
     pub post_bump_seed: u8,
+    pub escrow_account_bump_seed: u8,
     pub mint_bump_seed: u8,
     pub mint_authority_bump_seed: u8,
+    pub user_post_token_account_bump_seed: u8,
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]

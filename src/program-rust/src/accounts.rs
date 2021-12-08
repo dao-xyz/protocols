@@ -111,7 +111,7 @@ pub struct PostAccount {
     pub user: Pubkey,
     pub channel: Pubkey,
     pub timestamp: u64,
-    pub stagnation_factor: u64,
+    pub spread_factor: Option<u64>,
     pub token: Pubkey,
     pub content: Pubkey,
 }

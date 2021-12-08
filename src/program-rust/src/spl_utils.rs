@@ -130,7 +130,7 @@ pub fn create_user_post_token_account<'a>(
     system_info: &AccountInfo<'a>,
     program_id: &Pubkey,
 ) -> ProgramResult {
-    if user_post_token_account.data.borrow().len() > 0 {
+    if !user_post_token_account.data_is_empty() {
         msg!("Account already exist, this will be a restake to same account");
         return Ok(());
     }
