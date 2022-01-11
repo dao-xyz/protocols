@@ -12,9 +12,8 @@ use solvei::{
     instruction::{ChatInstruction, CreatePost, CreatePostContent, StakePost},
     processor::process,
 };
-pub fn program_test(program_id: Pubkey) -> ProgramTest {
-    ProgramTest::new("solvei", program_id, processor!(process))
-}
+
+use crate::utils::program_test;
 
 pub async fn get_token_balance(banks_client: &mut BanksClient, token: &Pubkey) -> u64 {
     let token_account = banks_client.get_account(*token).await.unwrap().unwrap();

@@ -46,7 +46,7 @@ pub enum Message {
 impl Message {
     pub fn hash(&self) -> [u8; 32] {
         match &self {
-            Message::String(string) => return hashv(&[string.as_bytes()]).0,
+            Message::String(string) => return hashv(&[string.as_bytes()]).to_bytes(),
         }
     }
 }

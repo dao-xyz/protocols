@@ -9,17 +9,15 @@ use solana_sdk::{account::Account, transaction::TransactionError, transport::Tra
 use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction};
 use solvei::{
     accounts::{
-        deserialize_channel_account, deserialize_message_account,
-        ChannelAccount, Description, Message,
+        deserialize_channel_account, deserialize_message_account, ChannelAccount, Description,
+        Message,
     },
     address::generate_seeds_from_string,
     instruction::{ChatInstruction, SendMessage},
     processor::process,
 };
 
-pub fn program_test(program_id: Pubkey) -> ProgramTest {
-    ProgramTest::new("solvei", program_id, processor!(process))
-}
+use crate::utils::program_test;
 
 pub fn get_channel_account_address_and_bump_seed(
     channel_name: &str, // we should also send organization key,

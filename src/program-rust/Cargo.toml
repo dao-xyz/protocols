@@ -14,9 +14,14 @@ test-bpf = []
 
 [dependencies]
 spl-token = { version = "3.2",  features = [ "no-entrypoint" ]  }
+spl-token-swap = { version = "2.1.0", features = [ "no-entrypoint" ] }
+spl-stake-pool = { version = "0.6.3", features = [ "no-entrypoint" ] }
+spl-associated-token-account = { version = "1.0.3", features = [ "no-entrypoint" ] }
+spl-math = { version = "0.1", path = "../../libraries/math", features = [ "no-entrypoint" ] }
+
 borsh = "0.9.1"
 borsh-derive = "0.9.1"
-solana-program =  "1.8.6"
+solana-program =  "1.9.2"
 arrayref = "0.3.6"
 
 num-derive = "0.3"
@@ -24,8 +29,12 @@ num-traits = "0.2"
 thiserror = "1.0"
 
 [dev-dependencies]
-solana-program-test = "=1.8.6"
-solana-sdk = "=1.8.6"
+solana-program-test = "=1.9.2"
+solana-sdk = "1.9.2"
+solana-vote-program = "1.9.2"
+proptest = "1.0"
+
+
 [lib]
 name = "solvei"
 crate-type = ["cdylib", "lib"]
