@@ -121,5 +121,3 @@ pub fn find_transient_stake_program_address(
         program_id,
     )
 }
-
-solana_program::declare_id!("SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy");

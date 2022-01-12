@@ -1,6 +1,9 @@
 //! Instruction types
 
 #![allow(clippy::too_many_arguments)]
+use std::io::Result;
+
+use crate::{instruction::STAKE_POOL_INSTRUCTION_INDEX, shared::io_utils::*};
 use {
     crate::stake_pool::{
         find_deposit_authority_program_address, find_stake_program_address,
@@ -1268,5 +1271,13 @@ pub fn set_funding_authority(
         data: StakePoolInstruction::SetFundingAuthority(funding_type)
             .try_to_vec()
             .unwrap(),
+    }
+}
+impl StakePoolInstruction {
+    /**
+     * Prepends global instruction index
+     */
+    pub fn try_to_vec(&self) -> Result<Vec<u8>> {
+        try_to_vec_prepend(STAKE_POOL_INSTRUCTION_INDEX, self)
     }
 }

@@ -2,8 +2,6 @@ pub use solana_program;
 use solana_program::pubkey::{PubkeyError, MAX_SEEDS, MAX_SEED_LEN};
 use std::iter::FromIterator;
 
-solana_program::declare_id!("c39Hxxzh7Sh3GgkZM1QzMDyT5Q5cjK5397sbqeBrB1Q");
-
 /**
  * Generete seed slices from string
  * in correct length (max length 32 bytes)

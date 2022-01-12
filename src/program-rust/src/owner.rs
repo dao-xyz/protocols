@@ -3,7 +3,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-use crate::account::{get_token_account_mint, get_token_account_owner, get_token_balance};
+use crate::shared::account::{get_token_account_mint, get_token_account_owner, get_token_balance};
 
 pub mod program_owner_token {
 

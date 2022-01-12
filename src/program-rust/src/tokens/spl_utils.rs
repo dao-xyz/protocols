@@ -424,7 +424,7 @@ pub fn create_payer_program_multisig_account<'a>(
         &[seeds],
     )?;
 
-    invoke_signed(
+    invoke(
         &spl_token::instruction::initialize_multisig(
             &spl_token::id(),
             &multisig_info.key,
@@ -437,7 +437,6 @@ pub fn create_payer_program_multisig_account<'a>(
             payer_info.clone(),
             program_info.clone(),
         ],
-        &[seeds],
     )?;
 
     Ok(())

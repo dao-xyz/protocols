@@ -8,13 +8,14 @@ use solana_program_test::*;
 use solana_sdk::{account::Account, transaction::TransactionError, transport::TransportError};
 use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction};
 use solvei::{
-    accounts::{
-        deserialize_channel_account, deserialize_message_account, ChannelAccount, Description,
-        Message,
-    },
     address::generate_seeds_from_string,
-    instruction::{ChatInstruction, SendMessage},
-    processor::process,
+    social::{
+        accounts::{
+            deserialize_channel_account, deserialize_message_account, ChannelAccount, Description,
+            Message,
+        },
+        instruction::{ChatInstruction, SendMessage},
+    },
 };
 
 use crate::utils::program_test;

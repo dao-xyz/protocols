@@ -17,12 +17,14 @@ use solana_sdk::{
     account::Account, pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction,
 };
 use solvei::{
-    accounts::{deserialize_user_account, UserAccount},
     address::generate_seeds_from_string,
     associated_token_account::get_associated_token_address,
-    instruction::ChatInstruction,
     owner::program_owner_token,
-    processor::process,
+    processor::Processor,
+    social::{
+        accounts::{deserialize_user_account, UserAccount},
+        instruction::ChatInstruction,
+    },
 };
 use spl_token::{
     instruction::{initialize_mint, mint_to},
@@ -30,7 +32,7 @@ use spl_token::{
 };
 
 pub fn program_test(program_id: Pubkey) -> ProgramTest {
-    ProgramTest::new("solvei", program_id, processor!(process))
+    ProgramTest::new("solvei", program_id, processor!(Processor::process))
 }
 
 pub async fn create_owner_token_account(program: &mut ProgramTest, owner: &Keypair) -> Pubkey {

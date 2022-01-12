@@ -13,7 +13,9 @@ use solana_program::{
 };
 use spl_token::state::Mint;
 
-use crate::{accounts::AccountContainer, error::AccountError, math, tokens::pack::check_data_len};
+use crate::{
+    error::AccountError, math, social::accounts::AccountContainer, tokens::pack::check_data_len,
+};
 
 /// Trait for accounts to return their max size
 pub trait MaxSize {

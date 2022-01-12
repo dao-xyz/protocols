@@ -7,10 +7,9 @@ use solana_program::{
 
 use solana_program_test::*;
 use solana_sdk::{pubkey::Pubkey, signer::Signer, transaction::Transaction};
-use solvei::{
+use solvei::social::{
     accounts::Message,
     instruction::{ChatInstruction, CreatePost, CreatePostContent, StakePost},
-    processor::process,
 };
 
 use crate::utils::program_test;

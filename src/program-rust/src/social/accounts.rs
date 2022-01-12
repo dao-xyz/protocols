@@ -1,18 +1,18 @@
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_program::{borsh::try_from_slice_unchecked, hash::hashv, pubkey::Pubkey};
 
-use crate::account::MaxSize;
+use crate::shared::account::MaxSize;
 
 pub static NULL_KEY: Pubkey = Pubkey::new_from_array([0_u8; 32]);
 
 pub static MESSAGE_TRANSACTION_MAX_SIZE: usize = 1200;
 
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum Description {
     String(String),
 }
 
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct ChannelAccount {
     pub owner: Pubkey,
     pub name: String,
@@ -35,7 +35,7 @@ impl MaxSize for ChannelAccount {
     }
 }
 
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum Message {
     String(String),
     // image
@@ -51,7 +51,7 @@ impl Message {
     }
 }
 
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct UserAccount {
     pub owner: Pubkey,
     pub name: String,
@@ -72,7 +72,7 @@ pub enum MessageAccountSubmittable
 }
  */
 
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct MessageAccount {
     pub user: Pubkey,
     pub channel: Pubkey,
@@ -106,7 +106,7 @@ impl MaxSize for MessageAccount {
     }
 }
 
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct PostAccount {
     pub user: Pubkey,
     pub channel: Pubkey,
@@ -116,13 +116,13 @@ pub struct PostAccount {
     pub content: Pubkey,
 }
 
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct PostContentAccount {
     pub message: Message,
 }
 
 // Used to serialization and deserialization to keep track of account types
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 
 pub enum AccountContainer {
     UserAccount(UserAccount),

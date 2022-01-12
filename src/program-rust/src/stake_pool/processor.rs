@@ -2691,8 +2691,11 @@ impl Processor {
     }
 
     /// Processes [Instruction](enum.Instruction.html).
-    pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> ProgramResult {
-        let instruction = StakePoolInstruction::try_from_slice(input)?;
+    pub fn process(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        instruction: StakePoolInstruction,
+    ) -> ProgramResult {
         match instruction {
             StakePoolInstruction::Initialize {
                 fee,

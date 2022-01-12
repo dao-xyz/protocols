@@ -5,7 +5,10 @@ use solana_program::{
 
 use solana_program_test::*;
 use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction};
-use solvei::instruction::{ChatInstruction, InitializeToken};
+use solvei::{
+    instruction::SolveiInstruction,
+    social::instruction::{ChatInstruction, InitializeToken},
+};
 
 use crate::utils::{
     create_and_assign_program_owner_token, create_owner_token_account, program_test,
@@ -39,11 +42,13 @@ async fn test_initialization() {
     let mut transaction_create = Transaction::new_with_payer(
         &[Instruction::new_with_borsh(
             program_id,
-            &ChatInstruction::InitializeToken(InitializeToken {
-                escrow_bump_seed: escrow_account_bump_seed,
-                mint_bump_seed: mint_account_bump_seed,
-                multisig_bump_seed: multisig_account_bump_seed,
-            }),
+            &SolveiInstruction::ChatInstruction(ChatInstruction::InitializeToken(
+                InitializeToken {
+                    escrow_bump_seed: escrow_account_bump_seed,
+                    mint_bump_seed: mint_account_bump_seed,
+                    multisig_bump_seed: multisig_account_bump_seed,
+                },
+            )),
             vec![
                 AccountMeta::new_readonly(system_program::id(), false),
                 AccountMeta::new_readonly(program_id, false),
