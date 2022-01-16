@@ -1,4 +1,5 @@
 #![cfg(feature = "test-bpf")]
+use super::super::utils::program_test;
 
 use {
     super::helpers::*,
@@ -126,8 +127,7 @@ async fn _success(test_type: SuccessTestType) {
     ) = setup().await;
 
     // Save stake pool state before withdrawal
-    let stake_pool_before =
-        get_account(&mut banks_client, &stake_pool_accounts.stake_pool.pubkey()).await;
+    let stake_pool_before = get_account(&mut banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool_before =
         try_from_slice_unchecked::<state::StakePool>(stake_pool_before.data.as_slice()).unwrap();
 
@@ -165,7 +165,7 @@ async fn _success(test_type: SuccessTestType) {
         &payer,
         &recent_blockhash,
         &destination_keypair,
-        &stake_pool_accounts.pool_mint.pubkey(),
+        &stake_pool_accounts.pool_mint,
         &Keypair::new().pubkey(),
     )
     .await
@@ -189,7 +189,7 @@ async fn _success(test_type: SuccessTestType) {
             &payer,
             &recent_blockhash,
             &stake_pool_accounts.pool_fee_account.pubkey(),
-            &stake_pool_accounts.pool_mint.pubkey(),
+            &stake_pool_accounts.pool_mint,
             &stake_pool_accounts.manager,
         )
         .await
@@ -230,7 +230,7 @@ async fn _success(test_type: SuccessTestType) {
     assert!(error.is_none());
 
     // Check pool stats
-    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool.pubkey()).await;
+    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool =
         try_from_slice_unchecked::<state::StakePool>(stake_pool.data.as_slice()).unwrap();
     // first and only deposit, lamports:pool 1:1
@@ -329,7 +329,7 @@ async fn fail_with_wrong_stake_program() {
     let wrong_stake_program = Pubkey::new_unique();
 
     let accounts = vec![
-        AccountMeta::new(stake_pool_accounts.stake_pool.pubkey(), false),
+        AccountMeta::new(stake_pool_accounts.stake_pool, false),
         AccountMeta::new(stake_pool_accounts.validator_list.pubkey(), false),
         AccountMeta::new_readonly(stake_pool_accounts.withdraw_authority, false),
         AccountMeta::new(validator_stake_account.stake_account, false),
@@ -338,7 +338,7 @@ async fn fail_with_wrong_stake_program() {
         AccountMeta::new_readonly(user_transfer_authority.pubkey(), true),
         AccountMeta::new(deposit_info.pool_account.pubkey(), false),
         AccountMeta::new(stake_pool_accounts.pool_fee_account.pubkey(), false),
-        AccountMeta::new(stake_pool_accounts.pool_mint.pubkey(), false),
+        AccountMeta::new(stake_pool_accounts.pool_mint, false),
         AccountMeta::new_readonly(sysvar::clock::id(), false),
         AccountMeta::new_readonly(spl_token::id(), false),
         AccountMeta::new_readonly(wrong_stake_program, false),
@@ -437,7 +437,7 @@ async fn fail_with_wrong_token_program_id() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::withdraw_stake(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.validator_list.pubkey(),
             &stake_pool_accounts.withdraw_authority,
             &validator_stake_account.stake_account,
@@ -446,7 +446,7 @@ async fn fail_with_wrong_token_program_id() {
             &user_transfer_authority.pubkey(),
             &deposit_info.pool_account.pubkey(),
             &stake_pool_accounts.pool_fee_account.pubkey(),
-            &stake_pool_accounts.pool_mint.pubkey(),
+            &stake_pool_accounts.pool_mint,
             &wrong_token_program.pubkey(),
             tokens_to_burn,
         )],
@@ -534,7 +534,7 @@ async fn fail_with_unknown_validator() {
         &mut banks_client,
         &payer,
         &recent_blockhash,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
 
@@ -995,11 +995,7 @@ async fn success_with_reserve() {
     assert!(error.is_none());
 
     // first and only deposit, lamports:pool 1:1
-    let stake_pool = get_account(
-        &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
-    )
-    .await;
+    let stake_pool = get_account(&mut context.banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool =
         try_from_slice_unchecked::<state::StakePool>(stake_pool.data.as_slice()).unwrap();
     // the entire deposit is actually stake since it isn't activated, so only
@@ -1501,8 +1497,7 @@ async fn success_empty_out_stake_with_fee() {
         deserialize::<stake::state::StakeState>(&validator_stake_account.data).unwrap();
     let meta = stake_state.meta().unwrap();
     let lamports_to_withdraw = validator_stake_account.lamports - minimum_stake_lamports(&meta);
-    let stake_pool_account =
-        get_account(&mut banks_client, &stake_pool_accounts.stake_pool.pubkey()).await;
+    let stake_pool_account = get_account(&mut banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool =
         try_from_slice_unchecked::<state::StakePool>(stake_pool_account.data.as_slice()).unwrap();
     let fee = stake_pool.stake_withdrawal_fee;

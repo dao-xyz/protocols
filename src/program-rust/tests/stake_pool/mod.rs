@@ -9,6 +9,7 @@ mod set_preferred;
 mod set_referral_fee;
 mod set_staker;
 mod set_withdrawal_fee;
+mod setup;
 mod update_stake_pool_balance;
 mod update_validator_list_balance;
 mod vsa_add;

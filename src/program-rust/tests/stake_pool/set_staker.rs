@@ -1,4 +1,5 @@
 #![cfg(feature = "test-bpf")]
+use super::super::utils::program_test;
 
 use {
     super::helpers::*,
@@ -44,7 +45,7 @@ async fn success_set_staker_as_manager() {
     let mut transaction = Transaction::new_with_payer(
         &[instruction::set_staker(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.manager.pubkey(),
             &new_staker.pubkey(),
         )],
@@ -53,7 +54,7 @@ async fn success_set_staker_as_manager() {
     transaction.sign(&[&payer, &stake_pool_accounts.manager], recent_blockhash);
     banks_client.process_transaction(transaction).await.unwrap();
 
-    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool.pubkey()).await;
+    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool =
         try_from_slice_unchecked::<state::StakePool>(stake_pool.data.as_slice()).unwrap();
 
@@ -68,7 +69,7 @@ async fn success_set_staker_as_staker() {
     let mut transaction = Transaction::new_with_payer(
         &[instruction::set_staker(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.staker.pubkey(),
             &new_staker.pubkey(),
         )],
@@ -77,7 +78,7 @@ async fn success_set_staker_as_staker() {
     transaction.sign(&[&payer, &stake_pool_accounts.staker], recent_blockhash);
     banks_client.process_transaction(transaction).await.unwrap();
 
-    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool.pubkey()).await;
+    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool =
         try_from_slice_unchecked::<state::StakePool>(stake_pool.data.as_slice()).unwrap();
 
@@ -86,7 +87,7 @@ async fn success_set_staker_as_staker() {
     let mut transaction = Transaction::new_with_payer(
         &[instruction::set_staker(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &new_staker.pubkey(),
             &stake_pool_accounts.staker.pubkey(),
         )],
@@ -95,7 +96,7 @@ async fn success_set_staker_as_staker() {
     transaction.sign(&[&payer, &new_staker], recent_blockhash);
     banks_client.process_transaction(transaction).await.unwrap();
 
-    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool.pubkey()).await;
+    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool =
         try_from_slice_unchecked::<state::StakePool>(stake_pool.data.as_slice()).unwrap();
 
@@ -110,7 +111,7 @@ async fn fail_wrong_manager() {
     let mut transaction = Transaction::new_with_payer(
         &[instruction::set_staker(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &new_staker.pubkey(),
             &new_staker.pubkey(),
         )],
@@ -146,7 +147,7 @@ async fn fail_set_staker_without_signature() {
         .try_to_vec()
         .unwrap();
     let accounts = vec![
-        AccountMeta::new(stake_pool_accounts.stake_pool.pubkey(), false),
+        AccountMeta::new(stake_pool_accounts.stake_pool, false),
         AccountMeta::new_readonly(stake_pool_accounts.manager.pubkey(), false),
         AccountMeta::new_readonly(new_staker.pubkey(), false),
     ];

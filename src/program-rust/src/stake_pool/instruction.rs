@@ -3,7 +3,13 @@
 #![allow(clippy::too_many_arguments)]
 use std::io::Result;
 
-use crate::{instruction::STAKE_POOL_INSTRUCTION_INDEX, shared::io_utils::*};
+use crate::{
+    instruction::STAKE_POOL_INSTRUCTION_INDEX, shared::io_utils::*,
+    tokens::spl_utils::find_mint_program_address,
+};
+
+use super::find_stake_pool_program_address;
+
 use {
     crate::stake_pool::{
         find_deposit_authority_program_address, find_stake_program_address,
@@ -79,6 +85,18 @@ pub enum StakePoolInstruction {
         #[allow(dead_code)] // but it's not
         max_validators: u32,
     },
+
+    ///   Setup stake pool with account size (should be worst case packed len)
+    ///   Setup stake pool token/mint
+    ///
+    ///   0. `[w]` Stake pool
+    ///   1. `[s]` Funder account
+    ///   2. `[w]` Pool token mint account
+    ///   4. `[]` Stake pool withdraw authority
+    ///   5. `[]` System rent account
+    ///   6. `[]` System program account
+    ///   7. `[]` Token program id
+    Setup(u64),
 
     ///   (Staker only) Adds stake account delegated to validator to the pool's
     ///   list of managed validators.
@@ -1273,6 +1291,33 @@ pub fn set_funding_authority(
             .unwrap(),
     }
 }
+
+/// Create and init token and create empty stake pool account
+pub fn setup(program_id: &Pubkey, payer: &Pubkey, stake_pool_size: u64) -> Instruction {
+    let (stake_pool, _) = find_stake_pool_program_address(&program_id);
+    let (mint_account, _) = find_mint_program_address(&program_id, &stake_pool);
+    let (mint_authority_account, _) =
+        find_withdraw_authority_program_address(&program_id, &stake_pool);
+
+    let accounts = vec![
+        AccountMeta::new(stake_pool, false),
+        AccountMeta::new(*payer, true),
+        AccountMeta::new(mint_account, false),
+        AccountMeta::new_readonly(mint_authority_account, false),
+        AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        AccountMeta::new_readonly(system_program::id(), false),
+        AccountMeta::new_readonly(spl_token::id(), false),
+    ];
+
+    Instruction {
+        program_id: *program_id,
+        accounts,
+        data: StakePoolInstruction::Setup(stake_pool_size)
+            .try_to_vec()
+            .unwrap(),
+    }
+}
+
 impl StakePoolInstruction {
     /**
      * Prepends global instruction index

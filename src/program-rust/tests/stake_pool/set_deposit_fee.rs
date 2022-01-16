@@ -1,4 +1,5 @@
 #![cfg(feature = "test-bpf")]
+use super::super::utils::program_test;
 
 use {
     super::helpers::*,
@@ -47,7 +48,7 @@ async fn success_stake() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::set_fee(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.manager.pubkey(),
             FeeType::StakeDeposit(new_deposit_fee),
         )],
@@ -61,11 +62,7 @@ async fn success_stake() {
         .await
         .unwrap();
 
-    let stake_pool = get_account(
-        &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
-    )
-    .await;
+    let stake_pool = get_account(&mut context.banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
     assert_eq!(stake_pool.stake_deposit_fee, new_deposit_fee);
 }
@@ -85,7 +82,7 @@ async fn success_stake_increase_fee_from_0() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::set_fee(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.manager.pubkey(),
             FeeType::StakeDeposit(new_deposit_fee),
         )],
@@ -99,11 +96,7 @@ async fn success_stake_increase_fee_from_0() {
         .await
         .unwrap();
 
-    let stake_pool = get_account(
-        &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
-    )
-    .await;
+    let stake_pool = get_account(&mut context.banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
     assert_eq!(stake_pool.stake_deposit_fee, new_deposit_fee);
 }
@@ -116,7 +109,7 @@ async fn fail_stake_wrong_manager() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::set_fee(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &wrong_manager.pubkey(),
             FeeType::StakeDeposit(new_deposit_fee),
         )],
@@ -152,7 +145,7 @@ async fn fail_stake_high_deposit_fee() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::set_fee(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.manager.pubkey(),
             FeeType::StakeDeposit(new_deposit_fee),
         )],
@@ -184,7 +177,7 @@ async fn success_sol() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::set_fee(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.manager.pubkey(),
             FeeType::SolDeposit(new_deposit_fee),
         )],
@@ -198,11 +191,7 @@ async fn success_sol() {
         .await
         .unwrap();
 
-    let stake_pool = get_account(
-        &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
-    )
-    .await;
+    let stake_pool = get_account(&mut context.banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
     assert_eq!(stake_pool.sol_deposit_fee, new_deposit_fee);
 }
@@ -215,7 +204,7 @@ async fn fail_sol_wrong_manager() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::set_fee(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &wrong_manager.pubkey(),
             FeeType::SolDeposit(new_deposit_fee),
         )],
@@ -251,7 +240,7 @@ async fn fail_sol_high_deposit_fee() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::set_fee(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.manager.pubkey(),
             FeeType::SolDeposit(new_deposit_fee),
         )],

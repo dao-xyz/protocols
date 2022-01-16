@@ -1,4 +1,5 @@
 #![cfg(feature = "test-bpf")]
+use super::super::utils::program_test;
 
 use {
     super::helpers::*,
@@ -154,7 +155,7 @@ async fn fail_with_wrong_withdraw_authority() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::increase_validator_stake(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.staker.pubkey(),
             &wrong_authority,
             &stake_pool_accounts.validator_list.pubkey(),
@@ -200,7 +201,7 @@ async fn fail_with_wrong_validator_list() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::increase_validator_stake(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.staker.pubkey(),
             &stake_pool_accounts.withdraw_authority,
             &wrong_validator_list,
@@ -245,14 +246,14 @@ async fn fail_with_unknown_validator() {
         &mut banks_client,
         &payer,
         &recent_blockhash,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
 
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::increase_validator_stake(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.staker.pubkey(),
             &stake_pool_accounts.withdraw_authority,
             &stake_pool_accounts.validator_list.pubkey(),
@@ -310,7 +311,7 @@ async fn fail_increase_twice() {
     let transient_stake_address = find_transient_stake_program_address(
         &id(),
         &validator_stake.vote.pubkey(),
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
         transient_stake_seed,
     )
     .0;

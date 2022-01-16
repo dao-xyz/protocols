@@ -1,4 +1,5 @@
 #![cfg(feature = "test-bpf")]
+use super::super::utils::program_test;
 
 use {
     super::helpers::*,
@@ -77,17 +78,14 @@ async fn success() {
     .await;
     let stake_pool = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
     assert_eq!(pre_balance, stake_pool.total_lamports);
 
-    let pre_token_supply = get_token_supply(
-        &mut context.banks_client,
-        &stake_pool_accounts.pool_mint.pubkey(),
-    )
-    .await;
+    let pre_token_supply =
+        get_token_supply(&mut context.banks_client, &stake_pool_accounts.pool_mint).await;
 
     let error = stake_pool_accounts
         .update_stake_pool_balance(
@@ -136,7 +134,7 @@ async fn success() {
     .await;
     let stake_pool = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
@@ -147,11 +145,8 @@ async fn success() {
         &stake_pool_accounts.pool_fee_account.pubkey(),
     )
     .await;
-    let pool_token_supply = get_token_supply(
-        &mut context.banks_client,
-        &stake_pool_accounts.pool_mint.pubkey(),
-    )
-    .await;
+    let pool_token_supply =
+        get_token_supply(&mut context.banks_client, &stake_pool_accounts.pool_mint).await;
     let actual_fee = post_fee - pre_fee;
     assert_eq!(pool_token_supply - pre_token_supply, actual_fee);
 
@@ -180,17 +175,14 @@ async fn success_ignoring_extra_lamports() {
     .await;
     let stake_pool = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
     assert_eq!(pre_balance, stake_pool.total_lamports);
 
-    let pre_token_supply = get_token_supply(
-        &mut context.banks_client,
-        &stake_pool_accounts.pool_mint.pubkey(),
-    )
-    .await;
+    let pre_token_supply =
+        get_token_supply(&mut context.banks_client, &stake_pool_accounts.pool_mint).await;
 
     let error = stake_pool_accounts
         .update_stake_pool_balance(
@@ -245,11 +237,8 @@ async fn success_ignoring_extra_lamports() {
     )
     .await;
     assert_eq!(post_balance, pre_balance);
-    let pool_token_supply = get_token_supply(
-        &mut context.banks_client,
-        &stake_pool_accounts.pool_mint.pubkey(),
-    )
-    .await;
+    let pool_token_supply =
+        get_token_supply(&mut context.banks_client, &stake_pool_accounts.pool_mint).await;
     assert_eq!(pool_token_supply, pre_token_supply);
 }
 

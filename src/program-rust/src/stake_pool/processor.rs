@@ -1,4 +1,7 @@
 //! Program state processor
+use crate::tokens::spl_utils::{create_program_account_mint_account, find_mint_program_address};
+
+use super::{find_stake_pool_program_address, STAKE_POOL};
 
 use {
     crate::stake_pool::{
@@ -640,6 +643,7 @@ impl Processor {
         let stake_state = try_from_slice_unchecked::<stake::state::StakeState>(
             &reserve_stake_info.data.borrow(),
         )?;
+
         let total_lamports = if let stake::state::StakeState::Initialized(meta) = stake_state {
             if meta.lockup != stake::state::Lockup::default() {
                 msg!("Reserve stake account has some lockup");
@@ -2086,7 +2090,6 @@ impl Processor {
         stake_pool.check_sol_deposit_authority(sol_deposit_authority_info)?;
         stake_pool.check_mint(pool_mint_info)?;
         stake_pool.check_reserve_stake(reserve_stake_account_info)?;
-
         if stake_pool.token_program_id != *token_program_info.key {
             return Err(ProgramError::IncorrectProgramId);
         }
@@ -2690,6 +2693,81 @@ impl Processor {
         Ok(())
     }
 
+    /// TODO
+    #[inline(never)] // needed to avoid stack size violation
+    pub fn process_setup(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        stake_pool_size: u64,
+    ) -> ProgramResult {
+        let accounts_iter = &mut accounts.iter();
+
+        let stake_pool_info = next_account_info(accounts_iter)?;
+        let funder_info = next_account_info(accounts_iter)?;
+        let mint_account_info = next_account_info(accounts_iter)?;
+        let withdraw_authority_info = next_account_info(accounts_iter)?;
+        let rent_info = next_account_info(accounts_iter)?;
+        let system_account = next_account_info(accounts_iter)?;
+        let token_program_info = next_account_info(accounts_iter)?;
+
+        // Create unitialized stake pool account to be owned by the program
+        let (stake_pool_address, stake_pool_seed) = find_stake_pool_program_address(program_id);
+        if stake_pool_address != *stake_pool_info.key {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        let minimum_balance_stake_pool = Rent::get()?.minimum_balance(stake_pool_size as usize);
+        invoke_signed(
+            &system_instruction::create_account(
+                &funder_info.key,
+                &stake_pool_address,
+                minimum_balance_stake_pool,
+                stake_pool_size,
+                &program_id,
+            ),
+            &[
+                funder_info.clone(),
+                stake_pool_info.clone(),
+                system_account.clone(),
+            ],
+            &[&[STAKE_POOL, &[stake_pool_seed]]],
+        )?;
+
+        // Create pool mint
+        let (mint_address, mint_address_seed) =
+            find_mint_program_address(program_id, stake_pool_info.key);
+        if mint_address != *mint_account_info.key {
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        let (withdraw_authority_key, _) =
+            crate::stake_pool::find_withdraw_authority_program_address(
+                program_id,
+                stake_pool_info.key,
+            );
+        if withdraw_authority_key != *withdraw_authority_info.key {
+            msg!(
+                "Incorrect withdraw authority provided, expected {}, received {}",
+                withdraw_authority_key,
+                withdraw_authority_info.key
+            );
+            return Err(StakePoolError::InvalidProgramAddress.into());
+        }
+
+        create_program_account_mint_account(
+            mint_account_info,
+            stake_pool_info.key,
+            mint_address_seed,
+            withdraw_authority_info,
+            funder_info,
+            rent_info,
+            token_program_info,
+            system_account,
+            program_id,
+        )?;
+
+        Ok(())
+    }
+
     /// Processes [Instruction](enum.Instruction.html).
     pub fn process(
         program_id: &Pubkey,
@@ -2697,6 +2775,11 @@ impl Processor {
         instruction: StakePoolInstruction,
     ) -> ProgramResult {
         match instruction {
+            StakePoolInstruction::Setup(min_balance_stake_pool) => {
+                msg!("Instruction: Setup");
+                Self::process_setup(program_id, accounts, min_balance_stake_pool)
+            }
+
             StakePoolInstruction::Initialize {
                 fee,
                 withdrawal_fee,
@@ -2859,6 +2942,7 @@ impl PrintProgramError for StakePoolError {
             StakePoolError::TransientAccountInUse => msg!("Error: Provided validator stake account already has a transient stake account in use"),
             StakePoolError::InvalidSolWithdrawAuthority => msg!("Error: Provided sol withdraw authority does not match the program's"),
             StakePoolError::SolWithdrawalTooLarge => msg!("Error: Too much SOL withdrawn from the stake pool's reserve account"),
+
         }
     }
 }

@@ -1,4 +1,5 @@
 #![cfg(feature = "test-bpf")]
+use super::super::utils::program_test;
 
 use {
     super::helpers::*,
@@ -42,7 +43,7 @@ async fn setup() -> (ProgramTestContext, StakePoolAccounts, Keypair, Pubkey, u64
         &context.payer,
         &context.last_blockhash,
         &pool_token_account,
-        &stake_pool_accounts.pool_mint.pubkey(),
+        &stake_pool_accounts.pool_mint,
         &user.pubkey(),
     )
     .await
@@ -79,7 +80,7 @@ async fn success() {
     // Save stake pool state before withdrawing
     let pre_stake_pool = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let pre_stake_pool =
@@ -109,7 +110,7 @@ async fn success() {
     // Stake pool should add its balance to the pool balance
     let post_stake_pool = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let post_stake_pool =
@@ -233,7 +234,7 @@ async fn success_with_sol_withdraw_authority() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::set_funding_authority(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.manager.pubkey(),
             Some(&sol_withdraw_authority.pubkey()),
             FundingType::SolWithdraw,
@@ -270,7 +271,7 @@ async fn fail_without_sol_withdraw_authority_signature() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::set_funding_authority(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.manager.pubkey(),
             Some(&sol_withdraw_authority.pubkey()),
             FundingType::SolWithdraw,

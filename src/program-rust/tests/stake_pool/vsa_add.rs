@@ -1,4 +1,5 @@
 #![cfg(feature = "test-bpf")]
+use super::super::utils::program_test;
 
 use {
     super::helpers::*,
@@ -35,7 +36,7 @@ async fn setup() -> (
         .await
         .unwrap();
 
-    let validator_stake = ValidatorStakeAccount::new(&stake_pool_accounts.stake_pool.pubkey(), 0);
+    let validator_stake = ValidatorStakeAccount::new(&stake_pool_accounts.stake_pool, 0);
     create_vote(
         &mut banks_client,
         &payer,
@@ -125,7 +126,7 @@ async fn fail_with_wrong_validator_list_account() {
     let mut transaction = Transaction::new_with_payer(
         &[instruction::add_validator_to_pool(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.staker.pubkey(),
             &payer.pubkey(),
             &stake_pool_accounts.withdraw_authority,
@@ -206,7 +207,7 @@ async fn fail_wrong_staker() {
     let mut transaction = Transaction::new_with_payer(
         &[instruction::add_validator_to_pool(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &malicious.pubkey(),
             &payer.pubkey(),
             &stake_pool_accounts.withdraw_authority,
@@ -243,7 +244,7 @@ async fn fail_without_signature() {
         setup().await;
 
     let accounts = vec![
-        AccountMeta::new(stake_pool_accounts.stake_pool.pubkey(), false),
+        AccountMeta::new(stake_pool_accounts.stake_pool, false),
         AccountMeta::new_readonly(stake_pool_accounts.staker.pubkey(), false),
         AccountMeta::new(payer.pubkey(), false),
         AccountMeta::new_readonly(stake_pool_accounts.withdraw_authority, false),
@@ -294,7 +295,7 @@ async fn fail_with_wrong_stake_program_id() {
 
     let wrong_stake_program = Pubkey::new_unique();
     let accounts = vec![
-        AccountMeta::new(stake_pool_accounts.stake_pool.pubkey(), false),
+        AccountMeta::new(stake_pool_accounts.stake_pool, false),
         AccountMeta::new_readonly(stake_pool_accounts.staker.pubkey(), true),
         AccountMeta::new(payer.pubkey(), true),
         AccountMeta::new_readonly(stake_pool_accounts.withdraw_authority, false),
@@ -343,7 +344,7 @@ async fn fail_with_wrong_system_program_id() {
     let wrong_system_program = Pubkey::new_unique();
 
     let accounts = vec![
-        AccountMeta::new(stake_pool_accounts.stake_pool.pubkey(), false),
+        AccountMeta::new(stake_pool_accounts.stake_pool, false),
         AccountMeta::new_readonly(stake_pool_accounts.staker.pubkey(), true),
         AccountMeta::new(payer.pubkey(), true),
         AccountMeta::new_readonly(stake_pool_accounts.withdraw_authority, false),
@@ -394,7 +395,7 @@ async fn fail_add_too_many_validator_stake_accounts() {
         .await
         .unwrap();
 
-    let validator_stake = ValidatorStakeAccount::new(&stake_pool_accounts.stake_pool.pubkey(), 0);
+    let validator_stake = ValidatorStakeAccount::new(&stake_pool_accounts.stake_pool, 0);
     create_vote(
         &mut banks_client,
         &payer,
@@ -415,7 +416,7 @@ async fn fail_add_too_many_validator_stake_accounts() {
         .await;
     assert!(error.is_none());
 
-    let validator_stake = ValidatorStakeAccount::new(&stake_pool_accounts.stake_pool.pubkey(), 0);
+    let validator_stake = ValidatorStakeAccount::new(&stake_pool_accounts.stake_pool, 0);
     create_vote(
         &mut banks_client,
         &payer,
@@ -453,7 +454,7 @@ async fn fail_on_non_vote_account() {
 
     let validator = Pubkey::new_unique();
     let (stake_account, _) =
-        find_stake_program_address(&id(), &validator, &stake_pool_accounts.stake_pool.pubkey());
+        find_stake_program_address(&id(), &validator, &stake_pool_accounts.stake_pool);
 
     let error = stake_pool_accounts
         .add_validator_to_pool(

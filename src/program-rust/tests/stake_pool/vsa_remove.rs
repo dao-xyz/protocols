@@ -1,4 +1,5 @@
 #![cfg(feature = "test-bpf")]
+use super::super::utils::program_test;
 
 use {
     super::helpers::*,
@@ -42,7 +43,7 @@ async fn setup() -> (
         .unwrap();
 
     let validator_stake =
-        ValidatorStakeAccount::new(&stake_pool_accounts.stake_pool.pubkey(), u64::MAX);
+        ValidatorStakeAccount::new(&stake_pool_accounts.stake_pool, u64::MAX);
     create_vote(
         &mut context.banks_client,
         &context.payer,
@@ -147,7 +148,7 @@ async fn fail_with_wrong_stake_program_id() {
     let wrong_stake_program = Pubkey::new_unique();
 
     let accounts = vec![
-        AccountMeta::new(stake_pool_accounts.stake_pool.pubkey(), false),
+        AccountMeta::new(stake_pool_accounts.stake_pool, false),
         AccountMeta::new_readonly(stake_pool_accounts.staker.pubkey(), true),
         AccountMeta::new_readonly(stake_pool_accounts.withdraw_authority, false),
         AccountMeta::new_readonly(new_authority, false),
@@ -202,7 +203,7 @@ async fn fail_with_wrong_validator_list_account() {
     let mut transaction = Transaction::new_with_payer(
         &[instruction::remove_validator_from_pool(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.staker.pubkey(),
             &stake_pool_accounts.withdraw_authority,
             &new_authority,
@@ -334,7 +335,7 @@ async fn fail_wrong_staker() {
     let mut transaction = Transaction::new_with_payer(
         &[instruction::remove_validator_from_pool(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &malicious.pubkey(),
             &stake_pool_accounts.withdraw_authority,
             &new_authority,
@@ -375,7 +376,7 @@ async fn fail_no_signature() {
         setup().await;
 
     let accounts = vec![
-        AccountMeta::new(stake_pool_accounts.stake_pool.pubkey(), false),
+        AccountMeta::new(stake_pool_accounts.stake_pool, false),
         AccountMeta::new_readonly(stake_pool_accounts.staker.pubkey(), false),
         AccountMeta::new_readonly(stake_pool_accounts.withdraw_authority, false),
         AccountMeta::new_readonly(new_authority, false),
@@ -743,7 +744,7 @@ async fn success_with_hijacked_transient_account() {
     let transient_stake_address = find_transient_stake_program_address(
         &id(),
         &validator_stake.vote.pubkey(),
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
         validator_stake.transient_stake_seed,
     )
     .0;
@@ -751,7 +752,7 @@ async fn success_with_hijacked_transient_account() {
         &[
             instruction::update_validator_list_balance(
                 &id(),
-                &stake_pool_accounts.stake_pool.pubkey(),
+                &stake_pool_accounts.stake_pool,
                 &stake_pool_accounts.withdraw_authority,
                 &stake_pool_accounts.validator_list.pubkey(),
                 &stake_pool_accounts.reserve_stake.pubkey(),
@@ -775,17 +776,17 @@ async fn success_with_hijacked_transient_account() {
             ),
             instruction::update_stake_pool_balance(
                 &id(),
-                &stake_pool_accounts.stake_pool.pubkey(),
+                &stake_pool_accounts.stake_pool,
                 &stake_pool_accounts.withdraw_authority,
                 &stake_pool_accounts.validator_list.pubkey(),
                 &stake_pool_accounts.reserve_stake.pubkey(),
                 &stake_pool_accounts.pool_fee_account.pubkey(),
-                &stake_pool_accounts.pool_mint.pubkey(),
+                &stake_pool_accounts.pool_mint,
                 &spl_token::id(),
             ),
             instruction::cleanup_removed_validator_entries(
                 &id(),
-                &stake_pool_accounts.stake_pool.pubkey(),
+                &stake_pool_accounts.stake_pool,
                 &stake_pool_accounts.validator_list.pubkey(),
             ),
         ],

@@ -1,4 +1,7 @@
 #![cfg(feature = "test-bpf")]
+use solana_program::{program_pack::Pack, pubkey::Pubkey, system_instruction};
+
+use super::super::utils::program_test;
 
 use {
     super::helpers::*,
@@ -39,7 +42,7 @@ async fn setup() -> (
         &payer,
         &recent_blockhash,
         &new_pool_fee,
-        &stake_pool_accounts.pool_mint.pubkey(),
+        &stake_pool_accounts.pool_mint,
         &new_manager.pubkey(),
     )
     .await
@@ -55,6 +58,44 @@ async fn setup() -> (
     )
 }
 
+pub async fn create_mint(
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: &Hash,
+    pool_mint: &Keypair,
+    manager: &Pubkey,
+) -> Result<(), TransportError> {
+    let rent = banks_client.get_rent().await.unwrap();
+    let mint_rent = rent.minimum_balance(spl_token::state::Mint::LEN);
+
+    let mut transaction = Transaction::new_with_payer(
+        &[
+            system_instruction::create_account(
+                &payer.pubkey(),
+                &pool_mint.pubkey(),
+                mint_rent,
+                spl_token::state::Mint::LEN as u64,
+                &spl_token::id(),
+            ),
+            spl_token::instruction::initialize_mint(
+                &spl_token::id(),
+                &pool_mint.pubkey(),
+                manager,
+                None,
+                0,
+            )
+            .unwrap(),
+        ],
+        Some(&payer.pubkey()),
+    );
+    transaction.sign(&[payer, pool_mint], *recent_blockhash);
+    #[allow(clippy::useless_conversion)] // Remove during upgrade to 1.10
+    banks_client
+        .process_transaction(transaction)
+        .await
+        .map_err(|e| e.into())
+}
+
 #[tokio::test]
 async fn test_set_manager() {
     let (mut banks_client, payer, recent_blockhash, stake_pool_accounts, new_pool_fee, new_manager) =
@@ -63,7 +104,7 @@ async fn test_set_manager() {
     let mut transaction = Transaction::new_with_payer(
         &[instruction::set_manager(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.manager.pubkey(),
             &new_manager.pubkey(),
             &new_pool_fee.pubkey(),
@@ -76,7 +117,7 @@ async fn test_set_manager() {
     );
     banks_client.process_transaction(transaction).await.unwrap();
 
-    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool.pubkey()).await;
+    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool =
         try_from_slice_unchecked::<state::StakePool>(stake_pool.data.as_slice()).unwrap();
 
@@ -91,7 +132,7 @@ async fn test_set_manager_by_malicious() {
     let mut transaction = Transaction::new_with_payer(
         &[instruction::set_manager(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &new_manager.pubkey(),
             &new_manager.pubkey(),
             &new_pool_fee.pubkey(),
@@ -128,7 +169,7 @@ async fn test_set_manager_without_existing_signature() {
         .try_to_vec()
         .unwrap();
     let accounts = vec![
-        AccountMeta::new(stake_pool_accounts.stake_pool.pubkey(), false),
+        AccountMeta::new(stake_pool_accounts.stake_pool, false),
         AccountMeta::new_readonly(stake_pool_accounts.manager.pubkey(), false),
         AccountMeta::new_readonly(new_manager.pubkey(), true),
         AccountMeta::new_readonly(new_pool_fee.pubkey(), false),
@@ -172,7 +213,7 @@ async fn test_set_manager_without_new_signature() {
         .try_to_vec()
         .unwrap();
     let accounts = vec![
-        AccountMeta::new(stake_pool_accounts.stake_pool.pubkey(), false),
+        AccountMeta::new(stake_pool_accounts.stake_pool, false),
         AccountMeta::new_readonly(stake_pool_accounts.manager.pubkey(), true),
         AccountMeta::new_readonly(new_manager.pubkey(), false),
         AccountMeta::new_readonly(new_pool_fee.pubkey(), false),
@@ -244,7 +285,7 @@ async fn test_set_manager_with_wrong_mint_for_pool_fee_acc() {
     let mut transaction = Transaction::new_with_payer(
         &[instruction::set_manager(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.manager.pubkey(),
             &new_manager.pubkey(),
             &new_pool_fee.pubkey(),

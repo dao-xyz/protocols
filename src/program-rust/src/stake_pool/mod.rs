@@ -19,6 +19,9 @@ use {
 };
 
 /// Seed for deposit authority seed
+const STAKE_POOL: &[u8] = b"stake_pool";
+
+/// Seed for deposit authority seed
 const AUTHORITY_DEPOSIT: &[u8] = b"deposit";
 
 /// Seed for withdraw authority seed
@@ -26,6 +29,12 @@ const AUTHORITY_WITHDRAW: &[u8] = b"withdraw";
 
 /// Seed for transient stake account
 const TRANSIENT_STAKE_SEED_PREFIX: &[u8] = b"transient";
+
+/// Seed for stake pool token
+const MINT_SEED: &[u8] = b"mint";
+
+/// Seed formint authority account
+const _MINT_AUTHORITY_SEED: &[u8] = b"mint_authority";
 
 /// Minimum amount of staked SOL required in a validator stake account to allow
 /// for merges without a mismatch on credits observed
@@ -65,6 +74,11 @@ pub fn minimum_stake_lamports(meta: &Meta) -> u64 {
 #[inline]
 pub fn minimum_reserve_lamports(meta: &Meta) -> u64 {
     meta.rent_exempt_reserve.saturating_add(1)
+}
+
+/// Generate program owned stake pool address
+pub fn find_stake_pool_program_address(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[STAKE_POOL], program_id)
 }
 
 /// Generates the deposit authority program address for the stake pool

@@ -1,4 +1,5 @@
 #![cfg(feature = "test-bpf")]
+use super::super::utils::program_test;
 
 use {
     super::helpers::*,
@@ -67,7 +68,7 @@ async fn success_deposit() {
         .await;
     assert!(error.is_none());
 
-    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool.pubkey()).await;
+    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
 
     assert_eq!(
@@ -95,7 +96,7 @@ async fn success_withdraw() {
         .await;
     assert!(error.is_none());
 
-    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool.pubkey()).await;
+    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
 
     assert_eq!(stake_pool.preferred_deposit_validator_vote_address, None);
@@ -122,7 +123,7 @@ async fn success_unset() {
         .await;
     assert!(error.is_none());
 
-    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool.pubkey()).await;
+    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
 
     assert_eq!(
@@ -141,7 +142,7 @@ async fn success_unset() {
         .await;
     assert!(error.is_none());
 
-    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool.pubkey()).await;
+    let stake_pool = get_account(&mut banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
 
     assert_eq!(stake_pool.preferred_withdraw_validator_vote_address, None);
@@ -155,7 +156,7 @@ async fn fail_wrong_staker() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::set_preferred_validator(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &wrong_staker.pubkey(),
             &stake_pool_accounts.validator_list.pubkey(),
             PreferredValidatorType::Withdraw,
@@ -218,7 +219,7 @@ async fn fail_ready_for_removal() {
     let (transient_stake_address, _) = find_transient_stake_program_address(
         &id(),
         &validator_vote_address,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
         transient_stake_seed,
     );
     let new_authority = Pubkey::new_unique();

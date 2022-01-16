@@ -1,4 +1,5 @@
 #![cfg(feature = "test-bpf")]
+use super::super::utils::program_test;
 
 use {
     super::helpers::*,
@@ -52,7 +53,7 @@ async fn setup(
     let mut deposit_accounts: Vec<DepositStakeAccount> = vec![];
     for _ in 0..num_validators {
         let stake_account =
-            ValidatorStakeAccount::new(&stake_pool_accounts.stake_pool.pubkey(), u64::MAX);
+            ValidatorStakeAccount::new(&stake_pool_accounts.stake_pool, u64::MAX);
         create_vote(
             &mut context.banks_client,
             &context.payer,
@@ -209,7 +210,7 @@ async fn success() {
 
     let stake_pool_info = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(&stake_pool_info.data).unwrap();
@@ -277,7 +278,7 @@ async fn merge_into_reserve() {
 
     let stake_pool_info = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(&stake_pool_info.data).unwrap();
@@ -320,7 +321,7 @@ async fn merge_into_reserve() {
 
     let stake_pool_info = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(&stake_pool_info.data).unwrap();
@@ -384,7 +385,7 @@ async fn merge_into_validator_stake() {
     assert_eq!(pre_lamports, expected_lamports);
     let stake_pool_info = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(&stake_pool_info.data).unwrap();
@@ -417,7 +418,7 @@ async fn merge_into_validator_stake() {
     .await;
     let stake_pool_info = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(&stake_pool_info.data).unwrap();
@@ -614,14 +615,14 @@ async fn success_with_burned_tokens() {
 
     let mint_info = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.pool_mint.pubkey(),
+        &stake_pool_accounts.pool_mint,
     )
     .await;
     let mint = Mint::unpack(&mint_info.data).unwrap();
 
     let stake_pool_info = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(&stake_pool_info.data).unwrap();
@@ -631,7 +632,7 @@ async fn success_with_burned_tokens() {
         &mut context.banks_client,
         &context.payer,
         &context.last_blockhash,
-        &stake_pool_accounts.pool_mint.pubkey(),
+        &stake_pool_accounts.pool_mint,
         &deposit_accounts[0].pool_account.pubkey(),
         &deposit_accounts[0].authority,
         deposit_accounts[0].pool_tokens,
@@ -641,7 +642,7 @@ async fn success_with_burned_tokens() {
 
     let mint_info = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.pool_mint.pubkey(),
+        &stake_pool_accounts.pool_mint,
     )
     .await;
     let mint = Mint::unpack(&mint_info.data).unwrap();
@@ -667,7 +668,7 @@ async fn success_with_burned_tokens() {
 
     let stake_pool_info = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(&stake_pool_info.data).unwrap();
@@ -716,7 +717,7 @@ async fn success_ignoring_hijacked_transient_stake() {
     let transient_stake_address = find_transient_stake_program_address(
         &id(),
         &stake_account.vote.pubkey(),
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
         stake_account.transient_stake_seed,
     )
     .0;
@@ -724,7 +725,7 @@ async fn success_ignoring_hijacked_transient_stake() {
         &[
             instruction::update_validator_list_balance(
                 &id(),
-                &stake_pool_accounts.stake_pool.pubkey(),
+                &stake_pool_accounts.stake_pool,
                 &stake_pool_accounts.withdraw_authority,
                 &stake_pool_accounts.validator_list.pubkey(),
                 &stake_pool_accounts.reserve_stake.pubkey(),
@@ -748,17 +749,17 @@ async fn success_ignoring_hijacked_transient_stake() {
             ),
             instruction::update_stake_pool_balance(
                 &id(),
-                &stake_pool_accounts.stake_pool.pubkey(),
+                &stake_pool_accounts.stake_pool,
                 &stake_pool_accounts.withdraw_authority,
                 &stake_pool_accounts.validator_list.pubkey(),
                 &stake_pool_accounts.reserve_stake.pubkey(),
                 &stake_pool_accounts.pool_fee_account.pubkey(),
-                &stake_pool_accounts.pool_mint.pubkey(),
+                &stake_pool_accounts.pool_mint,
                 &spl_token::id(),
             ),
             instruction::cleanup_removed_validator_entries(
                 &id(),
-                &stake_pool_accounts.stake_pool.pubkey(),
+                &stake_pool_accounts.stake_pool,
                 &stake_pool_accounts.validator_list.pubkey(),
             ),
         ],
@@ -798,7 +799,7 @@ async fn success_ignoring_hijacked_transient_stake() {
 
     let stake_pool_info = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(&stake_pool_info.data).unwrap();

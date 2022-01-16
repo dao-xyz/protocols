@@ -1,4 +1,5 @@
 #![cfg(feature = "test-bpf")]
+use super::super::utils::program_test;
 
 use {
     super::helpers::*,
@@ -42,7 +43,7 @@ async fn success() {
 
     let stake_pool = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
@@ -51,7 +52,7 @@ async fn success() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::set_fee(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.manager.pubkey(),
             FeeType::Epoch(new_fee),
         )],
@@ -67,7 +68,7 @@ async fn success() {
 
     let stake_pool = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
@@ -93,7 +94,7 @@ async fn success() {
 
     let stake_pool = get_account(
         &mut context.banks_client,
-        &stake_pool_accounts.stake_pool.pubkey(),
+        &stake_pool_accounts.stake_pool,
     )
     .await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
@@ -109,7 +110,7 @@ async fn fail_wrong_manager() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::set_fee(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &wrong_manager.pubkey(),
             FeeType::Epoch(new_fee),
         )],
@@ -145,7 +146,7 @@ async fn fail_high_fee() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::set_fee(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.manager.pubkey(),
             FeeType::Epoch(new_fee),
         )],
@@ -198,7 +199,7 @@ async fn fail_not_updated() {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction::set_fee(
             &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
+            &stake_pool_accounts.stake_pool,
             &stake_pool_accounts.manager.pubkey(),
             FeeType::Epoch(new_fee),
         )],
