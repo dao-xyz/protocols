@@ -11,18 +11,27 @@ use solana_program::{
     sysvar::Sysvar,
 };
 
+use spl_associated_token_account::get_associated_token_address;
 use spl_token::{
-    instruction::{initialize_account, initialize_mint, mint_to},
+    instruction::{burn, burn_checked, initialize_account, initialize_mint, mint_to},
     state::{Mint, Multisig},
 };
 
-use crate::social::{
-    create_user_post_token_program_address_seeds, find_user_post_token_program_address,
-};
+pub const MINT_SEED: &[u8] = b"mint";
+pub const UTILITY_MINT: &[u8] = b"utility";
 
-const MINT_SEED: &[u8] = b"mint";
-const MINT_AUTHORTY_SEED: &[u8] = b"authority";
-const ESCROW_ACCOUNT_SEED: &[u8] = b"escrow";
+pub const MINT_AUTHORTY_SEED: &[u8] = b"authority";
+pub const ESCROW_ACCOUNT_SEED: &[u8] = b"escrow";
+
+/// Find utility mint token address (unique/fixed for program)
+pub fn find_utility_mint_program_address(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[MINT_SEED, UTILITY_MINT], program_id)
+}
+
+/// Create mint address (unique/fixed for program)
+pub fn create_utility_mint_program_address_seeds<'a>(bump_seed: &'a [u8]) -> [&'a [u8]; 3] {
+    [MINT_SEED, UTILITY_MINT, bump_seed]
+}
 
 /// Find mint address
 pub fn find_mint_program_address(program_id: &Pubkey, some_account: &Pubkey) -> (Pubkey, u8) {
@@ -152,8 +161,7 @@ pub fn create_program_account_mint_account<'a>(
 
 pub fn create_program_account_mint_account_with_seed<'a>(
     mint_info: &AccountInfo<'a>,
-    mint_account_seed: &Pubkey,
-    mint_bump_seed: u8,
+    mint_account_seeds: &[&[u8]],
     mint_authority_info: &AccountInfo<'a>,
     payer_info: &AccountInfo<'a>,
     rent_info: &AccountInfo<'a>,
@@ -164,8 +172,6 @@ pub fn create_program_account_mint_account_with_seed<'a>(
     let rent = Rent::get()?;
     let mint_rent = rent.minimum_balance(Mint::LEN);
     let decimals = 9; // for now
-    let mint_bump_seed = &[mint_bump_seed];
-    let mint_account_seeds = create_mint_program_address_seeds(mint_account_seed, mint_bump_seed);
     let address = Pubkey::create_program_address(&mint_account_seeds, program_id).unwrap();
     if mint_info.key != &address {
         msg!(
@@ -205,13 +211,11 @@ pub fn create_program_account_mint_account_with_seed<'a>(
     )?;
     Ok(())
 }
-/*
-pub fn create_program_key_token_account<'a>(
-    key: &str,
+pub fn create_program_token_account<'a>(
     account_info: &AccountInfo<'a>,
-    account_bump_seed: u8,
+    account_seeds: &[&[u8]],
     mint_info: &AccountInfo<'a>,
-    mint_authority_info: &AccountInfo<'a>,
+    authority_info: &AccountInfo<'a>,
     payer_info: &AccountInfo<'a>,
     rent_info: &AccountInfo<'a>,
     token_program_info: &AccountInfo<'a>,
@@ -219,11 +223,6 @@ pub fn create_program_key_token_account<'a>(
     program_id: &Pubkey,
 ) -> ProgramResult {
     let rent = Rent::get()?;
-    let mint_rent = rent.minimum_balance(Mint::LEN);
-    let decimals = 9; // for now
-
-    let bump_seeds = &[account_bump_seed];
-    let account_seeds = [key.as_bytes(), bump_seeds];
     let address = Pubkey::create_program_address(&account_seeds, program_id).unwrap();
     if account_info.key != &address {
         msg!(
@@ -256,17 +255,20 @@ pub fn create_program_key_token_account<'a>(
             token_program_info.key,
             account_info.key,
             mint_info.key,
-            mint_authority_info.key, //freeze_authority_pubkey.as_ref(),
+            authority_info.key, //freeze_authority_pubkey.as_ref(),
         )?,
         &[
             account_info.clone(),
             mint_info.clone(),
-            mint_authority_info.clone(),
+            authority_info.clone(),
             rent_info.clone(),
         ],
     )?;
     Ok(())
-} */
+}
+
+/*
+ */
 /* NOT USED ANYMORE SINCE WE USE STAKE POOL
 pub fn create_program_associated_token_account<'a>(
     account: &AccountInfo<'a>,
@@ -336,7 +338,7 @@ pub fn create_program_associated_token_account<'a>(
     )?;
     Ok(())
 } */
-
+/*
 pub fn create_user_post_token_account<'a>(
     user_account: &Pubkey,
     post_account: &Pubkey,
@@ -369,11 +371,12 @@ pub fn create_user_post_token_account<'a>(
         );
         return Err(ProgramError::InvalidSeeds);
     }
+    let token_address = get_associated_token_address(payer_info.key, mint_info.key);
 
     invoke_signed(
         &system_instruction::create_account(
             payer_info.key,
-            user_post_token_account.key,
+            &token_address,
             rent.minimum_balance(spl_token::state::Account::LEN),
             spl_token::state::Account::LEN as u64,
             &spl_token::id(),
@@ -402,22 +405,22 @@ pub fn create_user_post_token_account<'a>(
         ],
     )?;
     Ok(())
-}
+}*/
 
 pub fn spl_mint_to<'a>(
     mint_to_account: &AccountInfo<'a>,
     mint_info: &AccountInfo<'a>,
     mint_authority_info: &AccountInfo<'a>,
-    mint_authority_bump_seed: u8,
+    mint_authority_seeds: &[&[u8]],
     amount: u64,
     program_id: &Pubkey,
 ) -> ProgramResult {
     // mint
-    let mint_authority_bump_seed = &[mint_authority_bump_seed];
+    /* let mint_authority_bump_seed = &[mint_authority_bump_seed];
     let mint_authority_seeds =
-        create_mint_authority_program_address_seeds(mint_info.key, mint_authority_bump_seed);
+        create_mint_authority_program_address_seeds(mint_info.key, mint_authority_bump_seed); */
     let mint_authority_address =
-        Pubkey::create_program_address(&mint_authority_seeds, program_id).unwrap();
+        Pubkey::create_program_address(mint_authority_seeds, program_id).unwrap();
     if mint_authority_info.key != &mint_authority_address {
         msg!(
             "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
@@ -431,7 +434,7 @@ pub fn spl_mint_to<'a>(
         &spl_token::id(),
         mint_info.key,
         mint_to_account.key,
-        mint_authority_info.key,
+        &mint_authority_address,
         &[],
         amount,
     )?;
@@ -464,6 +467,26 @@ pub fn transfer_to<'a>(
     )?;
     Ok(())
 }
+/// Issue a spl_token `Transfer` instruction.
+#[allow(clippy::too_many_arguments)]
+pub fn token_transfer<'a>(
+    token_program: AccountInfo<'a>,
+    source: AccountInfo<'a>,
+    destination: AccountInfo<'a>,
+    authority: AccountInfo<'a>,
+    amount: u64,
+) -> Result<(), ProgramError> {
+    let ix = spl_token::instruction::transfer(
+        token_program.key,
+        source.key,
+        destination.key,
+        authority.key,
+        &[],
+        amount,
+    )?;
+    invoke(&ix, &[source, destination, authority, token_program])
+}
+
 /*
 pub fn create_payer_program_multisig_account<'a>(
     multisig_info: &AccountInfo<'a>,

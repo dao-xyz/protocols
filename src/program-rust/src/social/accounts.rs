@@ -71,7 +71,7 @@ pub enum MessageAccountSubmittable
     Single(MessageAccount)
 }
  */
-
+/*
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct MessageAccount {
     pub user: Pubkey,
@@ -99,37 +99,63 @@ impl MessageAccount {
         }
     }
 }
-
 impl MaxSize for MessageAccount {
     fn get_max_size(&self) -> Option<usize> {
         None
     }
 }
+*/
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
+pub enum AMMCurve {
+    /// offset K
+    Identity, // 1 to 1 (risk "free"), unlimited supply
+    Offset(u64), // supply x * (supply y  + offset) = constant
+}
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
+pub enum MarketMaker {
+    AMM(AMMCurve),
+    // order book later
+}
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
+pub enum ContentSource {
+    External { url: String },
+    String(String),
+    // image
+    // videos
+    // files etc
+}
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
+pub struct Content {
+    pub hash: [u8; 32],
+    pub source: ContentSource,
+}
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct PostAccount {
-    pub user: Pubkey,
+    pub creator: Pubkey,
     pub channel: Pubkey,
     pub timestamp: u64,
-    pub spread_factor: Option<u64>,
-    pub token: Pubkey,
-    pub content: Pubkey,
+    pub content: Content,
+    pub market_maker: MarketMaker,
 }
 
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
+/* #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct PostContentAccount {
     pub message: Message,
 }
-
+ */
 // Used to serialization and deserialization to keep track of account types
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 
 pub enum AccountContainer {
     UserAccount(UserAccount),
     ChannelAccount(ChannelAccount),
-    MessageAccount(MessageAccount),
     PostAccount(PostAccount),
-    PostContentAccount(PostContentAccount),
+    //MessageAccount(MessageAccount),
 }
 
 impl MaxSize for AccountContainer {
@@ -154,12 +180,12 @@ pub fn deserialize_channel_account(data: &[u8]) -> ChannelAccount {
     panic!();
 }
 
-pub fn deserialize_message_account(data: &[u8]) -> MessageAccount {
+/* pub fn deserialize_message_account(data: &[u8]) -> MessageAccount {
     if let AccountContainer::MessageAccount(account) = try_from_slice_unchecked(data).unwrap() {
         return account;
     }
     panic!();
-}
+} */
 
 pub fn deserialize_post_account(data: &[u8]) -> PostAccount {
     if let AccountContainer::PostAccount(account) = try_from_slice_unchecked(data).unwrap() {

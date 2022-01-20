@@ -1,5 +1,11 @@
 //! Program state processor
-use crate::tokens::spl_utils::{create_program_account_mint_account, find_mint_program_address};
+use crate::{
+    shared::account::check_account_owner,
+    tokens::spl_utils::{
+        self, create_program_account_mint_account, create_program_account_mint_account_with_seed,
+        create_utility_mint_program_address_seeds, find_utility_mint_program_address,
+    },
+};
 
 use super::{find_stake_pool_program_address, STAKE_POOL};
 
@@ -116,23 +122,6 @@ fn check_stake_program(program_id: &Pubkey) -> Result<(), ProgramError> {
             "Expected stake program {}, received {}",
             stake::program::id(),
             program_id
-        );
-        Err(ProgramError::IncorrectProgramId)
-    } else {
-        Ok(())
-    }
-}
-
-/// Check account owner is the given program
-fn check_account_owner(
-    account_info: &AccountInfo,
-    program_id: &Pubkey,
-) -> Result<(), ProgramError> {
-    if *program_id != *account_info.owner {
-        msg!(
-            "Expected account to be owned by program {}, received {}",
-            program_id,
-            account_info.owner
         );
         Err(ProgramError::IncorrectProgramId)
     } else {
@@ -457,26 +446,6 @@ impl Processor {
         )?;
 
         invoke_signed(&ix, &[mint, destination, authority, token_program], signers)
-    }
-
-    /// Issue a spl_token `Transfer` instruction.
-    #[allow(clippy::too_many_arguments)]
-    fn token_transfer<'a>(
-        token_program: AccountInfo<'a>,
-        source: AccountInfo<'a>,
-        destination: AccountInfo<'a>,
-        authority: AccountInfo<'a>,
-        amount: u64,
-    ) -> Result<(), ProgramError> {
-        let ix = spl_token::instruction::transfer(
-            token_program.key,
-            source.key,
-            destination.key,
-            authority.key,
-            &[],
-            amount,
-        )?;
-        invoke(&ix, &[source, destination, authority, token_program])
     }
 
     fn sol_transfer<'a>(
@@ -2394,7 +2363,7 @@ impl Processor {
         )?;
 
         if pool_tokens_fee > 0 {
-            Self::token_transfer(
+            spl_utils::token_transfer(
                 token_program_info.clone(),
                 burn_from_pool_info.clone(),
                 manager_fee_info.clone(),
@@ -2536,7 +2505,7 @@ impl Processor {
         )?;
 
         if pool_tokens_fee > 0 {
-            Self::token_transfer(
+            spl_utils::token_transfer(
                 token_program_info.clone(),
                 burn_from_pool_info.clone(),
                 manager_fee_info.clone(),
@@ -2732,12 +2701,16 @@ impl Processor {
             &[&[STAKE_POOL, &[stake_pool_seed]]],
         )?;
 
-        // Create pool mint
-        let (mint_address, mint_address_seed) =
-            find_mint_program_address(program_id, stake_pool_info.key);
+        // Create pool mint, well, it its idp. of the pool actually so we can easier find it
+
+        let (mint_address, mint_address_bump_seed) = find_utility_mint_program_address(program_id);
+
         if mint_address != *mint_account_info.key {
             return Err(ProgramError::InvalidAccountData);
         }
+        let mint_address_bump_seeds = &[mint_address_bump_seed];
+        let mint_account_address_seeds =
+            create_utility_mint_program_address_seeds(mint_address_bump_seeds);
 
         let (withdraw_authority_key, _) =
             crate::stake_pool::find_withdraw_authority_program_address(
@@ -2753,10 +2726,9 @@ impl Processor {
             return Err(StakePoolError::InvalidProgramAddress.into());
         }
 
-        create_program_account_mint_account(
+        create_program_account_mint_account_with_seed(
             mint_account_info,
-            stake_pool_info.key,
-            mint_address_seed,
+            &mint_account_address_seeds,
             withdraw_authority_info,
             funder_info,
             rent_info,

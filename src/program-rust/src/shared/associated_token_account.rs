@@ -1,4 +1,4 @@
-pub use solana_program;
+/* pub use solana_program;
 use solana_program::{entrypoint::ProgramResult, msg, program_error::ProgramError, pubkey::Pubkey};
 solana_program::declare_id!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
@@ -38,3 +38,4 @@ fn get_associated_token_address_and_bump_seed_internal(
         program_id,
     )
 }
+ */

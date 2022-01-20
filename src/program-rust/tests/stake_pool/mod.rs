@@ -1,4 +1,4 @@
-mod helpers;
+pub mod helpers;
 mod increase;
 mod initialize;
 mod set_deposit_fee;

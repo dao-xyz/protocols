@@ -1,47 +1,511 @@
-use borsh::BorshDeserialize;
-
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     borsh::{get_instance_packed_len, get_packed_len, try_from_slice_unchecked},
     entrypoint::ProgramResult,
     msg,
-    program::invoke_signed,
+    program::{invoke, invoke_signed},
     program_error::ProgramError,
     pubkey::Pubkey,
     rent::Rent,
     sysvar::Sysvar,
 };
+use spl_associated_token_account::create_associated_token_account;
+use spl_token::instruction::burn;
 
 use crate::social::{
-    accounts::{deserialize_user_account, AccountContainer, MessageAccount},
+    accounts::{deserialize_user_account, AccountContainer},
     create_post_mint_escrow_program_address_seeds,
     instruction::ChatInstruction,
-    rates::get_allowed_mint_amount,
 };
 use crate::{
-    address::generate_seeds_from_string,
     shared::account::{
         create_and_serialize_account_signed, create_and_serialize_account_signed_verify_with_bump,
     },
     social::accounts::deserialize_post_account,
-    tokens::spl_utils::{
-        create_program_account_mint_account, create_user_post_token_account, spl_mint_to,
-        transfer_to,
-    },
+    tokens::spl_utils::{create_program_token_account, spl_mint_to, token_transfer},
 };
 
-use solana_program::system_instruction::create_account;
-
 use super::{
-    accounts::{ChannelAccount, PostAccount, PostContentAccount, UserAccount},
-    create_channel_account_program_address_seeds, create_user_account_program_address_seeds,
-    instruction::{CreatePost, CreatePostContent, StakePost},
+    accounts::{AMMCurve, ChannelAccount, MarketMaker, PostAccount, UserAccount},
+    create_channel_account_program_address_seeds, create_post_mint_authority_program_address_seeds,
+    create_post_mint_program_account, create_user_account_program_address_seeds,
+    instruction::{CreatePost, VotePost},
+    Vote,
 };
 
 pub static NULL_KEY: Pubkey = Pubkey::new_from_array([0_u8; 32]);
 
 pub static MESSAGE_TRANSACTION_MAX_SIZE: usize = 1200;
-const AUTHORITY_WITHDRAW: &[u8] = b"withdraw";
+
+pub struct Processor {}
+impl Processor {
+    // Program entrypoint's implementation
+
+    pub fn process_create_user(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        user: UserAccount,
+    ) -> ProgramResult {
+        let accounts_iter = &mut accounts.iter();
+        let payer_account = next_account_info(accounts_iter)?;
+
+        if user.name.is_empty() {
+            return Err(ProgramError::InvalidArgument);
+        }
+        // check if leading or trailing spaces, if so name is invalid
+        let mut chars = user.name.chars();
+        if chars.next().unwrap().is_whitespace() || chars.last().unwrap_or('_').is_whitespace() {
+            return Err(ProgramError::InvalidArgument);
+        }
+
+        if &user.owner != payer_account.key {
+            return Err(ProgramError::IllegalOwner); // requires payer as owner (for now)
+        }
+
+        let user_acount_info = next_account_info(accounts_iter)?;
+        let system_account = next_account_info(accounts_iter)?;
+
+        let rent = Rent::get()?;
+        let seeds = create_user_account_program_address_seeds(&user.name);
+        let seed_slice = &seeds.iter().map(|x| &x[..]).collect::<Vec<&[u8]>>()[..];
+        create_and_serialize_account_signed(
+            payer_account,
+            user_acount_info,
+            &AccountContainer::UserAccount(user),
+            seed_slice,
+            program_id,
+            system_account,
+            &rent,
+        )?;
+        Ok(())
+    }
+
+    pub fn process_create_channel(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        channel: ChannelAccount,
+    ) -> ProgramResult {
+        let accounts_iter = &mut accounts.iter();
+        let payer_account = next_account_info(accounts_iter)?;
+        let user_account_info = next_account_info(accounts_iter)?;
+        let user = deserialize_user_account(user_account_info.data.borrow().as_ref());
+        if &user.owner != payer_account.key {
+            return Err(ProgramError::IllegalOwner); // requires payer as owner (for now)
+        }
+
+        let channel_account_info = next_account_info(accounts_iter)?;
+        let system_account = next_account_info(accounts_iter)?;
+
+        let rent = Rent::get()?;
+        let seeds = create_channel_account_program_address_seeds(&channel.name);
+        let seed_slice = &seeds.iter().map(|x| &x[..]).collect::<Vec<&[u8]>>()[..];
+        create_and_serialize_account_signed(
+            payer_account,
+            channel_account_info,
+            &AccountContainer::ChannelAccount(channel),
+            seed_slice,
+            program_id,
+            system_account,
+            &rent,
+        )?;
+        Ok(())
+    }
+
+    pub fn process_create_post(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        post: CreatePost,
+    ) -> ProgramResult {
+        let accounts_iter = &mut accounts.iter();
+        let payer_account = next_account_info(accounts_iter)?;
+        let user_account_info = next_account_info(accounts_iter)?;
+        let user = deserialize_user_account(user_account_info.data.borrow().as_ref());
+        if &user.owner != payer_account.key {
+            // Can not create a post for another user
+            return Err(ProgramError::InvalidArgument);
+        }
+
+        let post_account_info = next_account_info(accounts_iter)?;
+        let mint_upvote_account_info = next_account_info(accounts_iter)?;
+        let mint_downvote_account_info = next_account_info(accounts_iter)?;
+        let mint_authority_account_info = next_account_info(accounts_iter)?;
+        let escrow_utility_token_account_info = next_account_info(accounts_iter)?;
+        let utility_mint_account_info = next_account_info(accounts_iter)?;
+        let system_account = next_account_info(accounts_iter)?;
+        let rent_info = next_account_info(accounts_iter)?;
+        let token_program_info = next_account_info(accounts_iter)?;
+
+        let rent = Rent::get()?;
+
+        let content_hash = post.content.hash.clone();
+        create_and_serialize_account_signed_verify_with_bump(
+            payer_account,
+            post_account_info,
+            &AccountContainer::PostAccount(PostAccount {
+                channel: post.channel,
+                content: post.content,
+                market_maker: post.market_maker.clone(),
+                timestamp: post.timestamp,
+                creator: *user_account_info.key,
+            }),
+            &[&content_hash],
+            program_id,
+            system_account,
+            &rent,
+            post.post_bump_seed,
+        )?;
+
+        // Upvote tokens
+        create_post_mint_program_account(
+            post_account_info.key,
+            Vote::UP,
+            mint_upvote_account_info,
+            post.mint_upvote_bump_seed,
+            mint_authority_account_info,
+            payer_account,
+            rent_info,
+            token_program_info,
+            system_account,
+            program_id,
+        )?;
+
+        // Downvote tokens
+        create_post_mint_program_account(
+            post_account_info.key,
+            Vote::DOWN,
+            mint_downvote_account_info,
+            post.mint_downvote_bump_seed,
+            mint_authority_account_info,
+            payer_account,
+            rent_info,
+            token_program_info,
+            system_account,
+            program_id,
+        )?;
+
+        // create empty escrow account
+        let escrow_bump_seeds = &[post.escrow_bump_seed];
+        let escrow_account_seeds = create_post_mint_escrow_program_address_seeds(
+            &post_account_info.key,
+            escrow_bump_seeds,
+        );
+        let expected_escrow_address =
+            Pubkey::create_program_address(&escrow_account_seeds, program_id).unwrap();
+
+        if escrow_utility_token_account_info.key != &expected_escrow_address {
+            msg!(
+                "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
+                escrow_utility_token_account_info.key,
+                expected_escrow_address
+            );
+            return Err(ProgramError::InvalidSeeds);
+        }
+
+        let escrow_bump_seeds = &[post.escrow_bump_seed];
+        let escrow_seeds =
+            create_post_mint_escrow_program_address_seeds(post_account_info.key, escrow_bump_seeds);
+
+        create_program_token_account(
+            escrow_utility_token_account_info,
+            &escrow_seeds,
+            utility_mint_account_info,
+            mint_authority_account_info,
+            payer_account,
+            rent_info,
+            token_program_info,
+            system_account,
+            program_id,
+        )?;
+
+        // MM
+        match post.market_maker {
+            MarketMaker::AMM(amm_curve) => match amm_curve {
+                AMMCurve::Identity => {}
+                AMMCurve::Offset(offset) => {
+                    let curve = spl_token_swap::curve::base::SwapCurve {
+                        curve_type: spl_token_swap::curve::base::CurveType::Offset,
+                        calculator: Box::new(spl_token_swap::curve::offset::OffsetCurve {
+                            token_b_offset: offset,
+                        }),
+                    };
+
+                    let swap_account_info = next_account_info(accounts_iter)?;
+                    let swap_authority_info = next_account_info(accounts_iter)?;
+                    let token_a_account = next_account_info(accounts_iter)?;
+                    let token_b_account = next_account_info(accounts_iter)?;
+                    let swap_pool_mint = next_account_info(accounts_iter)?;
+                    let swap_pool_token_account = next_account_info(accounts_iter)?;
+                    let swap_initial_token_account = next_account_info(accounts_iter)?;
+
+                    spl_token_swap::instruction::initialize(
+                        program_id,
+                        token_program_info.key,
+                        swap_account_info.key,
+                        swap_authority_info.key,
+                        token_a_account.key,
+                        token_b_account.key,
+                        swap_pool_mint.key,
+                        swap_pool_token_account.key,
+                        swap_initial_token_account.key,
+                        0, // bump seed
+                        spl_token_swap::curve::fees::Fees {
+                            // 0 fees for now
+                            trade_fee_numerator: 0,
+                            trade_fee_denominator: 1,
+                            owner_trade_fee_numerator: 0,
+                            owner_trade_fee_denominator: 1,
+                            owner_withdraw_fee_numerator: 0,
+                            owner_withdraw_fee_denominator: 1,
+                            host_fee_numerator: 0,
+                            host_fee_denominator: 1,
+                        },
+                        curve,
+                    )?;
+                }
+            },
+        }
+
+        Ok(())
+    }
+
+    pub fn process_create_post_vote(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        stake: VotePost,
+    ) -> ProgramResult {
+        let accounts_iter = &mut accounts.iter();
+        let payer_account = next_account_info(accounts_iter)?;
+        let payer_utility_token_account = next_account_info(accounts_iter)?;
+        let post_account_info = next_account_info(accounts_iter)?;
+        let post_account = deserialize_post_account(post_account_info.data.borrow().as_ref());
+        let mint_account_info = next_account_info(accounts_iter)?;
+        let mint_authority_account_info = next_account_info(accounts_iter)?;
+        let mint_associated_token_account = next_account_info(accounts_iter)?;
+        let escrow_token_account_info = next_account_info(accounts_iter)?;
+        let system_account = next_account_info(accounts_iter)?;
+        let rent_info = next_account_info(accounts_iter)?;
+        let token_program_info = next_account_info(accounts_iter)?;
+        let spl_associated_token_acount_program_info = next_account_info(accounts_iter)?;
+
+        // Verify escrow account is correct
+        let escrow_bump_seeds = &[stake.mint_escrow_bump_seed];
+        let escrow_account_seeds = create_post_mint_escrow_program_address_seeds(
+            &post_account_info.key,
+            escrow_bump_seeds,
+        );
+        msg!("A");
+
+        let expected_escrow_address =
+            Pubkey::create_program_address(&escrow_account_seeds, program_id).unwrap();
+
+        if escrow_token_account_info.key != &expected_escrow_address {
+            msg!(
+                "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
+                escrow_token_account_info.key,
+                expected_escrow_address
+            );
+            return Err(ProgramError::InvalidSeeds);
+        }
+
+        if mint_associated_token_account.data.borrow().is_empty() {
+            // Unitialized token account
+            // this will cost some sol, but we assume we don't have to mint tokens for this
+
+            invoke(
+                &create_associated_token_account(
+                    payer_account.key,
+                    payer_account.key,
+                    mint_account_info.key,
+                ),
+                &[
+                    payer_account.clone(),
+                    mint_associated_token_account.clone(),
+                    payer_account.clone(),
+                    mint_account_info.clone(),
+                    system_account.clone(),
+                    token_program_info.clone(),
+                    rent_info.clone(),
+                    spl_associated_token_acount_program_info.clone(),
+                ],
+            )?;
+        }
+        match post_account.market_maker {
+            MarketMaker::AMM(curve) => {
+                //transfer_to(payer_account, mint_escrow_account_info, stake.stake)?;
+                //spl_burn(solvei_associated_token_account,solvei_mint_info,solvei_mint_authority_info,create_spl)
+
+                match curve {
+                    AMMCurve::Identity => {
+                        token_transfer(
+                            token_program_info.clone(),
+                            payer_utility_token_account.clone(),
+                            escrow_token_account_info.clone(),
+                            payer_account.clone(),
+                            stake.stake,
+                        )?;
+
+                        // for some tokens (Upvotes or downvotes depending on the mint info)
+                        spl_mint_to(
+                            mint_associated_token_account,
+                            mint_account_info,
+                            mint_authority_account_info,
+                            &create_post_mint_authority_program_address_seeds(
+                                post_account_info.key,
+                                &[stake.mint_authority_bump_seed],
+                            ),
+                            stake.stake,
+                            program_id,
+                        )?;
+                    }
+                    _ => panic!("Not supported"),
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn process_create_post_unvote(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        stake: VotePost,
+    ) -> ProgramResult {
+        let accounts_iter = &mut accounts.iter();
+        let payer = next_account_info(accounts_iter)?;
+        let payer_utility_token_account = next_account_info(accounts_iter)?;
+        let post_account_info = next_account_info(accounts_iter)?;
+        let post_account = deserialize_post_account(post_account_info.data.borrow().as_ref());
+        let mint_account_info = next_account_info(accounts_iter)?;
+        let mint_authority_account_info = next_account_info(accounts_iter)?;
+        let mint_associated_token_account = next_account_info(accounts_iter)?;
+        let escrow_token_account_info = next_account_info(accounts_iter)?;
+        let token_program_info = next_account_info(accounts_iter)?;
+
+        // Verify escrow account is correct
+        let escrow_bump_seeds = &[stake.mint_escrow_bump_seed];
+        let escrow_account_seeds = create_post_mint_escrow_program_address_seeds(
+            &post_account_info.key,
+            escrow_bump_seeds,
+        );
+
+        let expected_escrow_address =
+            Pubkey::create_program_address(&escrow_account_seeds, program_id).unwrap();
+
+        if escrow_token_account_info.key != &expected_escrow_address {
+            msg!(
+                "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
+                escrow_token_account_info.key,
+                expected_escrow_address
+            );
+            return Err(ProgramError::InvalidSeeds);
+        }
+
+        match post_account.market_maker {
+            MarketMaker::AMM(curve) => {
+                //transfer_to(payer_account, mint_escrow_account_info, stake.stake)?;
+                //spl_burn(solvei_associated_token_account,solvei_mint_info,solvei_mint_authority_info,create_spl)
+
+                match curve {
+                    AMMCurve::Identity => {
+                        let bump_seeds = &[stake.mint_authority_bump_seed];
+                        let seeds = create_post_mint_authority_program_address_seeds(
+                            post_account_info.key,
+                            bump_seeds,
+                        );
+
+                        invoke_signed(
+                            &spl_token::instruction::transfer(
+                                token_program_info.key,
+                                escrow_token_account_info.key,
+                                payer_utility_token_account.key,
+                                &mint_authority_account_info.key,
+                                &[],
+                                stake.stake,
+                            )?,
+                            &[
+                                escrow_token_account_info.clone(),
+                                payer_utility_token_account.clone(),
+                                mint_authority_account_info.clone(),
+                                token_program_info.clone(),
+                            ],
+                            &[&seeds],
+                        )?;
+
+                        invoke(
+                            &burn(
+                                &token_program_info.key,
+                                mint_associated_token_account.key,
+                                mint_account_info.key,
+                                &payer.key,
+                                &[],
+                                stake.stake,
+                            )?,
+                            &[
+                                mint_associated_token_account.clone(),
+                                mint_account_info.clone(),
+                                payer.clone(),
+                                token_program_info.clone(),
+                            ],
+                        )?;
+                    }
+                    _ => panic!("Not supported"),
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn process(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        instruction: ChatInstruction,
+    ) -> ProgramResult {
+        // Iterating accounts is safer then indexing
+
+        match instruction {
+            ChatInstruction::CreateUser(user) => {
+                msg!("Create user: {}", user.name);
+                Self::process_create_user(program_id, accounts, user)
+            }
+
+            ChatInstruction::CreateChannel(channel) => {
+                msg!("Create channel: {}", channel.name);
+                Self::process_create_channel(program_id, accounts, channel)
+            }
+
+            ChatInstruction::UpdateChannel(_) => {
+                /*  let channel_account_info = next_account_info(accounts_iter)?;
+
+                // Don't allow channel name to be updated, since it would require us to resize the account size
+                // This would also mean that the PDA would change!
+                channel.serialize(&mut *channel_account_info.data.borrow_mut())? */
+                Ok(())
+            }
+
+            ChatInstruction::CreatePost(post) => {
+                msg!("Create post");
+                Self::process_create_post(program_id, accounts, post)
+            }
+            /* ChatInstruction::CreatePostContent(content) => {
+                msg!("Create post content");
+                Self::process_create_post_content(program_id, accounts, content)
+            } */
+            ChatInstruction::VotePost(stake) => {
+                //let token_account_info = next_account_info(accounts_iter)?;
+                msg!("Create vote");
+                Self::process_create_post_vote(program_id, accounts, stake)
+            }
+
+            ChatInstruction::UnvotePost(stake) => {
+                //let token_account_info = next_account_info(accounts_iter)?;
+                msg!("Create unvote");
+                Self::process_create_post_unvote(program_id, accounts, stake)
+            }
+        }
+    }
+}
+/*
 
 fn token_mint_to<'a>(
     stake_pool: &Pubkey,
@@ -82,341 +546,7 @@ fn check_account_owner(
     } else {
         Ok(())
     }
-}
-pub struct Processor {}
-impl Processor {
-    // Program entrypoint's implementation
-
-    pub fn process_create_user(
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-        user: UserAccount,
-    ) -> ProgramResult {
-        let accounts_iter = &mut accounts.iter();
-        let system_account = next_account_info(accounts_iter)?;
-        let payer_account = next_account_info(accounts_iter)?;
-
-        if user.name.is_empty() {
-            return Err(ProgramError::InvalidArgument);
-        }
-        // check if leading or trailing spaces, if so name is invalid
-        let mut chars = user.name.chars();
-        if chars.next().unwrap().is_whitespace() || chars.last().unwrap_or('_').is_whitespace() {
-            return Err(ProgramError::InvalidArgument);
-        }
-
-        if &user.owner != payer_account.key {
-            return Err(ProgramError::IllegalOwner); // requires payer as owner (for now)
-        }
-
-        let user_acount_info = next_account_info(accounts_iter)?;
-        let rent = Rent::get()?;
-        let seeds = create_user_account_program_address_seeds(&user.name);
-        let seed_slice = &seeds.iter().map(|x| &x[..]).collect::<Vec<&[u8]>>()[..];
-        create_and_serialize_account_signed(
-            payer_account,
-            user_acount_info,
-            &AccountContainer::UserAccount(user),
-            seed_slice,
-            program_id,
-            system_account,
-            &rent,
-        )?;
-        Ok(())
-    }
-
-    pub fn process_create_channel(
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-        channel: ChannelAccount,
-    ) -> ProgramResult {
-        let accounts_iter = &mut accounts.iter();
-        let system_account = next_account_info(accounts_iter)?;
-        let payer_account = next_account_info(accounts_iter)?;
-        let user_account_info = next_account_info(accounts_iter)?;
-        let user = deserialize_user_account(user_account_info.data.borrow().as_ref());
-        if &user.owner != payer_account.key {
-            return Err(ProgramError::IllegalOwner); // requires payer as owner (for now)
-        }
-
-        let channel_account_info = next_account_info(accounts_iter)?;
-        let rent = Rent::get()?;
-        let seeds = create_channel_account_program_address_seeds(&channel.name);
-        let seed_slice = &seeds.iter().map(|x| &x[..]).collect::<Vec<&[u8]>>()[..];
-        create_and_serialize_account_signed(
-            payer_account,
-            channel_account_info,
-            &AccountContainer::ChannelAccount(channel),
-            seed_slice,
-            program_id,
-            system_account,
-            &rent,
-        )?;
-        Ok(())
-    }
-
-    pub fn process_create_post(
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-        post: CreatePost,
-    ) -> ProgramResult {
-        let accounts_iter = &mut accounts.iter();
-        let system_account = next_account_info(accounts_iter)?;
-        let payer_account = next_account_info(accounts_iter)?;
-        let user_account_info = next_account_info(accounts_iter)?;
-        let user = deserialize_user_account(user_account_info.data.borrow().as_ref());
-        if &user.owner != payer_account.key {
-            // Can not create a post for another user
-            return Err(ProgramError::InvalidArgument);
-        }
-
-        let post_account_info = next_account_info(accounts_iter)?;
-        let mint_account_info = next_account_info(accounts_iter)?;
-        let mint_authority_account_info = next_account_info(accounts_iter)?;
-        let mint_escrow_account_info = next_account_info(accounts_iter)?;
-        let user_post_token_account_info = next_account_info(accounts_iter)?;
-
-        let rent_info = next_account_info(accounts_iter)?;
-        let token_program_info = next_account_info(accounts_iter)?;
-        let rent = Rent::get()?;
-
-        create_and_serialize_account_signed_verify_with_bump(
-            payer_account,
-            post_account_info,
-            &AccountContainer::PostAccount(PostAccount {
-                channel: post.channel,
-                content: post.content,
-                spread_factor: post.spread_factor,
-                timestamp: post.timestamp,
-                token: *mint_account_info.key,
-                user: *user_account_info.key,
-            }),
-            &[
-                user_account_info.key.as_ref(),
-                post.channel.as_ref(),
-                &post.timestamp.to_le_bytes(),
-            ],
-            program_id,
-            system_account,
-            &rent,
-            post.post_bump_seed,
-        )?;
-
-        create_program_account_mint_account(
-            mint_account_info,
-            post_account_info.key,
-            post.mint_bump_seed,
-            mint_authority_account_info,
-            payer_account,
-            rent_info,
-            token_program_info,
-            system_account,
-            program_id,
-        )?;
-
-        // create empty escrow account
-        let escrow_bump_seeds = &[post.mint_escrow_bump_seed];
-        let escrow_account_seeds = create_post_mint_escrow_program_address_seeds(
-            &mint_account_info.key,
-            escrow_bump_seeds,
-        );
-        let expected_escrow_address =
-            Pubkey::create_program_address(&escrow_account_seeds, program_id).unwrap();
-
-        if mint_escrow_account_info.key != &expected_escrow_address {
-            msg!(
-                "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
-                mint_escrow_account_info.key,
-                expected_escrow_address
-            );
-            return Err(ProgramError::InvalidSeeds);
-        }
-        let minimum_balance_as_stake = rent.minimum_balance(0);
-
-        let create_account_instruction = create_account(
-            payer_account.key,
-            mint_escrow_account_info.key,
-            minimum_balance_as_stake,
-            0 as u64,
-            program_id,
-        );
-        invoke_signed(
-            &create_account_instruction,
-            &[
-                payer_account.clone(),
-                mint_escrow_account_info.clone(),
-                system_account.clone(),
-            ],
-            &[&escrow_account_seeds],
-        )?;
-
-        // create user stake account
-        create_user_post_token_account(
-            &user_account_info.key,
-            &post_account_info.key,
-            user_post_token_account_info,
-            post.user_post_token_account_bump_seed,
-            mint_account_info,
-            mint_authority_account_info,
-            payer_account,
-            rent_info,
-            token_program_info,
-            system_account,
-            program_id,
-        )?;
-
-        // Mint for the minimum balance, as we hade to put some balance into the escrow account
-        spl_mint_to(
-            user_post_token_account_info,
-            mint_account_info,
-            mint_authority_account_info,
-            post.mint_authority_bump_seed,
-            get_allowed_mint_amount(
-                mint_escrow_account_info,
-                minimum_balance_as_stake,
-                post.spread_factor,
-            ),
-            program_id,
-        )?;
-        Ok(())
-    }
-
-    pub fn process_create_post_content(
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-        content: CreatePostContent,
-    ) -> ProgramResult {
-        let accounts_iter = &mut accounts.iter();
-        let system_account = next_account_info(accounts_iter)?;
-        let payer_account = next_account_info(accounts_iter)?;
-        let post_content_account_info = next_account_info(accounts_iter)?;
-        let hash = content.message.hash();
-        let rent = Rent::get()?;
-        // If creation can be signed hash and bump seed, we know hash is correct
-        create_and_serialize_account_signed_verify_with_bump(
-            payer_account,
-            post_content_account_info,
-            &AccountContainer::PostContentAccount(PostContentAccount {
-                message: content.message,
-            }),
-            &[&hash],
-            program_id,
-            system_account,
-            &rent,
-            content.bump_seed,
-        )?;
-        Ok(())
-    }
-
-    pub fn process_create_post_stake(
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-        stake: StakePost,
-    ) -> ProgramResult {
-        let accounts_iter = &mut accounts.iter();
-        let system_account = next_account_info(accounts_iter)?;
-        let payer_account = next_account_info(accounts_iter)?;
-        let post_account_info = next_account_info(accounts_iter)?;
-        let post_account = deserialize_post_account(post_account_info.data.borrow().as_ref());
-        let escrow_account_info = next_account_info(accounts_iter)?;
-        let mint_account_info = next_account_info(accounts_iter)?;
-        let mint_authority_account_info = next_account_info(accounts_iter)?;
-        let user_post_token_account_info = next_account_info(accounts_iter)?;
-        let rent_info = next_account_info(accounts_iter)?;
-        let token_program_info = next_account_info(accounts_iter)?;
-
-        // Verify escrow account is correct
-        let escrow_bump_seeds = &[stake.mint_escrow_bump_seed];
-        let escrow_account_seeds = create_post_mint_escrow_program_address_seeds(
-            &mint_account_info.key,
-            escrow_bump_seeds,
-        );
-        let expected_escrow_address =
-            Pubkey::create_program_address(&escrow_account_seeds, program_id).unwrap();
-
-        if escrow_account_info.key != &expected_escrow_address {
-            msg!(
-                "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
-                escrow_account_info.key,
-                expected_escrow_address
-            );
-            return Err(ProgramError::InvalidSeeds);
-        }
-
-        create_user_post_token_account(
-            &stake.user,
-            &stake.post,
-            user_post_token_account_info,
-            stake.user_post_token_account_bump_seed,
-            mint_account_info,
-            mint_authority_account_info,
-            payer_account,
-            rent_info,
-            token_program_info,
-            system_account,
-            program_id,
-        )?;
-
-        // deduct SOL
-        transfer_to(payer_account, escrow_account_info, stake.stake)?;
-
-        // for some LIKES
-        spl_mint_to(
-            user_post_token_account_info,
-            mint_account_info,
-            mint_authority_account_info,
-            stake.mint_authority_bump_seed,
-            get_allowed_mint_amount(escrow_account_info, stake.stake, post_account.spread_factor),
-            program_id,
-        )?;
-        Ok(())
-    }
-
-    pub fn process(
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-        instruction: ChatInstruction,
-    ) -> ProgramResult {
-        // Iterating accounts is safer then indexing
-
-        match instruction {
-            ChatInstruction::CreateUser(user) => {
-                msg!("Create user: {}", user.name);
-                Self::process_create_user(program_id, accounts, user)
-            }
-
-            ChatInstruction::CreateChannel(channel) => {
-                msg!("Create channel: {}", channel.name);
-                Self::process_create_channel(program_id, accounts, channel)
-            }
-
-            ChatInstruction::UpdateChannel(_) => {
-                /*  let channel_account_info = next_account_info(accounts_iter)?;
-
-                // Don't allow channel name to be updated, since it would require us to resize the account size
-                // This would also mean that the PDA would change!
-                channel.serialize(&mut *channel_account_info.data.borrow_mut())? */
-                Ok(())
-            }
-
-            ChatInstruction::CreatePost(post) => {
-                msg!("Create post");
-                Self::process_create_post(program_id, accounts, post)
-            }
-            ChatInstruction::CreatePostContent(content) => {
-                msg!("Create post content");
-                Self::process_create_post_content(program_id, accounts, content)
-            }
-
-            ChatInstruction::StakePost(stake) => {
-                //let token_account_info = next_account_info(accounts_iter)?;
-                msg!("Create stake");
-                Self::process_create_post_stake(program_id, accounts, stake)
-            }
-        }
-    }
-}
-
+} */
 /* ChatInstruction::InitializeToken(initialize) => {
     // initialize multisig owner mint with escrow
     let owner_account = next_account_info(accounts_iter)?;

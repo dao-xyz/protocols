@@ -2300,7 +2300,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "solana-bpf-solvei"
+name = "solana-bpf-westake"
 version = "0.0.1"
 dependencies = [
  "arrayref",

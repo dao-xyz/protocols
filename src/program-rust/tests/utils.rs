@@ -8,7 +8,7 @@ use solana_program::{
     system_instruction, system_program,
     sysvar::Sysvar,
 };
-use spl_associated_token_account::create_associated_token_account;
+use spl_associated_token_account::{create_associated_token_account, get_associated_token_address};
 use std::str::FromStr;
 
 use solana_program_test::*;
@@ -17,11 +17,9 @@ use solana_sdk::{
     account::Account, pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction,
 };
 use solvei::{
-    address::generate_seeds_from_string,
     id,
     owner::program_owner_token,
     processor::Processor,
-    shared::associated_token_account::get_associated_token_address,
     social::{
         accounts::{deserialize_user_account, UserAccount},
         find_user_account_program_address,
@@ -123,9 +121,9 @@ pub async fn create_and_verify_user(
     banks_client: &mut BanksClient,
     payer: &Keypair,
     recent_blockhash: &Hash,
+    username: &str,
 ) -> Pubkey {
     // Create user
-    let username = "Me";
     banks_client
         .process_transaction(Transaction::new_signed_with_payer(
             &[create_user_transaction(&id(), username, &payer.pubkey())],

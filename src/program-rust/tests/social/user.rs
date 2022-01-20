@@ -26,7 +26,8 @@ pub fn get_message_account_address_and_bump_seed(
 #[tokio::test]
 async fn success() {
     let (mut banks_client, payer, recent_blockhash) = program_test().start().await;
-    crate::utils::create_and_verify_user(&mut banks_client, &payer, &recent_blockhash).await;
+    crate::utils::create_and_verify_user(&mut banks_client, &payer, &recent_blockhash, "name")
+        .await;
 }
 
 #[tokio::test]

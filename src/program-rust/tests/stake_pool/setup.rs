@@ -2,7 +2,8 @@ use solana_program::borsh::get_packed_len;
 use solana_program_test::*;
 use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction};
 use solvei::{
-    stake_pool::find_stake_pool_program_address, tokens::spl_utils::find_mint_program_address,
+    stake_pool::find_stake_pool_program_address,
+    tokens::spl_utils::find_utility_mint_program_address,
 };
 
 use crate::utils::{create_owner_token_account, program_test};
@@ -32,7 +33,7 @@ async fn success() {
 
     let mint = get_account(
         &mut banks_client,
-        &find_mint_program_address(&solvei::id(), &stake_pool_address).0,
+        &find_utility_mint_program_address(&solvei::id()).0,
     )
     .await;
     assert_eq!(mint.owner, spl_token::id());

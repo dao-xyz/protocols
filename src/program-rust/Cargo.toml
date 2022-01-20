@@ -1,8 +1,8 @@
 
 [package]
-name = "solana-bpf-solvei"
+name = "solana-bpf-westake"
 version = "0.0.1"
-description = "Solana Social Media, the Web3 Vei!"
+description = "WeStake Social Media, the Web3 way!"
 authors = ["Marcus Pousette <marcus.pousette@quantleaf.com>"]
 license = "Apache-2.0"
 edition = "2018"
