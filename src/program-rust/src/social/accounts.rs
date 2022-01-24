@@ -1,7 +1,14 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_program::{borsh::try_from_slice_unchecked, hash::hashv, pubkey::Pubkey};
 
-use crate::shared::account::MaxSize;
+use crate::{
+    shared::account::MaxSize,
+    tokens::spl_utils::{
+        create_mint_escrow_program_address_seeds, find_mint_escrow_program_address,
+    },
+};
+
+use super::swap::longshort::{LongShortCurve, LongShortSwap};
 
 pub static NULL_KEY: Pubkey = Pubkey::new_from_array([0_u8; 32]);
 
@@ -107,10 +114,16 @@ impl MaxSize for MessageAccount {
 */
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
+pub struct OffsetCurve {
+    pub offset: u64,
+}
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum AMMCurve {
     /// offset K
     Identity, // 1 to 1 (risk "free"), unlimited supply
-    Offset(u64), // supply x * (supply y  + offset) = constant
+    Offset(OffsetCurve), // supply x * (supply y  + offset) = constant
+    LongShort(LongShortSwap),
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]

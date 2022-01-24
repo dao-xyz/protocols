@@ -18,8 +18,8 @@ use {
         transaction::{Transaction, TransactionError},
         transport::TransportError,
     },
-    solvei::id,
-    solvei::stake_pool::{error::StakePoolError, find_stake_program_address, instruction, state},
+    westake::id,
+    westake::stake_pool::{error::StakePoolError, find_stake_program_address, instruction, state},
 };
 
 async fn setup() -> (

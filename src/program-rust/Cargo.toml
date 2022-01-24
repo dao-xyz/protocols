@@ -35,5 +35,5 @@ proptest = "1.0"
 
 
 [lib]
-name = "solvei"
+name = "westake"
 crate-type = ["cdylib", "lib"]

@@ -18,8 +18,8 @@ use {
         transaction::{Transaction, TransactionError},
         transport::TransportError,
     },
-    solvei::id,
-    solvei::stake_pool::{error::StakePoolError, instruction, minimum_stake_lamports, state},
+    westake::id,
+    westake::stake_pool::{error::StakePoolError, instruction, minimum_stake_lamports, state},
     spl_token::error::TokenError,
 };
 

@@ -11,7 +11,7 @@ use {
         signature::{Keypair, Signer},
         transaction::TransactionError,
     },
-    solvei::stake_pool::{error::StakePoolError, state::StakePool},
+    westake::stake_pool::{error::StakePoolError, state::StakePool},
 };
 
 async fn setup() -> (

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use solvei::{
+use westake::{
     stake_pool::find_stake_pool_program_address,
     tokens::spl_utils::find_utility_mint_program_address,
 };
@@ -24,14 +24,14 @@ use {
         self, vote_instruction,
         vote_state::{VoteInit, VoteState},
     },
-    solvei::id,
-    solvei::stake_pool::{
+    westake::id,
+    westake::stake_pool::{
         find_deposit_authority_program_address, find_stake_program_address,
         find_transient_stake_program_address, find_withdraw_authority_program_address, instruction,
         state::{self, FeeType, ValidatorList},
         MINIMUM_ACTIVE_STAKE,
     },
-    solvei::tokens::spl_utils::find_mint_program_address,
+    westake::tokens::spl_utils::find_mint_program_address,
 };
 
 pub const TEST_STAKE_AMOUNT: u64 = 1_500_000_000;
@@ -52,7 +52,7 @@ pub async fn create_pool_and_mint(
     recent_blockhash: &Hash,
 ) -> Result<(), TransportError> {
     let mut transaction = Transaction::new_with_payer(
-        &[solvei::stake_pool::instruction::setup(
+        &[westake::stake_pool::instruction::setup(
             &id(),
             &payer.pubkey(),
             get_packed_len::<state::StakePool>() as u64,
@@ -380,7 +380,7 @@ pub async fn create_stake_pool(
                 validator_list_size as u64,
                 &id(),
             ),
-            solvei::stake_pool::instruction::initialize(
+            westake::stake_pool::instruction::initialize(
                 &id(),
                 &stake_pool,
                 &manager.pubkey(),

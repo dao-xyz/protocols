@@ -1,6 +1,6 @@
 #![cfg(feature = "test-bpf")]
 
-use solvei::stake_pool::{error, instruction};
+use westake::stake_pool::{error, instruction};
 
 use super::super::utils::program_test;
 use super::helpers::*;
@@ -20,8 +20,8 @@ use {
         instruction::InstructionError, signature::Keypair, signature::Signer,
         transaction::Transaction, transaction::TransactionError, transport::TransportError,
     },
-    solvei::id,
-    solvei::stake_pool::state,
+    westake::id,
+    westake::stake_pool::state,
 };
 
 async fn create_required_accounts(

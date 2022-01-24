@@ -14,8 +14,8 @@ use {
         instruction::InstructionError, signature::Keypair, signature::Signer,
         transaction::Transaction, transaction::TransactionError, transport::TransportError,
     },
-    solvei::id,
-    solvei::stake_pool::{error, instruction, state},
+    westake::id,
+    westake::stake_pool::{error, instruction, state},
 };
 
 async fn setup() -> (BanksClient, Keypair, Hash, StakePoolAccounts, Keypair) {

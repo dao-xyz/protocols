@@ -1,7 +1,9 @@
 use solana_program::{
     account_info::{AccountInfo, IntoAccountInfo},
+    entrypoint::ProgramResult,
     hash::Hash,
     instruction::{AccountMeta, Instruction},
+    program_error::PrintProgramError,
     program_option::COption,
     program_pack::Pack,
     rent::Rent,
@@ -16,7 +18,11 @@ use solana_program_test::*;
 use solana_sdk::{
     account::Account, pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction,
 };
-use solvei::{
+use spl_token::{
+    instruction::{initialize_mint, mint_to},
+    state::Mint,
+};
+use westake::{
     id,
     owner::program_owner_token,
     processor::Processor,
@@ -26,13 +32,33 @@ use solvei::{
         instruction::{create_user_transaction, ChatInstruction},
     },
 };
-use spl_token::{
-    instruction::{initialize_mint, mint_to},
-    state::Mint,
-};
+
+fn swap_pool_process_instruction(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    //Processor::process(program_id, accounts, instruction_data)
+    if let Err(error) =
+        spl_token_swap::processor::Processor::process(program_id, accounts, instruction_data)
+    {
+        // catch the error so we can print it
+        error.print::<spl_token_swap::error::SwapError>();
+        Err(error)
+    } else {
+        Ok(())
+    }
+}
 
 pub fn program_test() -> ProgramTest {
-    ProgramTest::new("solvei", solvei::id(), processor!(Processor::process))
+    let mut program = ProgramTest::new("westake", westake::id(), processor!(Processor::process));
+    program.prefer_bpf(false);
+    program.add_program(
+        "spl_token_swap",
+        spl_token_swap::id(),
+        processor!(swap_pool_process_instruction),
+    );
+    program
 }
 
 pub async fn create_owner_token_account(program: &mut ProgramTest, owner: &Keypair) -> Pubkey {

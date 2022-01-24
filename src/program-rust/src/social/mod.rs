@@ -26,6 +26,7 @@ pub mod accounts;
 pub mod instruction;
 pub mod processor;
 pub mod rates;
+pub mod swap;
 
 /// Seed for user accounts
 const USER: &[u8] = b"user";
@@ -39,28 +40,10 @@ const UPVOTE: &[u8] = b"up";
 /// Seed for downvote
 const DOWNVOTE: &[u8] = b"down";
 
-/// Seed for SWAP account
-const SWAP: &[u8] = b"swap";
-
-/// Seed for swap utitlity token account
-const SWAP_UTILITY: &[u8] = b"utility";
-
-/// Seed for swap vote (up|down) token account
-const SWAP_VOTE: &[u8] = b"vote";
-
-/// Seed for swap fee account
-const SWAP_FEE: &[u8] = b"swap_fee";
-
-/// Seed for swap destination token account
-const SWAP_DESTINATION: &[u8] = b"swap_fee";
-
-/// Seed for swap destination token account
-const SWAP_MINT: &[u8] = b"swap_mint";
-
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
+#[derive(Copy, Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum Vote {
-    UP,
-    DOWN,
+    UP = 0,
+    DOWN = 1,
 }
 
 /// Find user account program owned address from username
@@ -217,20 +200,18 @@ pub fn create_post_mint_authority_program_address_seeds<'a>(
 ) -> [&'a [u8]; 3] {
     create_mint_authority_program_address_seeds(post, bump_seed)
 }
-
+/*
 /// Find escrow address for mint
 pub fn find_post_escrow_program_address(program_id: &Pubkey, post: &Pubkey) -> (Pubkey, u8) {
-    find_mint_escrow_program_address(program_id, post)
+
 }
 
 /// Create post mint escrow program address
 pub fn create_post_mint_escrow_program_address_seeds<'a>(
     post: &'a Pubkey,
     bump_seed: &'a [u8],
-) -> [&'a [u8]; 3] {
-    create_mint_escrow_program_address_seeds(post, bump_seed)
-}
-
+)
+ */
 /*
 /// Find address for the token mint for the post account
 pub fn find_user_post_token_program_address(

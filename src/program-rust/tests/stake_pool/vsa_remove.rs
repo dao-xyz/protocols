@@ -17,8 +17,8 @@ use {
         transaction::{Transaction, TransactionError},
         transport::TransportError,
     },
-    solvei::id,
-    solvei::stake_pool::{
+    westake::id,
+    westake::stake_pool::{
         error::StakePoolError, find_transient_stake_program_address, instruction, state,
     },
 };

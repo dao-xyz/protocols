@@ -14,8 +14,8 @@ use {
         instruction::InstructionError, signature::Keypair, signature::Signer,
         transaction::Transaction, transaction::TransactionError, transport::TransportError,
     },
-    solvei::id,
-    solvei::stake_pool::{
+    westake::id,
+    westake::stake_pool::{
         error, find_deposit_authority_program_address,
         instruction::{self, FundingType},
         state,

@@ -3,7 +3,7 @@ use solana_program::instruction::InstructionError;
 use solana_program_test::*;
 use solana_sdk::{pubkey::Pubkey, signer::Signer, transaction::Transaction};
 use solana_sdk::{transaction::TransactionError, transport::TransportError};
-use solvei::{id, social::instruction::create_user_transaction};
+use westake::{id, social::instruction::create_user_transaction};
 
 use crate::utils::program_test;
 

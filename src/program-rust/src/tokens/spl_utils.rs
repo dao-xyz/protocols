@@ -487,6 +487,31 @@ pub fn token_transfer<'a>(
     invoke(&ix, &[source, destination, authority, token_program])
 }
 
+/// Issue a spl_token `Transfer` instruction signed.
+#[allow(clippy::too_many_arguments)]
+pub fn token_transfer_signed<'a>(
+    token_program: AccountInfo<'a>,
+    source: AccountInfo<'a>,
+    destination: AccountInfo<'a>,
+    authority: AccountInfo<'a>,
+    seeds: &[&[u8]],
+    amount: u64,
+) -> Result<(), ProgramError> {
+    let ix = spl_token::instruction::transfer(
+        token_program.key,
+        source.key,
+        destination.key,
+        authority.key,
+        &[],
+        amount,
+    )?;
+    invoke_signed(
+        &ix,
+        &[source, destination, authority, token_program],
+        &[seeds],
+    )
+}
+
 /*
 pub fn create_payer_program_multisig_account<'a>(
     multisig_info: &AccountInfo<'a>,

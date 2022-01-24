@@ -10,8 +10,8 @@ use {
         signature::{Keypair, Signer},
         transaction::{Transaction, TransactionError},
     },
-    solvei::id,
-    solvei::stake_pool::{
+    westake::id,
+    westake::stake_pool::{
         error, instruction,
         state::{Fee, FeeType, StakePool},
     },

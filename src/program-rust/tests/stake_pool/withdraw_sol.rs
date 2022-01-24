@@ -12,8 +12,8 @@ use {
         transaction::Transaction,
         transaction::TransactionError,
     },
-    solvei::id,
-    solvei::stake_pool::{
+    westake::id,
+    westake::stake_pool::{
         error::StakePoolError,
         instruction::{self, FundingType},
         state,
