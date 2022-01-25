@@ -27,15 +27,14 @@ use crate::{
 };
 
 use super::{
-    accounts::{AMMCurve, ChannelAccount, MarketMaker, OffsetCurve, PostAccount, UserAccount},
+    accounts::{AMMCurve, ChannelAccount, PostAccount, UserAccount},
     create_channel_account_program_address_seeds, create_post_mint_authority_program_address_seeds,
     create_post_mint_program_account, create_user_account_program_address_seeds,
     find_post_mint_authority_program_address,
     instruction::{
-        AMMCurveCreateSettings, AMMCurveSwapSettings, ChatInstruction, CreatePost,
-        MarketMakerCreateSettings, MarketMakerSwapSettings, VotePost,
+        AMMCurveCreateSettings, AMMCurveSwapSettings, ChatInstruction, CreatePost, VotePost,
     },
-    swap::{self, create_escrow_program_address_seeds},
+    swap::{self, create_escrow_program_address_seeds, longshort::LongShortSwap},
     Vote,
 };
 
@@ -141,36 +140,6 @@ impl Processor {
         let token_program_info = next_account_info(accounts_iter)?;
         let rent = Rent::get()?;
         let content_hash = post.content.hash.clone();
-        create_and_serialize_account_signed_verify_with_bump(
-            payer_account,
-            post_account_info,
-            &AccountContainer::PostAccount(PostAccount {
-                channel: post.channel,
-                content: post.content,
-                market_maker: match &post.market_maker {
-                    MarketMakerCreateSettings::AMM(curve) => match curve {
-                        AMMCurveCreateSettings::Identity { .. } => {
-                            MarketMaker::AMM(AMMCurve::Identity)
-                        }
-                        AMMCurveCreateSettings::OffsetLongShortPool { offset, .. } => {
-                            MarketMaker::AMM(AMMCurve::Offset(OffsetCurve { offset: *offset }))
-                        }
-                        AMMCurveCreateSettings::OffsetLongShort { curve, .. } => {
-                            MarketMaker::AMM(AMMCurve::Offset(OffsetCurve {
-                                offset: curve.token_b_offset,
-                            }))
-                        }
-                    },
-                },
-                timestamp: post.timestamp,
-                creator: *user_account_info.key,
-            }),
-            &[&content_hash],
-            program_id,
-            system_account,
-            &rent,
-            post.post_bump_seed,
-        )?;
 
         // Upvote tokens
         create_post_mint_program_account(
@@ -201,178 +170,248 @@ impl Processor {
         )?;
 
         // MM
-        match post.market_maker {
-            MarketMakerCreateSettings::AMM(amm_curve) => match amm_curve {
-                AMMCurveCreateSettings::Identity { escrow_bump_seed } => {
-                    let escrow_utility_token_account_info = next_account_info(accounts_iter)?;
+        let market_maker = match post.market_maker {
+            AMMCurveCreateSettings::Identity { escrow_bump_seed } => {
+                let escrow_utility_token_account_info = next_account_info(accounts_iter)?;
 
-                    // create empty escrow account
-                    let escrow_bump_seeds = &[escrow_bump_seed];
-                    let escrow_account_seeds = create_escrow_program_address_seeds(
-                        &post_account_info.key,
-                        escrow_bump_seeds,
+                // create empty escrow account
+                let escrow_bump_seeds = &[escrow_bump_seed];
+                let escrow_account_seeds =
+                    create_escrow_program_address_seeds(&post_account_info.key, escrow_bump_seeds);
+                let expected_escrow_address =
+                    Pubkey::create_program_address(&escrow_account_seeds, program_id).unwrap();
+
+                if escrow_utility_token_account_info.key != &expected_escrow_address {
+                    msg!(
+                        "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
+                        escrow_utility_token_account_info.key,
+                        expected_escrow_address
                     );
-                    let expected_escrow_address =
-                        Pubkey::create_program_address(&escrow_account_seeds, program_id).unwrap();
-
-                    if escrow_utility_token_account_info.key != &expected_escrow_address {
-                        msg!(
-                            "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
-                            escrow_utility_token_account_info.key,
-                            expected_escrow_address
-                        );
-                        return Err(ProgramError::InvalidSeeds);
-                    }
-                    create_program_token_account(
-                        escrow_utility_token_account_info,
-                        &escrow_account_seeds,
-                        utility_mint_account_info,
-                        mint_authority_account_info,
-                        payer_account,
-                        rent_info,
-                        token_program_info,
-                        system_account,
-                        program_id,
-                    )?;
+                    return Err(ProgramError::InvalidSeeds);
                 }
-                AMMCurveCreateSettings::OffsetLongShortPool {
-                    offset,
+                create_program_token_account(
+                    escrow_utility_token_account_info,
+                    &escrow_account_seeds,
+                    utility_mint_account_info,
+                    mint_authority_account_info,
+                    payer_account,
+                    rent_info,
+                    token_program_info,
+                    system_account,
+                    program_id,
+                )?;
+                AMMCurve::Identity { escrow_bump_seed }
+            }
+            /* AMMCurveCreateSettings::OffsetLongShortPool {
+                offset,
+                mint_authority_bump_seed,
+                long,
+                short,
+            } => {
+                let up_swap_account_info = next_account_info(accounts_iter)?;
+                let up_swap_authority_info = next_account_info(accounts_iter)?;
+                let up_token_utility_account = next_account_info(accounts_iter)?;
+                let up_token_account = next_account_info(accounts_iter)?;
+                let up_swap_pool_mint = next_account_info(accounts_iter)?;
+                let up_swap_pool_fee_token_account = next_account_info(accounts_iter)?;
+                let up_swap_pool_deposit_token_account = next_account_info(accounts_iter)?;
+
+                let down_swap_account_info = next_account_info(accounts_iter)?;
+                let down_swap_authority_info = next_account_info(accounts_iter)?;
+                let down_token_utility_account = next_account_info(accounts_iter)?;
+                let down_token_account = next_account_info(accounts_iter)?;
+                let down_swap_pool_mint = next_account_info(accounts_iter)?;
+                let down_swap_pool_fee_token_account = next_account_info(accounts_iter)?;
+                let down_swap_pool_deposit_token_account = next_account_info(accounts_iter)?;
+
+                let swap_program_info = next_account_info(accounts_iter)?;
+
+                swap::offset::create_and_initalize_swap_pool(
+                    program_id,
+                    payer_account,
+                    post_account_info,
+                    up_swap_account_info,
+                    up_swap_authority_info,
+                    up_swap_pool_mint,
+                    up_swap_pool_fee_token_account,
+                    up_swap_pool_deposit_token_account,
+                    utility_mint_account_info,
+                    up_token_utility_account,
+                    mint_upvote_account_info,
+                    up_token_account,
+                    rent_info,
+                    token_program_info,
+                    mint_authority_account_info,
                     mint_authority_bump_seed,
-                    long,
-                    short,
-                } => {
-                    let up_swap_account_info = next_account_info(accounts_iter)?;
-                    let up_swap_authority_info = next_account_info(accounts_iter)?;
-                    let up_token_utility_account = next_account_info(accounts_iter)?;
-                    let up_token_account = next_account_info(accounts_iter)?;
-                    let up_swap_pool_mint = next_account_info(accounts_iter)?;
-                    let up_swap_pool_fee_token_account = next_account_info(accounts_iter)?;
-                    let up_swap_pool_deposit_token_account = next_account_info(accounts_iter)?;
+                    system_account,
+                    swap_program_info,
+                    &long,
+                    offset,
+                    &Vote::UP,
+                    &rent,
+                )?;
 
-                    let down_swap_account_info = next_account_info(accounts_iter)?;
-                    let down_swap_authority_info = next_account_info(accounts_iter)?;
-                    let down_token_utility_account = next_account_info(accounts_iter)?;
-                    let down_token_account = next_account_info(accounts_iter)?;
-                    let down_swap_pool_mint = next_account_info(accounts_iter)?;
-                    let down_swap_pool_fee_token_account = next_account_info(accounts_iter)?;
-                    let down_swap_pool_deposit_token_account = next_account_info(accounts_iter)?;
+                swap::offset::create_and_initalize_swap_pool(
+                    program_id,
+                    payer_account,
+                    post_account_info,
+                    down_swap_account_info,
+                    down_swap_authority_info,
+                    down_swap_pool_mint,
+                    down_swap_pool_fee_token_account,
+                    down_swap_pool_deposit_token_account,
+                    utility_mint_account_info,
+                    down_token_utility_account,
+                    mint_downvote_account_info,
+                    down_token_account,
+                    rent_info,
+                    token_program_info,
+                    mint_authority_account_info,
+                    mint_authority_bump_seed,
+                    system_account,
+                    swap_program_info,
+                    &short,
+                    offset,
+                    &Vote::DOWN,
+                    &rent,
+                )?;
+            } */
+            AMMCurveCreateSettings::LongShort {
+                curve,
+                long_token_account_bump_seed,
+                short_token_account_bump_seed,
+                long_utility_token_account_bump_seed,
+                short_utility_token_account_bump_seed,
+            } => {
+                let token_upvote_utility_account = next_account_info(accounts_iter)?;
+                let token_upvote_account = next_account_info(accounts_iter)?;
+                let token_downvote_utility_account = next_account_info(accounts_iter)?;
+                let token_downvote_account = next_account_info(accounts_iter)?;
 
-                    let swap_program_info = next_account_info(accounts_iter)?;
+                // Supply account for the utility token for the long swap
+                create_program_token_account(
+                    token_upvote_utility_account,
+                    &[
+                        post_account_info.key.as_ref(),
+                        utility_mint_account_info.key.as_ref(),
+                        &[Vote::UP as u8],
+                        &[long_utility_token_account_bump_seed],
+                    ],
+                    utility_mint_account_info,
+                    mint_authority_account_info,
+                    payer_account,
+                    rent_info,
+                    token_program_info,
+                    system_account,
+                    program_id,
+                )?;
 
-                    swap::offset::create_and_initalize_swap_pool(
-                        program_id,
-                        payer_account,
-                        post_account_info,
-                        up_swap_account_info,
-                        up_swap_authority_info,
-                        up_swap_pool_mint,
-                        up_swap_pool_fee_token_account,
-                        up_swap_pool_deposit_token_account,
-                        utility_mint_account_info,
-                        up_token_utility_account,
-                        mint_upvote_account_info,
-                        up_token_account,
-                        rent_info,
-                        token_program_info,
-                        mint_authority_account_info,
-                        mint_authority_bump_seed,
-                        system_account,
-                        swap_program_info,
-                        &long,
-                        offset,
-                        &Vote::UP,
-                        &rent,
-                    )?;
+                // Supply account for the long token
+                create_program_token_account(
+                    token_upvote_account,
+                    &[
+                        post_account_info.key.as_ref(),
+                        mint_upvote_account_info.key.as_ref(),
+                        &[long_token_account_bump_seed],
+                    ],
+                    mint_upvote_account_info,
+                    mint_authority_account_info,
+                    payer_account,
+                    rent_info,
+                    token_program_info,
+                    system_account,
+                    program_id,
+                )?;
 
-                    swap::offset::create_and_initalize_swap_pool(
-                        program_id,
-                        payer_account,
-                        post_account_info,
-                        down_swap_account_info,
-                        down_swap_authority_info,
-                        down_swap_pool_mint,
-                        down_swap_pool_fee_token_account,
-                        down_swap_pool_deposit_token_account,
-                        utility_mint_account_info,
-                        down_token_utility_account,
-                        mint_downvote_account_info,
-                        down_token_account,
-                        rent_info,
-                        token_program_info,
-                        mint_authority_account_info,
-                        mint_authority_bump_seed,
-                        system_account,
-                        swap_program_info,
-                        &short,
-                        offset,
-                        &Vote::DOWN,
-                        &rent,
-                    )?;
-                }
+                // Supply account for the utility token for the short swap
+                create_program_token_account(
+                    token_downvote_utility_account,
+                    &[
+                        post_account_info.key.as_ref(),
+                        utility_mint_account_info.key.as_ref(),
+                        &[Vote::DOWN as u8],
+                        &[short_utility_token_account_bump_seed],
+                    ],
+                    utility_mint_account_info,
+                    mint_authority_account_info,
+                    payer_account,
+                    rent_info,
+                    token_program_info,
+                    system_account,
+                    program_id,
+                )?;
 
-                AMMCurveCreateSettings::OffsetLongShort {
-                    long_token_account_bump_seed,
-                    short_token_account_bump_seed,
-                    utility_token_account_bump_seed,
-                    ..
-                } => {
-                    let token_utility_account = next_account_info(accounts_iter)?;
-                    let token_upvote_account = next_account_info(accounts_iter)?;
-                    let token_downvote_account = next_account_info(accounts_iter)?;
+                // Supply account for the short token
+                create_program_token_account(
+                    token_downvote_account,
+                    &[
+                        post_account_info.key.as_ref(),
+                        mint_downvote_account_info.key.as_ref(),
+                        &[short_token_account_bump_seed],
+                    ],
+                    mint_downvote_account_info,
+                    mint_authority_account_info,
+                    payer_account,
+                    rent_info,
+                    token_program_info,
+                    system_account,
+                    program_id,
+                )?;
 
-                    // Supply account for the utility token
-                    create_program_token_account(
-                        token_utility_account,
-                        &[
-                            post_account_info.key.as_ref(),
-                            utility_mint_account_info.key.as_ref(),
-                            &[utility_token_account_bump_seed],
-                        ],
-                        utility_mint_account_info,
-                        mint_authority_account_info,
-                        payer_account,
-                        rent_info,
-                        token_program_info,
-                        system_account,
-                        program_id,
-                    )?;
+                // Mint initial supplies, to be equal to the offset
+                // This gives us a 1 to 1 initially for the valua of vote token and utility token
+                let initial_token_suply = curve.token_b_offset;
+                spl_mint_to(
+                    token_upvote_account,
+                    mint_upvote_account_info,
+                    mint_authority_account_info,
+                    &create_post_mint_authority_program_address_seeds(
+                        post_account_info.key,
+                        &[post.mint_authority_bump_seed],
+                    ),
+                    initial_token_suply,
+                    program_id,
+                )?;
 
-                    // Supply account for the long token
-                    create_program_token_account(
-                        token_upvote_account,
-                        &[
-                            post_account_info.key.as_ref(),
-                            mint_upvote_account_info.key.as_ref(),
-                            &[long_token_account_bump_seed],
-                        ],
-                        mint_upvote_account_info,
-                        mint_authority_account_info,
-                        payer_account,
-                        rent_info,
-                        token_program_info,
-                        system_account,
-                        program_id,
-                    )?;
+                spl_mint_to(
+                    token_downvote_account,
+                    mint_downvote_account_info,
+                    mint_authority_account_info,
+                    &create_post_mint_authority_program_address_seeds(
+                        post_account_info.key,
+                        &[post.mint_authority_bump_seed],
+                    ),
+                    initial_token_suply,
+                    program_id,
+                )?;
 
-                    // Supply account for the short token
-                    create_program_token_account(
-                        token_downvote_account,
-                        &[
-                            post_account_info.key.as_ref(),
-                            mint_downvote_account_info.key.as_ref(),
-                            &[short_token_account_bump_seed],
-                        ],
-                        mint_downvote_account_info,
-                        mint_authority_account_info,
-                        payer_account,
-                        rent_info,
-                        token_program_info,
-                        system_account,
-                        program_id,
-                    )?;
-                }
-            },
-        }
+                AMMCurve::LongShort(LongShortSwap {
+                    curve: curve,
+                    long_token_account: *token_upvote_account.key,
+                    short_token_account: *token_downvote_account.key,
+                    long_utility_token_account: *token_upvote_utility_account.key,
+                    short_utility_token_account: *token_downvote_utility_account.key,
+                    token_program_id: *token_program_info.key,
+                })
+            }
+        };
+
+        create_and_serialize_account_signed_verify_with_bump(
+            payer_account,
+            post_account_info,
+            &AccountContainer::PostAccount(PostAccount {
+                channel: post.channel,
+                content: post.content,
+                market_maker,
+                timestamp: post.timestamp,
+                creator: *user_account_info.key,
+            }),
+            &[&content_hash],
+            program_id,
+            system_account,
+            &rent,
+            post.post_bump_seed,
+        )?;
 
         Ok(())
     }
@@ -404,6 +443,8 @@ impl Processor {
         if mint_associated_token_account.data.borrow().is_empty() {
             // Unitialized token account
             // this will cost some sol, but we assume we don't have to mint tokens for this
+            msg!("CREATE UPV ACC {}", mint_associated_token_account.key);
+
             invoke(
                 &create_associated_token_account(
                     payer_account.key,
@@ -531,30 +572,76 @@ impl Processor {
         }*/
 
         match post_account.market_maker {
-            MarketMaker::AMM(curve) => match curve {
-                AMMCurve::LongShort(swap) => {
-                    let token_utility_account = next_account_info(accounts_iter)?;
-                    let token_upvote_account = next_account_info(accounts_iter)?;
-                    let token_downvote_account = next_account_info(accounts_iter)?;
-                    let swap_result = swap.swap(
-                        payer_utility_token_account,
-                        mint_associated_token_account,
-                        token_utility_account,
-                        token_upvote_account,
-                        token_downvote_account,
-                        swap::longshort::LongShortSwapDirection::BuyLong,
-                        stake.stake.into(),
-                        payer_account,
-                        mint_authority_account_info,
-                        &create_post_mint_authority_program_address_seeds(
-                            post_account_info.key,
-                            &[stake.mint_authority_bump_seed],
-                        ),
-                        token_program_info,
-                    )?;
+            AMMCurve::Identity { escrow_bump_seed } => {
+                // Verify escrow account is correct
+
+                let escrow_token_account_info = next_account_info(accounts_iter)?;
+                let escrow_bump_seeds = &[escrow_bump_seed];
+                let escrow_account_seeds =
+                    create_escrow_program_address_seeds(&post_account_info.key, escrow_bump_seeds);
+                let expected_escrow_address =
+                    Pubkey::create_program_address(&escrow_account_seeds, program_id).unwrap();
+
+                if escrow_token_account_info.key != &expected_escrow_address {
+                    msg!(
+                        "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
+                        escrow_token_account_info.key,
+                        expected_escrow_address
+                    );
+                    return Err(ProgramError::InvalidSeeds);
                 }
-                _ => {}
-            },
+
+                token_transfer(
+                    token_program_info.clone(),
+                    payer_utility_token_account.clone(),
+                    escrow_token_account_info.clone(),
+                    payer_account.clone(),
+                    stake.stake,
+                )?;
+
+                // for some tokens (Upvotes or downvotes depending on the mint info)
+                spl_mint_to(
+                    mint_associated_token_account,
+                    mint_account_info,
+                    mint_authority_account_info,
+                    &create_post_mint_authority_program_address_seeds(
+                        post_account_info.key,
+                        &[stake.mint_authority_bump_seed],
+                    ),
+                    stake.stake,
+                    program_id,
+                )?;
+            }
+            AMMCurve::LongShort(swap) => {
+                let token_upvote_utility_account = next_account_info(accounts_iter)?;
+                let token_upvote_account = next_account_info(accounts_iter)?;
+                let token_downvote_utility_account = next_account_info(accounts_iter)?;
+                let token_downvote_account = next_account_info(accounts_iter)?;
+                swap.swap(
+                    payer_utility_token_account,
+                    mint_associated_token_account,
+                    match stake.vote {
+                        Vote::UP => token_upvote_utility_account,
+                        Vote::DOWN => token_downvote_utility_account,
+                    },
+                    token_upvote_account,
+                    mint_upvote_account_info,
+                    token_downvote_account,
+                    mint_downvote_account_info,
+                    match stake.vote {
+                        Vote::UP => swap::longshort::LongShortSwapDirection::BuyLong,
+                        Vote::DOWN => swap::longshort::LongShortSwapDirection::BuyShort,
+                    },
+                    stake.stake.into(),
+                    payer_account,
+                    mint_authority_account_info,
+                    &create_post_mint_authority_program_address_seeds(
+                        post_account_info.key,
+                        &[stake.mint_authority_bump_seed],
+                    ),
+                    token_program_info,
+                )?;
+            }
         }
 
         Ok(())
@@ -566,10 +653,10 @@ impl Processor {
         stake: VotePost,
     ) -> ProgramResult {
         let accounts_iter = &mut accounts.iter();
-        let payer = next_account_info(accounts_iter)?;
+        let payer_account = next_account_info(accounts_iter)?;
         let payer_utility_token_account = next_account_info(accounts_iter)?;
         let post_account_info = next_account_info(accounts_iter)?;
-        //let post_account = deserialize_post_account(post_account_info.data.borrow().as_ref());
+        let post_account = deserialize_post_account(post_account_info.data.borrow().as_ref());
         let mint_upvote_account_info = next_account_info(accounts_iter)?;
         let mint_downvote_account_info = next_account_info(accounts_iter)?;
         let mint_authority_account_info = next_account_info(accounts_iter)?;
@@ -581,81 +668,99 @@ impl Processor {
             Vote::DOWN => mint_downvote_account_info,
         };
 
-        match stake.market_maker {
-            MarketMakerSwapSettings::AMM(curve) => {
-                //transfer_to(payer_account, mint_escrow_account_info, stake.stake)?;
-                //spl_burn(solvei_associated_token_account,solvei_mint_info,solvei_mint_authority_info,create_spl)
+        match post_account.market_maker {
+            //transfer_to(payer_account, mint_escrow_account_info, stake.stake)?;
+            //spl_burn(solvei_associated_token_account,solvei_mint_info,solvei_mint_authority_info,create_spl)
+            AMMCurve::Identity { escrow_bump_seed } => {
+                // Verify escrow account is correct
+                let escrow_token_account_info = next_account_info(accounts_iter)?;
 
-                match curve {
-                    AMMCurveSwapSettings::Identity { escrow_bump_seed } => {
-                        // Verify escrow account is correct
-                        let escrow_token_account_info = next_account_info(accounts_iter)?;
+                let escrow_bump_seeds = &[escrow_bump_seed];
+                let escrow_account_seeds =
+                    create_escrow_program_address_seeds(&post_account_info.key, escrow_bump_seeds);
 
-                        let escrow_bump_seeds = &[escrow_bump_seed];
-                        let escrow_account_seeds = create_escrow_program_address_seeds(
-                            &post_account_info.key,
-                            escrow_bump_seeds,
-                        );
+                let expected_escrow_address =
+                    Pubkey::create_program_address(&escrow_account_seeds, program_id).unwrap();
 
-                        let expected_escrow_address =
-                            Pubkey::create_program_address(&escrow_account_seeds, program_id)
-                                .unwrap();
-
-                        if escrow_token_account_info.key != &expected_escrow_address {
-                            msg!(
-                                "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
-                                escrow_token_account_info.key,
-                                expected_escrow_address
-                            );
-                            return Err(ProgramError::InvalidSeeds);
-                        }
-
-                        let bump_seeds = &[stake.mint_authority_bump_seed];
-                        let seeds = create_post_mint_authority_program_address_seeds(
-                            post_account_info.key,
-                            bump_seeds,
-                        );
-
-                        invoke_signed(
-                            &spl_token::instruction::transfer(
-                                token_program_info.key,
-                                escrow_token_account_info.key,
-                                payer_utility_token_account.key,
-                                &mint_authority_account_info.key,
-                                &[],
-                                stake.stake,
-                            )?,
-                            &[
-                                escrow_token_account_info.clone(),
-                                payer_utility_token_account.clone(),
-                                mint_authority_account_info.clone(),
-                                token_program_info.clone(),
-                            ],
-                            &[&seeds],
-                        )?;
-
-                        invoke(
-                            &burn(
-                                &token_program_info.key,
-                                mint_associated_token_account.key,
-                                mint_account_info.key,
-                                &payer.key,
-                                &[],
-                                stake.stake,
-                            )?,
-                            &[
-                                mint_associated_token_account.clone(),
-                                mint_account_info.clone(),
-                                payer.clone(),
-                                token_program_info.clone(),
-                            ],
-                        )?;
-                    }
-                    AMMCurveSwapSettings::OffsetPool { .. } => {
-                        msg!("HERE");
-                        panic!("Not supported")
-                    }
+                if escrow_token_account_info.key != &expected_escrow_address {
+                    msg!(
+                        "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
+                        escrow_token_account_info.key,
+                        expected_escrow_address
+                    );
+                    return Err(ProgramError::InvalidSeeds);
                 }
+
+                let bump_seeds = &[stake.mint_authority_bump_seed];
+                let seeds = create_post_mint_authority_program_address_seeds(
+                    post_account_info.key,
+                    bump_seeds,
+                );
+
+                invoke_signed(
+                    &spl_token::instruction::transfer(
+                        token_program_info.key,
+                        escrow_token_account_info.key,
+                        payer_utility_token_account.key,
+                        &mint_authority_account_info.key,
+                        &[],
+                        stake.stake,
+                    )?,
+                    &[
+                        escrow_token_account_info.clone(),
+                        payer_utility_token_account.clone(),
+                        mint_authority_account_info.clone(),
+                        token_program_info.clone(),
+                    ],
+                    &[&seeds],
+                )?;
+
+                invoke(
+                    &burn(
+                        &token_program_info.key,
+                        mint_associated_token_account.key,
+                        mint_account_info.key,
+                        &payer_account.key,
+                        &[],
+                        stake.stake,
+                    )?,
+                    &[
+                        mint_associated_token_account.clone(),
+                        mint_account_info.clone(),
+                        payer_account.clone(),
+                        token_program_info.clone(),
+                    ],
+                )?;
+            }
+            AMMCurve::LongShort(swap) => {
+                let token_upvote_utility_account = next_account_info(accounts_iter)?;
+                let token_upvote_account = next_account_info(accounts_iter)?;
+                let token_downvote_utility_account = next_account_info(accounts_iter)?;
+                let token_downvote_account = next_account_info(accounts_iter)?;
+                swap.swap(
+                    mint_associated_token_account,
+                    payer_utility_token_account,
+                    match stake.vote {
+                        Vote::UP => token_upvote_utility_account,
+                        Vote::DOWN => token_downvote_utility_account,
+                    },
+                    token_upvote_account,
+                    mint_upvote_account_info,
+                    token_downvote_account,
+                    mint_downvote_account_info,
+                    match stake.vote {
+                        Vote::UP => swap::longshort::LongShortSwapDirection::SellLong,
+                        Vote::DOWN => swap::longshort::LongShortSwapDirection::SellShort,
+                    },
+                    stake.stake.into(),
+                    payer_account,
+                    mint_authority_account_info,
+                    &create_post_mint_authority_program_address_seeds(
+                        post_account_info.key,
+                        &[stake.mint_authority_bump_seed],
+                    ),
+                    token_program_info,
+                )?;
             }
         }
 

@@ -19,11 +19,14 @@ use crate::{
 };
 
 use super::{
-    accounts::{AMMCurve, Content, Description, MarketMaker, PostAccount},
+    accounts::{AMMCurve, Content, Description, PostAccount},
     find_channel_program_address, find_post_downvote_mint_program_address,
     find_post_mint_authority_program_address, find_post_program_address,
     find_post_upvote_mint_program_address, find_user_account_program_address,
-    swap::{self, find_escrow_program_address, longshort::LongShortCurve},
+    swap::{
+        self, create_escrow_program_address_seeds, find_escrow_program_address,
+        longshort::LongShortCurve,
+    },
     Vote,
 };
 /*
@@ -45,33 +48,12 @@ pub enum AMMCurveSwapSettings {
     Identity {
         escrow_bump_seed: u8,
     },
-    OffsetPool {
-        swap_bump_seed: u8,
-        swap_authority_bump_seed: u8,
-        swap_mint_bump_seed: u8,
-        swap_fee_token_account_bump_seed: u8,
-        token_utility_account_bump_seed: u8,
-        token_upvote_account_bump_seed: u8,
-        token_downvote_account_bump_seed: u8,
-        vote_mint_authority_bump_seed: u8,
+    LongShort {
+        long_utility_token_account_bump_seed: u8,
+        long_token_account_bump_seed: u8,
+        short_utility_token_account_bump_seed: u8,
+        short_token_account_bump_seed: u8,
     },
-    Offset {},
-}
-
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
-pub enum MarketMakerSwapSettings {
-    AMM(AMMCurveSwapSettings), // order book later
-}
-
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
-pub struct OffsetCreateSettings {
-    pub swap_bump_seed: u8,
-    pub swap_authority_bump_seed: u8,
-    pub swap_mint_bump_seed: u8,
-    pub swap_fee_token_account_bump_seed: u8,
-    pub swap_deposit_token_account_bump_seed: u8,
-    pub token_utility_account_bump_seed: u8,
-    pub token_target_account_bump_seed: u8,
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
@@ -79,26 +61,14 @@ pub enum AMMCurveCreateSettings {
     Identity {
         escrow_bump_seed: u8,
     }, // 1 to 1 (risk "free"), unlimited supply
-    OffsetLongShortPool {
-        // Create two swap pools to simulate price actions for taking long and short positions of underlying assets
-        offset: u64, // A common offset for both offset curves
-        mint_authority_bump_seed: u8,
-        long: OffsetCreateSettings,
-        short: OffsetCreateSettings,
-    },
-
-    OffsetLongShort {
+    LongShort {
         // Create two swap pools to simulate price actions for taking long and short positions of underlying assets
         curve: LongShortCurve,
-        utility_token_account_bump_seed: u8,
+        long_utility_token_account_bump_seed: u8,
         long_token_account_bump_seed: u8,
+        short_utility_token_account_bump_seed: u8,
         short_token_account_bump_seed: u8,
     },
-}
-
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
-pub enum MarketMakerCreateSettings {
-    AMM(AMMCurveCreateSettings), // order book later
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
@@ -107,7 +77,7 @@ pub struct CreatePost {
     pub channel: Pubkey,
     pub timestamp: u64,
     pub content: Content,
-    pub market_maker: MarketMakerCreateSettings,
+    pub market_maker: AMMCurveCreateSettings,
     pub post_bump_seed: u8,
     pub mint_upvote_bump_seed: u8,
     pub mint_downvote_bump_seed: u8,
@@ -125,7 +95,7 @@ pub struct VotePost {
     pub post: Pubkey,
     pub stake: u64,
     pub mint_authority_bump_seed: u8,
-    pub market_maker: MarketMakerSwapSettings,
+    pub market_maker: AMMCurveSwapSettings,
     pub vote: Vote,
 }
 
@@ -212,56 +182,14 @@ pub fn create_channel_transaction(
     }
 }
 
-fn build_offset_curve_instruction(
-    program_id: &Pubkey,
-    post: &Pubkey,
-    target_mint: &Pubkey,
-    accounts: &mut Vec<AccountMeta>,
-    vote: &Vote,
-) -> OffsetCreateSettings {
-    let (swap, swap_bump_seed) = swap::offset::find_swap_program_address(program_id, &post, vote);
-    let (swap_authority, swap_authority_bump_seed) =
-        swap::offset::find_swap_authority_program_address(&swap);
-    let (swap_token_account_utility, swap_token_account_utility_bump_seed) =
-        swap::offset::find_utility_account_program_address(program_id, &post, vote);
-
-    let (swap_token_account_target, swap_token_account_target_bump_seed) =
-        swap::offset::find_swap_token_account_program_address(program_id, &target_mint);
-    let (swap_mint, swap_mint_bump_seed) =
-        swap::offset::find_swap_mint_program_address(program_id, &swap);
-    let (swap_fee_token_account, swap_fee_token_account_bump_seed) =
-        swap::offset::find_swap_token_fee_account_program_address(program_id, &swap);
-    let (swap_deposit_token_account, swap_deposit_token_account_bump_seed) =
-        swap::offset::find_swap_token_deposit_account_program_address(program_id, &swap);
-
-    accounts.push(AccountMeta::new(swap, false));
-    accounts.push(AccountMeta::new_readonly(swap_authority, false));
-    accounts.push(AccountMeta::new(swap_token_account_utility, false));
-    accounts.push(AccountMeta::new(swap_token_account_target, false));
-    accounts.push(AccountMeta::new(swap_mint, false));
-    accounts.push(AccountMeta::new(swap_fee_token_account, false));
-    accounts.push(AccountMeta::new(swap_deposit_token_account, false));
-
-    OffsetCreateSettings {
-        swap_bump_seed,
-        swap_authority_bump_seed,
-        swap_mint_bump_seed,
-        swap_deposit_token_account_bump_seed,
-        swap_fee_token_account_bump_seed,
-        token_target_account_bump_seed: swap_token_account_target_bump_seed,
-        token_utility_account_bump_seed: swap_token_account_utility_bump_seed,
-    }
-}
-
-/// Creates a create post transction
-pub fn create_post_transaction(
+/// Creates a create post with long short market maker stransction
+pub fn create_post_identity_transaction(
     program_id: &Pubkey,
     payer: &Pubkey,
     user: &Pubkey,
     channel: &Pubkey,
     timestamp: u64,
     content: &Content,
-    market_maker: &MarketMaker,
 ) -> Instruction {
     let (post_address, post_bump_seed) = find_post_program_address(program_id, &content.hash);
     let (mint_upvote_address, mint_upvote_bump_seed) =
@@ -290,74 +218,8 @@ pub fn create_post_transaction(
     ];
 
     // For offset SwapCurve we need aditional accounts
-    let create_market_maker = match market_maker {
-        MarketMaker::AMM(curve) => match curve {
-            AMMCurve::Identity => MarketMakerCreateSettings::AMM({
-                let (escrow_address, escrow_bump_seed) =
-                    find_escrow_program_address(program_id, &post_address);
-                accounts.push(AccountMeta::new(escrow_address, false));
-                AMMCurveCreateSettings::Identity {
-                    escrow_bump_seed: escrow_bump_seed,
-                }
-            }),
-            AMMCurve::Offset(offset) => {
-                /* let long = build_offset_curve_instruction(
-                    program_id,
-                    &post_address,
-                    &mint_upvote_address,
-                    &mut accounts,
-                    &Vote::UP,
-                );
-                let short = build_offset_curve_instruction(
-                    program_id,
-                    &post_address,
-                    &mint_downvote_address,
-                    &mut accounts,
-                    &Vote::DOWN,
-                );
-                accounts.push(AccountMeta::new_readonly(spl_token_swap::id(), false));
-                MarketMakerCreateSettings::AMM(AMMCurveCreateSettings::OffsetLongShortPool {
-                    offset: offset.offset,
-                    mint_authority_bump_seed,
-                    long,
-                    short,
-                }) */
-
-                let (utility_token_account, utility_token_account_bump_seed) =
-                    swap::longshort::find_post_mint_token_account(
-                        program_id,
-                        &post_address,
-                        &utility_mint_address,
-                    );
-
-                let (long_token_account, long_token_account_bump_seed) =
-                    swap::longshort::find_post_mint_token_account(
-                        program_id,
-                        &post_address,
-                        &mint_upvote_address,
-                    );
-                let (short_token_account, short_token_account_bump_seed) =
-                    swap::longshort::find_post_mint_token_account(
-                        program_id,
-                        &post_address,
-                        &mint_downvote_address,
-                    );
-
-                accounts.push(AccountMeta::new(utility_token_account, false));
-                accounts.push(AccountMeta::new(long_token_account, false));
-                accounts.push(AccountMeta::new(short_token_account, false));
-
-                MarketMakerCreateSettings::AMM(AMMCurveCreateSettings::OffsetLongShort {
-                    curve: LongShortCurve {
-                        token_b_offset: offset.offset,
-                    },
-                    long_token_account_bump_seed,
-                    short_token_account_bump_seed,
-                    utility_token_account_bump_seed,
-                })
-            }
-        },
-    };
+    let (escrow_address, escrow_bump_seed) = find_escrow_program_address(program_id, &post_address);
+    accounts.push(AccountMeta::new(escrow_address, false));
 
     Instruction {
         program_id: *program_id,
@@ -367,7 +229,107 @@ pub fn create_post_transaction(
             mint_upvote_bump_seed,
             mint_downvote_bump_seed,
             mint_authority_bump_seed,
-            market_maker: create_market_maker,
+            market_maker: AMMCurveCreateSettings::Identity {
+                escrow_bump_seed: escrow_bump_seed,
+            },
+            timestamp,
+            content: content.clone(),
+            post_bump_seed,
+        })
+        .try_to_vec()
+        .unwrap(),
+        accounts,
+    }
+}
+
+/// Creates a create post with long short market maker stransction
+pub fn create_post_long_short_transaction(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    user: &Pubkey,
+    channel: &Pubkey,
+    timestamp: u64,
+    content: &Content,
+) -> Instruction {
+    let initial_supply = 1_000_000;
+    let (post_address, post_bump_seed) = find_post_program_address(program_id, &content.hash);
+    let (mint_upvote_address, mint_upvote_bump_seed) =
+        find_post_upvote_mint_program_address(program_id, &post_address);
+
+    let (mint_downvote_address, mint_downvote_bump_seed) =
+        find_post_downvote_mint_program_address(program_id, &post_address);
+
+    let (mint_authority_address, mint_authority_bump_seed) =
+        find_post_mint_authority_program_address(program_id, &post_address);
+
+    let (utility_mint_address, _) = find_utility_mint_program_address(program_id);
+    /*   let (user_post_token_account, user_post_token_account_bump_seed) =
+    find_user_post_token_program_address(program_id, &post_address, user); */
+    let mut accounts = vec![
+        AccountMeta::new(*payer, true),
+        AccountMeta::new(*user, false),
+        AccountMeta::new(post_address, false),
+        AccountMeta::new(mint_upvote_address, false),
+        AccountMeta::new(mint_downvote_address, false),
+        AccountMeta::new(mint_authority_address, false),
+        AccountMeta::new(utility_mint_address, false),
+        AccountMeta::new_readonly(system_program::id(), false),
+        AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        AccountMeta::new_readonly(spl_token::id(), false),
+    ];
+
+    // For offset SwapCurve we need aditional accounts
+
+    let (long_utility_token_account, long_utility_token_account_bump_seed) =
+        swap::longshort::find_post_utility_mint_token_account(
+            program_id,
+            &post_address,
+            &utility_mint_address,
+            &Vote::UP,
+        );
+    let (short_utility_token_account, short_utility_token_account_bump_seed) =
+        swap::longshort::find_post_utility_mint_token_account(
+            program_id,
+            &post_address,
+            &utility_mint_address,
+            &Vote::DOWN,
+        );
+
+    let (long_token_account, long_token_account_bump_seed) =
+        swap::longshort::find_post_mint_token_account(
+            program_id,
+            &post_address,
+            &mint_upvote_address,
+        );
+    let (short_token_account, short_token_account_bump_seed) =
+        swap::longshort::find_post_mint_token_account(
+            program_id,
+            &post_address,
+            &mint_downvote_address,
+        );
+
+    accounts.push(AccountMeta::new(long_utility_token_account, false));
+    accounts.push(AccountMeta::new(long_token_account, false));
+    accounts.push(AccountMeta::new(short_utility_token_account, false));
+    accounts.push(AccountMeta::new(short_token_account, false));
+
+    Instruction {
+        program_id: *program_id,
+        data: ChatInstruction::CreatePost(CreatePost {
+            creator: *user,
+            channel: *channel,
+            mint_upvote_bump_seed,
+            mint_downvote_bump_seed,
+            mint_authority_bump_seed,
+            market_maker: AMMCurveCreateSettings::LongShort {
+                curve: LongShortCurve {
+                    token_b_offset: initial_supply,
+                },
+                long_token_account_bump_seed,
+                short_token_account_bump_seed,
+                long_utility_token_account_bump_seed,
+                short_utility_token_account_bump_seed,
+            },
             timestamp,
             content: content.clone(),
             post_bump_seed,
@@ -387,8 +349,8 @@ pub fn create_post_vote_transaction(
     stake: u64,
     vote: Vote,
 ) -> Instruction {
-    let (mint_address_upvote, _) = find_post_upvote_mint_program_address(program_id, post);
-    let (mint_address_downvote, _) = find_post_downvote_mint_program_address(program_id, post);
+    let (mint_upvote_address, _) = find_post_upvote_mint_program_address(program_id, post);
+    let (mint_downvote_address, _) = find_post_downvote_mint_program_address(program_id, post);
 
     let payer_utility_token_address =
         get_associated_token_address(payer, &find_utility_mint_program_address(program_id).0);
@@ -397,16 +359,16 @@ pub fn create_post_vote_transaction(
         find_post_mint_authority_program_address(program_id, post);
 
     let associated_token_address = match vote {
-        Vote::UP => get_associated_token_address(payer, &mint_address_upvote),
-        Vote::DOWN => get_associated_token_address(payer, &mint_address_downvote),
+        Vote::UP => get_associated_token_address(payer, &mint_upvote_address),
+        Vote::DOWN => get_associated_token_address(payer, &mint_downvote_address),
     };
 
     let mut accounts = vec![
         AccountMeta::new(*payer, true),
         AccountMeta::new(payer_utility_token_address, false),
         AccountMeta::new(*post, false),
-        AccountMeta::new(mint_address_upvote, false),
-        AccountMeta::new(mint_address_downvote, false),
+        AccountMeta::new(mint_upvote_address, false),
+        AccountMeta::new(mint_downvote_address, false),
         AccountMeta::new(mint_authority_address, false),
         AccountMeta::new(associated_token_address, false),
         AccountMeta::new(system_program::id(), false),
@@ -416,60 +378,64 @@ pub fn create_post_vote_transaction(
     ];
 
     let market_maker_settings = match &post_account.market_maker {
-        MarketMaker::AMM(curve) => match curve {
-            AMMCurve::Identity => {
-                let (escrow_address, mint_escrow_bump_seed) =
-                    find_escrow_program_address(program_id, post);
+        AMMCurve::Identity { escrow_bump_seed } => {
+            let escrow_address = Pubkey::create_program_address(
+                &create_escrow_program_address_seeds(post, &[*escrow_bump_seed]),
+                program_id,
+            )
+            .unwrap(); // (, mint_escrow_bump_seed)
+                       //   find_escrow_program_address(program_id, post);
 
-                accounts.push(AccountMeta::new(escrow_address, false));
-                MarketMakerSwapSettings::AMM(AMMCurveSwapSettings::Identity {
-                    escrow_bump_seed: mint_escrow_bump_seed,
-                })
+            accounts.push(AccountMeta::new(escrow_address, false));
+            AMMCurveSwapSettings::Identity {
+                escrow_bump_seed: *escrow_bump_seed,
             }
-            AMMCurve::Offset(offset) => {
-                let vote = &Vote::UP;
-                let (utility_mint_address, _) = find_utility_mint_program_address(program_id);
-                let (swap, swap_bump_seed) =
-                    swap::offset::find_swap_program_address(program_id, post, vote);
-                let (swap_authority, swap_authority_bump_seed) =
-                    swap::offset::find_swap_authority_program_address(&swap);
-                let (swap_token_account_utility, swap_token_account_utility_bump_seed) =
-                    swap::offset::find_utility_account_program_address(program_id, &post, vote);
-                let (swap_token_account_upvote, swap_token_account_upvote_bump_seed) =
-                    swap::offset::find_swap_token_account_program_address(
-                        program_id,
-                        &mint_address_upvote,
-                    );
-                let (swap_token_account_downvote, swap_token_account_downvote_bump_seed) =
-                    swap::offset::find_swap_token_account_program_address(
-                        program_id,
-                        &mint_address_downvote,
-                    );
-                let (swap_mint, swap_mint_bump_seed) =
-                    swap::offset::find_swap_mint_program_address(program_id, &swap);
-                let (swap_fee_token_account, swap_fee_token_account_bump_seed) =
-                    swap::offset::find_swap_token_fee_account_program_address(program_id, &swap);
-                accounts.push(AccountMeta::new(swap, false));
-                accounts.push(AccountMeta::new_readonly(swap_authority, false));
-                accounts.push(AccountMeta::new(swap_token_account_utility, false));
-                accounts.push(AccountMeta::new(swap_token_account_upvote, false));
-                accounts.push(AccountMeta::new(swap_token_account_downvote, false));
-                accounts.push(AccountMeta::new(swap_mint, false));
-                accounts.push(AccountMeta::new(swap_fee_token_account, false));
-                accounts.push(AccountMeta::new_readonly(spl_token_swap::id(), false));
+        }
+        AMMCurve::LongShort(longshort) => {
+            let (utility_mint_address, _) = find_utility_mint_program_address(program_id);
 
-                MarketMakerSwapSettings::AMM(AMMCurveSwapSettings::OffsetPool {
-                    swap_bump_seed,
-                    swap_authority_bump_seed,
-                    swap_mint_bump_seed,
-                    swap_fee_token_account_bump_seed,
-                    token_upvote_account_bump_seed: swap_token_account_upvote_bump_seed,
-                    token_downvote_account_bump_seed: swap_token_account_downvote_bump_seed,
-                    token_utility_account_bump_seed: swap_token_account_utility_bump_seed,
-                    vote_mint_authority_bump_seed: mint_authority_bump_seed,
-                })
+            let (long_utility_token_account, long_utility_token_account_bump_seed) =
+                swap::longshort::find_post_utility_mint_token_account(
+                    program_id,
+                    &post,
+                    &utility_mint_address,
+                    &Vote::UP,
+                );
+
+            let (long_token_account, long_token_account_bump_seed) =
+                swap::longshort::find_post_mint_token_account(
+                    program_id,
+                    &post,
+                    &mint_upvote_address,
+                );
+
+            let (short_utility_token_account, short_utility_token_account_bump_seed) =
+                swap::longshort::find_post_utility_mint_token_account(
+                    program_id,
+                    &post,
+                    &utility_mint_address,
+                    &Vote::DOWN,
+                );
+
+            let (short_token_account, short_token_account_bump_seed) =
+                swap::longshort::find_post_mint_token_account(
+                    program_id,
+                    &post,
+                    &mint_downvote_address,
+                );
+
+            accounts.push(AccountMeta::new(long_utility_token_account, false));
+            accounts.push(AccountMeta::new(long_token_account, false));
+            accounts.push(AccountMeta::new(short_utility_token_account, false));
+            accounts.push(AccountMeta::new(short_token_account, false));
+
+            AMMCurveSwapSettings::LongShort {
+                long_utility_token_account_bump_seed,
+                short_utility_token_account_bump_seed,
+                long_token_account_bump_seed,
+                short_token_account_bump_seed,
             }
-        },
+        }
     };
 
     Instruction {
@@ -496,8 +462,8 @@ pub fn create_post_unvote_transaction(
     stake: u64,
     vote: Vote,
 ) -> Instruction {
-    let (mint_address_upvote, _) = find_post_upvote_mint_program_address(program_id, post);
-    let (mint_address_downvote, _) = find_post_downvote_mint_program_address(program_id, post);
+    let (mint_upvote_address, _) = find_post_upvote_mint_program_address(program_id, post);
+    let (mint_downvote_address, _) = find_post_downvote_mint_program_address(program_id, post);
 
     let payer_utility_token_address =
         get_associated_token_address(payer, &find_utility_mint_program_address(program_id).0);
@@ -506,77 +472,80 @@ pub fn create_post_unvote_transaction(
         find_post_mint_authority_program_address(program_id, post);
 
     let associated_token_address = match vote {
-        Vote::UP => get_associated_token_address(payer, &mint_address_upvote),
-        Vote::DOWN => get_associated_token_address(payer, &mint_address_downvote),
+        Vote::UP => get_associated_token_address(payer, &mint_upvote_address),
+        Vote::DOWN => get_associated_token_address(payer, &mint_downvote_address),
     };
 
     let mut accounts = vec![
         AccountMeta::new(*payer, true),
         AccountMeta::new(payer_utility_token_address, false),
         AccountMeta::new(*post, false),
-        AccountMeta::new(mint_address_upvote, false),
-        AccountMeta::new(mint_address_downvote, false),
+        AccountMeta::new(mint_upvote_address, false),
+        AccountMeta::new(mint_downvote_address, false),
         AccountMeta::new(mint_authority_address, false),
         AccountMeta::new(associated_token_address, false),
         AccountMeta::new_readonly(spl_token::id(), false),
     ];
 
     let market_maker_settings = match &post_account.market_maker {
-        MarketMaker::AMM(curve) => match curve {
-            AMMCurve::Identity => {
-                let (escrow_address, mint_escrow_bump_seed) =
-                    find_escrow_program_address(program_id, post);
-                accounts.push(AccountMeta::new(escrow_address, false));
-                MarketMakerSwapSettings::AMM(AMMCurveSwapSettings::Identity {
-                    escrow_bump_seed: mint_escrow_bump_seed,
-                })
-            }
-            AMMCurve::Offset(offset) => {
-                let (utility_mint_address, _) = find_utility_mint_program_address(program_id);
-                let (swap, swap_bump_seed) =
-                    swap::offset::find_swap_program_address(program_id, &post, &Vote::UP);
-                let (swap_authority, swap_authority_bump_seed) =
-                    swap::offset::find_swap_authority_program_address(&swap);
-                let (swap_token_account_utility, swap_token_account_utility_bump_seed) =
-                    swap::offset::find_swap_token_account_program_address(
-                        program_id,
-                        &utility_mint_address,
-                    );
-                let (swap_token_account_upvote, swap_token_account_upvote_bump_seed) =
-                    swap::offset::find_swap_token_account_program_address(
-                        program_id,
-                        &mint_address_upvote,
-                    );
-                let (swap_token_account_downvote, swap_token_account_downvote_bump_seed) =
-                    swap::offset::find_swap_token_account_program_address(
-                        program_id,
-                        &mint_address_downvote,
-                    );
-                let (swap_mint, swap_mint_bump_seed) =
-                    swap::offset::find_swap_mint_program_address(program_id, &swap);
-                let (swap_fee_token_account, swap_fee_token_account_bump_seed) =
-                    swap::offset::find_swap_token_fee_account_program_address(program_id, &swap);
-                accounts.push(AccountMeta::new(swap, false));
-                accounts.push(AccountMeta::new_readonly(swap_authority, false));
-                accounts.push(AccountMeta::new(swap_token_account_utility, false));
-                accounts.push(AccountMeta::new(swap_token_account_upvote, false));
-                accounts.push(AccountMeta::new(swap_token_account_downvote, false));
-                accounts.push(AccountMeta::new(swap_mint, false));
-                accounts.push(AccountMeta::new(swap_fee_token_account, false));
-                accounts.push(AccountMeta::new_readonly(spl_token_swap::id(), false));
+        AMMCurve::Identity { escrow_bump_seed } => {
+            let escrow_address = Pubkey::create_program_address(
+                &create_escrow_program_address_seeds(post, &[*escrow_bump_seed]),
+                program_id,
+            )
+            .unwrap(); // (, mint_escrow_bump_seed)
+                       //   find_escrow_program_address(program_id, post);
 
-                MarketMakerSwapSettings::AMM(AMMCurveSwapSettings::OffsetPool {
-                    swap_bump_seed,
-                    swap_authority_bump_seed,
-                    swap_mint_bump_seed,
-                    swap_fee_token_account_bump_seed,
-                    token_upvote_account_bump_seed: swap_token_account_upvote_bump_seed,
-                    token_downvote_account_bump_seed: swap_token_account_downvote_bump_seed,
-                    token_utility_account_bump_seed: swap_token_account_utility_bump_seed,
-                    vote_mint_authority_bump_seed: mint_authority_bump_seed,
-                })
+            accounts.push(AccountMeta::new(escrow_address, false));
+            AMMCurveSwapSettings::Identity {
+                escrow_bump_seed: *escrow_bump_seed,
             }
-        },
+        }
+        AMMCurve::LongShort(longshort) => {
+            let (utility_mint_address, _) = find_utility_mint_program_address(program_id);
+
+            let (long_utility_token_account, long_utility_token_account_bump_seed) =
+                swap::longshort::find_post_utility_mint_token_account(
+                    program_id,
+                    &post,
+                    &utility_mint_address,
+                    &Vote::UP,
+                );
+
+            let (long_token_account, long_token_account_bump_seed) =
+                swap::longshort::find_post_mint_token_account(
+                    program_id,
+                    &post,
+                    &mint_upvote_address,
+                );
+
+            let (short_utility_token_account, short_utility_token_account_bump_seed) =
+                swap::longshort::find_post_utility_mint_token_account(
+                    program_id,
+                    &post,
+                    &utility_mint_address,
+                    &Vote::DOWN,
+                );
+
+            let (short_token_account, short_token_account_bump_seed) =
+                swap::longshort::find_post_mint_token_account(
+                    program_id,
+                    &post,
+                    &mint_downvote_address,
+                );
+
+            accounts.push(AccountMeta::new(long_utility_token_account, false));
+            accounts.push(AccountMeta::new(long_token_account, false));
+            accounts.push(AccountMeta::new(short_utility_token_account, false));
+            accounts.push(AccountMeta::new(short_token_account, false));
+
+            AMMCurveSwapSettings::LongShort {
+                long_utility_token_account_bump_seed,
+                short_utility_token_account_bump_seed,
+                long_token_account_bump_seed,
+                short_token_account_bump_seed,
+            }
+        }
     };
 
     Instruction {
@@ -593,3 +562,100 @@ pub fn create_post_unvote_transaction(
         accounts,
     }
 }
+/* AMMCurve::Offset(offset) => {
+    let (utility_mint_address, _) = find_utility_mint_program_address(program_id);
+    let (swap, swap_bump_seed) =
+        swap::offset::find_swap_program_address(program_id, &post, &Vote::UP);
+    let (swap_authority, swap_authority_bump_seed) =
+        swap::offset::find_swap_authority_program_address(&swap);
+    let (swap_token_account_utility, swap_token_account_utility_bump_seed) =
+        swap::offset::find_swap_token_account_program_address(
+            program_id,
+            &utility_mint_address,
+        );
+    let (swap_token_account_upvote, swap_token_account_upvote_bump_seed) =
+        swap::offset::find_swap_token_account_program_address(
+            program_id,
+            &mint_address_upvote,
+        );
+    let (swap_token_account_downvote, swap_token_account_downvote_bump_seed) =
+        swap::offset::find_swap_token_account_program_address(
+            program_id,
+            &mint_address_downvote,
+        );
+    let (swap_mint, swap_mint_bump_seed) =
+        swap::offset::find_swap_mint_program_address(program_id, &swap);
+    let (swap_fee_token_account, swap_fee_token_account_bump_seed) =
+        swap::offset::find_swap_token_fee_account_program_address(program_id, &swap);
+    accounts.push(AccountMeta::new(swap, false));
+    accounts.push(AccountMeta::new_readonly(swap_authority, false));
+    accounts.push(AccountMeta::new(swap_token_account_utility, false));
+    accounts.push(AccountMeta::new(swap_token_account_upvote, false));
+    accounts.push(AccountMeta::new(swap_token_account_downvote, false));
+    accounts.push(AccountMeta::new(swap_mint, false));
+    accounts.push(AccountMeta::new(swap_fee_token_account, false));
+    accounts.push(AccountMeta::new_readonly(spl_token_swap::id(), false));
+
+    MarketMakerSwapSettings::AMM(AMMCurveSwapSettings::OffsetPool {
+        swap_bump_seed,
+        swap_authority_bump_seed,
+        swap_mint_bump_seed,
+        swap_fee_token_account_bump_seed,
+        token_upvote_account_bump_seed: swap_token_account_upvote_bump_seed,
+        token_downvote_account_bump_seed: swap_token_account_downvote_bump_seed,
+        token_utility_account_bump_seed: swap_token_account_utility_bump_seed,
+        vote_mint_authority_bump_seed: mint_authority_bump_seed,
+    })
+} */
+/*  AMMCurve::LongShort(longshort) => AMMCurveSwapSettings::Offset {
+    swap_bump_seed,
+    swap_authority_bump_seed,
+    swap_mint_bump_seed,
+    swap_fee_token_account_bump_seed,
+    token_upvote_account_bump_seed: swap_token_account_upvote_bump_seed,
+    token_downvote_account_bump_seed: swap_token_account_downvote_bump_seed,
+    token_utility_account_bump_seed: swap_token_account_utility_bump_seed,
+    vote_mint_authority_bump_seed: mint_authority_bump_seed,
+}, AMMCurve::Offset(offset) => {
+       let vote = &Vote::UP;
+       let (utility_mint_address, _) = find_utility_mint_program_address(program_id);
+       let (swap, swap_bump_seed) =
+           swap::offset::find_swap_program_address(program_id, post, vote);
+       let (swap_authority, swap_authority_bump_seed) =
+           swap::offset::find_swap_authority_program_address(&swap);
+       let (swap_token_account_utility, swap_token_account_utility_bump_seed) =
+           swap::offset::find_utility_account_program_address(program_id, &post, vote);
+       let (swap_token_account_upvote, swap_token_account_upvote_bump_seed) =
+           swap::offset::find_swap_token_account_program_address(
+               program_id,
+               &mint_address_upvote,
+           );
+       let (swap_token_account_downvote, swap_token_account_downvote_bump_seed) =
+           swap::offset::find_swap_token_account_program_address(
+               program_id,
+               &mint_address_downvote,
+           );
+       let (swap_mint, swap_mint_bump_seed) =
+           swap::offset::find_swap_mint_program_address(program_id, &swap);
+       let (swap_fee_token_account, swap_fee_token_account_bump_seed) =
+           swap::offset::find_swap_token_fee_account_program_address(program_id, &swap);
+       accounts.push(AccountMeta::new(swap, false));
+       accounts.push(AccountMeta::new_readonly(swap_authority, false));
+       accounts.push(AccountMeta::new(swap_token_account_utility, false));
+       accounts.push(AccountMeta::new(swap_token_account_upvote, false));
+       accounts.push(AccountMeta::new(swap_token_account_downvote, false));
+       accounts.push(AccountMeta::new(swap_mint, false));
+       accounts.push(AccountMeta::new(swap_fee_token_account, false));
+       accounts.push(AccountMeta::new_readonly(spl_token_swap::id(), false));
+
+       MarketMakerSwapSettings::AMM(AMMCurveSwapSettings::OffsetPool {
+           swap_bump_seed,
+           swap_authority_bump_seed,
+           swap_mint_bump_seed,
+           swap_fee_token_account_bump_seed,
+           token_upvote_account_bump_seed: swap_token_account_upvote_bump_seed,
+           token_downvote_account_bump_seed: swap_token_account_downvote_bump_seed,
+           token_utility_account_bump_seed: swap_token_account_utility_bump_seed,
+           vote_mint_authority_bump_seed: mint_authority_bump_seed,
+       })
+   } */

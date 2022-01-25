@@ -14,13 +14,12 @@ use solana_sdk::{
 use spl_associated_token_account::{create_associated_token_account, get_associated_token_address};
 use westake::{
     social::{
-        accounts::{
-            deserialize_post_account, AMMCurve, Content, ContentSource, MarketMaker, OffsetCurve,
-        },
+        accounts::{deserialize_post_account, AMMCurve, Content, ContentSource},
         find_post_downvote_mint_program_address, find_post_program_address,
         find_post_upvote_mint_program_address, find_user_account_program_address,
         instruction::{
-            create_post_transaction, create_post_unvote_transaction, create_post_vote_transaction,
+            create_post_identity_transaction, create_post_long_short_transaction,
+            create_post_unvote_transaction, create_post_vote_transaction,
         },
         swap::{self, find_escrow_program_address},
         Vote,
@@ -134,11 +133,10 @@ struct SocialAccounts {
     downvote_token_account: Pubkey,
     channel: Pubkey,
     content: Content,
-    mm: MarketMaker,
 }
 
 impl SocialAccounts {
-    pub fn new(payer: &Pubkey, curve: AMMCurve) -> Self {
+    pub fn new(payer: &Pubkey) -> Self {
         let username = "name";
         let content = create_content();
         let post = find_post_program_address(&id(), &content.hash).0;
@@ -154,7 +152,6 @@ impl SocialAccounts {
             post,
             content,
             channel: Pubkey::new_unique(),
-            mm: MarketMaker::AMM(curve),
             upvote_mint,
             downvote_mint,
             upvote_token_account: get_associated_token_address(&payer, &upvote_mint),
@@ -184,23 +181,6 @@ impl SocialAccounts {
         )
         .await;
         assert_eq!(user, self.user);
-        let mut transaction_post = Transaction::new_with_payer(
-            &[create_post_transaction(
-                &id(),
-                &payer.pubkey(),
-                &self.user,
-                &self.channel,
-                123,
-                &self.content,
-                &self.mm,
-            )],
-            Some(&payer.pubkey()),
-        );
-        transaction_post.sign(&[payer], *recent_blockhash);
-        banks_client
-            .process_transaction(transaction_post)
-            .await
-            .unwrap();
     }
 
     pub async fn vote(
@@ -298,10 +278,26 @@ async fn success_identity() {
 
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
     let utility_amount = 100000;
-    let socials = SocialAccounts::new(&payer.pubkey(), AMMCurve::Identity);
+    let socials = SocialAccounts::new(&payer.pubkey());
     socials
         .initialize(&mut banks_client, &payer, &recent_blockhash, utility_amount)
         .await;
+    let mut transaction_post = Transaction::new_with_payer(
+        &[create_post_identity_transaction(
+            &id(),
+            &payer.pubkey(),
+            &socials.user,
+            &socials.channel,
+            123,
+            &socials.content,
+        )],
+        Some(&payer.pubkey()),
+    );
+    transaction_post.sign(&[&payer], recent_blockhash);
+    banks_client
+        .process_transaction(transaction_post)
+        .await
+        .unwrap();
 
     let (escrow_account_info, _) = find_escrow_program_address(&id(), &socials.post);
 
@@ -320,7 +316,7 @@ async fn success_identity() {
         .unwrap();
 
     assert!(rent.is_exempt(escrow_account.lamports, escrow_account.data.len()));
-    println!("ABC");
+
     assert_token_balance(
         &mut banks_client,
         &socials.user_token_account,
@@ -329,7 +325,6 @@ async fn success_identity() {
     .await;
     assert_token_balance(&mut banks_client, &socials.upvote_token_account, stake).await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake).await;
-    println!("DEF");
 
     // Stake more
     socials
@@ -383,70 +378,91 @@ async fn success_offset() {
 
     let utility_amount = 100000;
     let initial_supply = 100000;
-    let socials = SocialAccounts::new(
-        &payer.pubkey(),
-        AMMCurve::Offset(OffsetCurve {
-            offset: initial_supply,
-        }),
-    );
+    let socials = SocialAccounts::new(&payer.pubkey());
     socials
         .initialize(&mut banks_client, &payer, &recent_blockhash, utility_amount)
         .await;
 
-    let (upvote_source_account_info, _) =
-        swap::offset::find_swap_token_account_program_address(&id(), &socials.upvote_mint);
-    let (downvote_source_account_info, _) =
-        swap::offset::find_swap_token_account_program_address(&id(), &socials.downvote_mint);
-    let (utility_source_account_info, _) = find_escrow_program_address(&id(), &socials.post);
+    let mut transaction_post = Transaction::new_with_payer(
+        &[create_post_long_short_transaction(
+            &id(),
+            &payer.pubkey(),
+            &socials.user,
+            &socials.channel,
+            123,
+            &socials.content,
+        )],
+        Some(&payer.pubkey()),
+    );
+    transaction_post.sign(&[&payer], recent_blockhash);
+    banks_client
+        .process_transaction(transaction_post)
+        .await
+        .unwrap();
 
-    let stake = 1000;
-    /*
+    let (upvote_source_account, _) =
+        swap::longshort::find_post_mint_token_account(&id(), &socials.post, &socials.upvote_mint);
+    let (downvote_source_account, _) =
+        swap::longshort::find_post_mint_token_account(&id(), &socials.post, &socials.downvote_mint);
+    let (upvote_utility_token_account, _) = swap::longshort::find_post_utility_mint_token_account(
+        &id(),
+        &socials.post,
+        &find_utility_mint_program_address(&id()).0,
+        &Vote::UP,
+    );
+    let (downvote_utility_token_account, _) = swap::longshort::find_post_utility_mint_token_account(
+        &id(),
+        &socials.post,
+        &find_utility_mint_program_address(&id()).0,
+        &Vote::DOWN,
+    );
+
+    let stake = 10000;
+
     // Stake some
     socials
         .vote(&mut banks_client, &payer, Vote::UP, stake)
         .await;
-
-    assert_token_balance(
-        &mut banks_client,
-        &socials.user_token_account,
-        utility_amount - stake,
-    )
-    .await;
-    assert_token_balance(&mut banks_client, &upvote_source_account_info, 990100).await;
-    assert_token_balance(&mut banks_client, &utility_source_account_info, stake).await;
+    assert_token_balance(&mut banks_client, &socials.user_token_account, 90001).await;
+    assert_token_balance(&mut banks_client, &upvote_source_account, 990100).await;
+    assert_token_balance(&mut banks_client, &upvote_utility_token_account, 9999).await;
     assert_token_balance(&mut banks_client, &socials.upvote_token_account, 9900).await;
+    assert_token_balance(&mut banks_client, &downvote_source_account, 1_000_000).await;
+    assert_token_balance(&mut banks_client, &downvote_utility_token_account, 0).await;
+    assert!(banks_client
+        .get_account(socials.downvote_token_account)
+        .await
+        .unwrap()
+        .is_none()); // Does not exist yet, since it is not necessary (because we have not bought any of this kind)
 
-    // Stake more
     socials
-        .vote(&mut banks_client, &payer, Vote::UP, stake)
+        .vote(&mut banks_client, &payer, Vote::DOWN, stake)
         .await;
+    assert_token_balance(&mut banks_client, &socials.user_token_account, 80001).await;
+    assert_token_balance(&mut banks_client, &upvote_source_account, 990100).await;
+    assert_token_balance(&mut banks_client, &upvote_utility_token_account, 9999).await;
+    assert_token_balance(&mut banks_client, &socials.upvote_token_account, 9900).await;
+    assert_token_balance(&mut banks_client, &downvote_source_account, 990001).await;
+    assert_token_balance(&mut banks_client, &downvote_utility_token_account, 10000).await;
+    assert_token_balance(&mut banks_client, &socials.downvote_token_account, 9999).await;
 
-    assert_token_balance(
-        &mut banks_client,
-        &socials.user_token_account,
-        utility_amount - stake * 2,
-    )
-    .await;
-    assert_token_balance(&mut banks_client, &upvote_source_account_info, 980394).await;
-    assert_token_balance(&mut banks_client, &utility_source_account_info, stake * 2).await;
-    assert_token_balance(&mut banks_client, &socials.upvote_token_account, 19606).await; */
-
-    /*
     // Unstake
-    socials
-        .unvote(&mut banks_client, &payer, Vote::UP, stake)
-        .await;
 
+    // Unstoke upvote at a loss
     socials
-        .assert_post_upvote_token_balances(&mut banks_client, utility_amount - stake, stake, stake)
+        .unvote(&mut banks_client, &payer, Vote::UP, 9999)
         .await;
+    assert_token_balance(&mut banks_client, &socials.user_token_account, 90001).await;
+    assert_token_balance(&mut banks_client, &upvote_source_account, 990100).await;
+    assert_token_balance(&mut banks_client, &upvote_utility_token_account, 9999).await;
+    assert_token_balance(&mut banks_client, &socials.upvote_token_account, 9900).await;
+    assert_token_balance(&mut banks_client, &downvote_source_account, 1_000_000).await;
+    assert_token_balance(&mut banks_client, &downvote_utility_token_account, 0).await;
+    assert!(banks_client
+        .get_account(socials.downvote_token_account)
+        .await
+        .unwrap()
+        .is_none());
 
-    // Unstake, same amount (we should now 0 token accounts)
-    socials
-        .unvote(&mut banks_client, &payer, Vote::UP, stake)
-        .await;
-
-    socials
-        .assert_post_upvote_token_balances(&mut banks_client, utility_amount, 0, 0)
-        .await; */
+    // Unstake downvote at a win (since we sold upvote before downvote)
 }

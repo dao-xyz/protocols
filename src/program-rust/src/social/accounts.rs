@@ -114,22 +114,12 @@ impl MaxSize for MessageAccount {
 */
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
-pub struct OffsetCurve {
-    pub offset: u64,
-}
-
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum AMMCurve {
     /// offset K
-    Identity, // 1 to 1 (risk "free"), unlimited supply
-    Offset(OffsetCurve), // supply x * (supply y  + offset) = constant
+    Identity {
+        escrow_bump_seed: u8,
+    }, // 1 to 1 (risk "free"), unlimited supply
     LongShort(LongShortSwap),
-}
-
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
-pub enum MarketMaker {
-    AMM(AMMCurve),
-    // order book later
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
@@ -153,7 +143,7 @@ pub struct PostAccount {
     pub channel: Pubkey,
     pub timestamp: u64,
     pub content: Content,
-    pub market_maker: MarketMaker,
+    pub market_maker: AMMCurve,
 }
 
 /* #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]

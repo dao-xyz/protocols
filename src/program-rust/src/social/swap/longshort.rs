@@ -2,7 +2,7 @@ use std::convert::TryInto;
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey,
+    account_info::AccountInfo, msg, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey,
 };
 use spl_math::checked_ceil_div::CheckedCeilDiv;
 use spl_token_swap::error::SwapError;
@@ -20,6 +20,16 @@ pub fn find_post_mint_token_account(
 ) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[post.as_ref(), mint.as_ref()], program_id)
 }
+
+pub fn find_post_utility_mint_token_account(
+    program_id: &Pubkey,
+    post: &Pubkey,
+    mint: &Pubkey,
+    vote: &Vote,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[post.as_ref(), mint.as_ref(), &[*vote as u8]], program_id)
+}
+
 /// Encodes all results of swapping from a source token to a destination token
 #[derive(Debug, PartialEq)]
 pub struct SwapWithoutFeesResult {
@@ -37,8 +47,9 @@ pub enum TradeDirection {
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct LongShortSwap {
     pub curve: LongShortCurve,
-    pub utility_token_account: Pubkey,
+    pub long_utility_token_account: Pubkey,
     pub long_token_account: Pubkey,
+    pub short_utility_token_account: Pubkey,
     pub short_token_account: Pubkey,
     pub token_program_id: Pubkey,
 }
@@ -71,7 +82,9 @@ impl LongShortSwap {
         destination_token_account_info: &AccountInfo<'a>,
         utility_token_account_info: &AccountInfo<'a>,
         long_token_account_info: &AccountInfo<'a>,
+        long_mint_account_info: &AccountInfo<'a>,
         short_token_account_info: &AccountInfo<'a>,
+        short_mint_account_info: &AccountInfo<'a>,
         trade_direction: LongShortSwapDirection,
         source_amount: u128,
         user_transfer_authority_info: &AccountInfo<'a>,
@@ -82,6 +95,11 @@ impl LongShortSwap {
         let utility_token_account = self.unpack_token_account(utility_token_account_info)?;
         let long_token_account = self.unpack_token_account(long_token_account_info)?;
         let short_token_account = self.unpack_token_account(short_token_account_info)?;
+        msg!(
+            "AMTS: {} {}",
+            get_token_supply(short_mint_account_info).unwrap() - short_token_account.amount,
+            get_token_supply(long_mint_account_info).unwrap() - long_token_account.amount
+        );
         let (result, swap_source_info, swap_destination_info) = match trade_direction {
             LongShortSwapDirection::BuyLong => (
                 self.curve
@@ -89,7 +107,8 @@ impl LongShortSwap {
                         source_amount,
                         utility_token_account.amount as u128,
                         long_token_account.amount as u128,
-                        short_token_account.amount as u128,
+                        (get_token_supply(short_mint_account_info).unwrap()
+                            - short_token_account.amount) as u128,
                         TradeDirection::BToA,
                     )
                     .unwrap(),
@@ -102,7 +121,8 @@ impl LongShortSwap {
                         source_amount,
                         long_token_account.amount as u128,
                         utility_token_account.amount as u128,
-                        short_token_account.amount as u128,
+                        (get_token_supply(short_mint_account_info).unwrap()
+                            - short_token_account.amount) as u128,
                         TradeDirection::AToB,
                     )
                     .unwrap(),
@@ -115,7 +135,8 @@ impl LongShortSwap {
                         source_amount,
                         utility_token_account.amount as u128,
                         short_token_account.amount as u128,
-                        long_token_account.amount as u128,
+                        (get_token_supply(long_mint_account_info).unwrap()
+                            - long_token_account.amount) as u128,
                         TradeDirection::BToA,
                     )
                     .unwrap(),
@@ -129,7 +150,8 @@ impl LongShortSwap {
                         source_amount,
                         short_token_account.amount as u128,
                         utility_token_account.amount as u128,
-                        long_token_account.amount as u128,
+                        (get_token_supply(long_mint_account_info).unwrap()
+                            - long_token_account.amount) as u128,
                         TradeDirection::AToB,
                     )
                     .unwrap(),
@@ -138,6 +160,11 @@ impl LongShortSwap {
             ),
         };
 
+        msg!(
+            "PROCESS TRANSEFER INTO {}",
+            to_u64(result.source_amount_swapped)?
+        );
+
         token_transfer(
             token_program_info.clone(),
             source_token_account_info.clone(),
@@ -145,6 +172,11 @@ impl LongShortSwap {
             user_transfer_authority_info.clone(), // Signed authority
             to_u64(result.source_amount_swapped)?,
         )?;
+
+        msg!(
+            "PROCESS TRANSEFER OUTTO {}",
+            to_u64(result.destination_amount_swapped)?
+        );
 
         token_transfer_signed(
             token_program_info.clone(),
@@ -215,7 +247,11 @@ impl LongShortCurve {
             TradeDirection::AToB => swap_destination_amount.checked_add(token_b_offset)?,
             TradeDirection::BToA => swap_destination_amount.checked_add(swap_a_anti_amount)?,
         };
-        swap(source_amount, swap_source_amount, swap_destination_amount)
+        msg! {"SWAP {} {} {}", source_amount,swap_source_amount ,swap_destination_amount}
+        let r = swap(source_amount, swap_source_amount, swap_destination_amount).unwrap();
+        msg!("{}", r.destination_amount_swapped);
+        msg!("{}", r.source_amount_swapped);
+        return Some(r);
     }
 }
 
@@ -250,6 +286,39 @@ mod tests {
             TradeDirection::BToA,
         );
         assert!(bad_result.is_none());
+    }
+
+    #[test]
+
+    fn swap_offset_2() {
+        let swap_source_amount: u128 = 1000000;
+        let swap_destination_amount: u128 = 100000;
+        let source_amount: u128 = 1000;
+        let token_b_offset = 0;
+        let curve = LongShortCurve { token_b_offset };
+
+        // WAP 1000 1000000 100099
+
+        let result = curve
+            .swap(
+                source_amount,
+                swap_source_amount,
+                swap_destination_amount,
+                0,
+                TradeDirection::AToB,
+            )
+            .unwrap();
+        let result_2 = curve
+            .swap(
+                source_amount,
+                swap_source_amount,
+                swap_destination_amount + 1000,
+                0,
+                TradeDirection::AToB,
+            )
+            .unwrap();
+        println!("{}", result.destination_amount_swapped);
+        println!("{}", result_2.destination_amount_swapped);
     }
 
     #[test]
