@@ -1,6 +1,6 @@
 
 [package]
-name = "solana-bpf-westake"
+name = "westake"
 version = "0.0.1"
 description = "WeStake Social Media, the Web3 way!"
 authors = ["Marcus Pousette <marcus.pousette@quantleaf.com>"]
