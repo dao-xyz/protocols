@@ -27,12 +27,6 @@ const AUTHORITY_WITHDRAW: &[u8] = b"withdraw";
 /// Seed for transient stake account
 const TRANSIENT_STAKE_SEED_PREFIX: &[u8] = b"transient";
 
-/// Seed for stake pool token
-const MINT_SEED: &[u8] = b"mint";
-
-/// Seed formint authority account
-const _MINT_AUTHORITY_SEED: &[u8] = b"mint_authority";
-
 /// Minimum amount of staked SOL required in a validator stake account to allow
 /// for merges without a mismatch on credits observed
 pub const MINIMUM_ACTIVE_STAKE: u64 = LAMPORTS_PER_SOL / 1_000;

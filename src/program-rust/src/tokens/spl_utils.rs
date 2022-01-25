@@ -124,6 +124,8 @@ pub fn create_program_account_mint_account_with_seed<'a>(
     )?;
     Ok(())
 }
+
+#[warn(clippy::too_many_arguments)]
 pub fn create_program_token_account<'a>(
     account_info: &AccountInfo<'a>,
     account_seeds: &[&[u8]],
