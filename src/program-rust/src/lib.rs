@@ -1,8 +1,5 @@
-pub mod address;
 pub mod entrypoint;
-mod error;
 pub mod instruction;
-mod math;
 pub mod processor;
 pub mod shared;
 pub mod stake_pool;

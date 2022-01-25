@@ -5,7 +5,7 @@ use solana_program::{
     program::{invoke, invoke_signed},
     program_error::ProgramError,
     program_pack::Pack,
-    pubkey::{Pubkey},
+    pubkey::Pubkey,
     rent::Rent,
     system_instruction,
     sysvar::Sysvar,
@@ -28,7 +28,7 @@ pub fn find_utility_mint_program_address(program_id: &Pubkey) -> (Pubkey, u8) {
 }
 
 /// Create mint address (unique/fixed for program)
-pub fn create_utility_mint_program_address_seeds<'a>(bump_seed: &'a [u8]) -> [&'a [u8]; 3] {
+pub fn create_utility_mint_program_address_seeds(bump_seed: &[u8]) -> [&[u8]; 3] {
     [MINT_SEED, UTILITY_MINT, bump_seed]
 }
 
@@ -71,6 +71,7 @@ pub fn create_mint_escrow_program_address_seeds<'a>(
     [ESCROW_ACCOUNT_SEED, mint.as_ref(), bump_seed]
 }
 
+#[warn(clippy::too_many_arguments)]
 pub fn create_program_account_mint_account_with_seed<'a>(
     mint_info: &AccountInfo<'a>,
     mint_account_seeds: &[&[u8]],
