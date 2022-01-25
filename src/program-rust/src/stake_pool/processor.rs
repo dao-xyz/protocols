@@ -1,12 +1,24 @@
 //! Program state processor
-use crate::{
-    shared::account::check_account_owner,
-    tokens::spl_utils::{
-        self, create_program_account_mint_account, create_program_account_mint_account_with_seed,
-        create_utility_mint_program_address_seeds, find_utility_mint_program_address,
-    },
+use crate::tokens::spl_utils::{
+    self, create_program_account_mint_account_with_seed, create_utility_mint_program_address_seeds,
+    find_utility_mint_program_address,
 };
-
+/// Check account owner is the given program
+pub fn check_account_owner(
+    account_info: &AccountInfo,
+    program_id: &Pubkey,
+) -> Result<(), ProgramError> {
+    if *program_id != *account_info.owner {
+        msg!(
+            "Expected account to be owned by program {}, received {}",
+            program_id,
+            account_info.owner
+        );
+        Err(ProgramError::IncorrectProgramId)
+    } else {
+        Ok(())
+    }
+}
 use super::{find_stake_pool_program_address, STAKE_POOL};
 
 use {

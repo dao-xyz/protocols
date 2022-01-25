@@ -12,9 +12,6 @@ impl Processor {
             SolveiInstruction::StakePoolInstruction(instruction) => {
                 crate::stake_pool::processor::Processor::process(program_id, accounts, instruction)
             }
-            SolveiInstruction::ChatInstruction(instruction) => {
-                crate::social::processor::Processor::process(program_id, accounts, instruction)
-            }
         }
     }
 }

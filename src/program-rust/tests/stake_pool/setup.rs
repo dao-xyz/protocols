@@ -6,7 +6,7 @@ use westake::{
     tokens::spl_utils::find_utility_mint_program_address,
 };
 
-use crate::utils::{create_owner_token_account, program_test};
+use crate::utils::program_test;
 
 use super::helpers::get_account;
 
