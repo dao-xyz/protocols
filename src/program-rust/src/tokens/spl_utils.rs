@@ -71,7 +71,7 @@ pub fn create_mint_escrow_program_address_seeds<'a>(
     [ESCROW_ACCOUNT_SEED, mint.as_ref(), bump_seed]
 }
 
-#[warn(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 pub fn create_program_account_mint_account_with_seed<'a>(
     mint_info: &AccountInfo<'a>,
     mint_account_seeds: &[&[u8]],
@@ -125,7 +125,7 @@ pub fn create_program_account_mint_account_with_seed<'a>(
     Ok(())
 }
 
-#[warn(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 pub fn create_program_token_account<'a>(
     account_info: &AccountInfo<'a>,
     account_seeds: &[&[u8]],

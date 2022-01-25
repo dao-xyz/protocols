@@ -654,6 +654,7 @@ pub struct StakePoolAccounts {
     pub max_validators: u32,
 }
 
+#[allow(clippy::new_without_default)]
 impl StakePoolAccounts {
     pub fn new() -> Self {
         let stake_pool = find_stake_pool_program_address(&id()).0;
