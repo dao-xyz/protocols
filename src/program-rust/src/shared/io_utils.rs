@@ -9,5 +9,5 @@ struct Prependable<'a, T: 'a + BorshSerialize> {
 }
 
 pub fn try_to_vec_prepend<T: BorshSerialize>(index: u8, data: &T) -> Result<Vec<u8>> {
-    return Prependable { index, data }.try_to_vec();
+    Prependable { index, data }.try_to_vec()
 }

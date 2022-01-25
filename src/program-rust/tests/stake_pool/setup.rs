@@ -1,6 +1,6 @@
 use solana_program::borsh::get_packed_len;
 use solana_program_test::*;
-use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction};
+use solana_sdk::{signer::Signer, transaction::Transaction};
 use westake::{
     stake_pool::find_stake_pool_program_address,
     tokens::spl_utils::find_utility_mint_program_address,

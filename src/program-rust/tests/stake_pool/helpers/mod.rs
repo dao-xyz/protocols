@@ -31,7 +31,6 @@ use {
         state::{self, FeeType, ValidatorList},
         MINIMUM_ACTIVE_STAKE,
     },
-    westake::tokens::spl_utils::find_mint_program_address,
 };
 
 pub const TEST_STAKE_AMOUNT: u64 = 1_500_000_000;
@@ -382,7 +381,7 @@ pub async fn create_stake_pool(
             ),
             westake::stake_pool::instruction::initialize(
                 &id(),
-                &stake_pool,
+                stake_pool,
                 &manager.pubkey(),
                 staker,
                 withdraw_authority,
@@ -400,13 +399,13 @@ pub async fn create_stake_pool(
             ),
             instruction::set_fee(
                 &id(),
-                &stake_pool,
+                stake_pool,
                 &manager.pubkey(),
                 FeeType::SolDeposit(*sol_deposit_fee),
             ),
             instruction::set_fee(
                 &id(),
-                &stake_pool,
+                stake_pool,
                 &manager.pubkey(),
                 FeeType::SolReferral(sol_referral_fee),
             ),

@@ -1,6 +1,6 @@
 use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, pubkey::Pubkey};
 
-use crate::{instruction::SolveiInstruction, stake_pool::instruction::StakePoolInstruction};
+use crate::{instruction::SolveiInstruction};
 use borsh::BorshDeserialize;
 
 pub struct Processor {}

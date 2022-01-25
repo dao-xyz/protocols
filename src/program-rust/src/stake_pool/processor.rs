@@ -33,7 +33,7 @@ use {
         },
         AUTHORITY_DEPOSIT, AUTHORITY_WITHDRAW, MINIMUM_ACTIVE_STAKE, TRANSIENT_STAKE_SEED_PREFIX,
     },
-    borsh::{BorshDeserialize, BorshSerialize},
+    borsh::{BorshSerialize},
     num_traits::FromPrimitive,
     solana_program::{
         account_info::next_account_info,
@@ -2699,11 +2699,11 @@ impl Processor {
         let minimum_balance_stake_pool = Rent::get()?.minimum_balance(stake_pool_size as usize);
         invoke_signed(
             &system_instruction::create_account(
-                &funder_info.key,
+                funder_info.key,
                 &stake_pool_address,
                 minimum_balance_stake_pool,
                 stake_pool_size,
-                &program_id,
+                program_id,
             ),
             &[
                 funder_info.clone(),

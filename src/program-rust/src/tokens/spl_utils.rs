@@ -5,14 +5,14 @@ use solana_program::{
     program::{invoke, invoke_signed},
     program_error::ProgramError,
     program_pack::Pack,
-    pubkey::{Pubkey, PubkeyError},
+    pubkey::{Pubkey},
     rent::Rent,
     system_instruction,
     sysvar::Sysvar,
 };
 
 use spl_token::{
-    instruction::{burn, burn_checked, initialize_account, initialize_mint, mint_to},
+    instruction::{initialize_account, initialize_mint, mint_to},
     state::Mint,
 };
 
@@ -84,7 +84,7 @@ pub fn create_program_account_mint_account_with_seed<'a>(
     let rent = Rent::get()?;
     let mint_rent = rent.minimum_balance(Mint::LEN);
     let decimals = 9; // for now
-    let address = Pubkey::create_program_address(&mint_account_seeds, program_id).unwrap();
+    let address = Pubkey::create_program_address(mint_account_seeds, program_id).unwrap();
     if mint_info.key != &address {
         msg!(
             "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
@@ -108,7 +108,7 @@ pub fn create_program_account_mint_account_with_seed<'a>(
             system_info.clone(),
             token_program_info.clone(),
         ],
-        &[&mint_account_seeds],
+        &[mint_account_seeds],
     )?;
 
     invoke(
@@ -135,7 +135,7 @@ pub fn create_program_token_account<'a>(
     program_id: &Pubkey,
 ) -> ProgramResult {
     let rent = Rent::get()?;
-    let address = Pubkey::create_program_address(&account_seeds, program_id).unwrap();
+    let address = Pubkey::create_program_address(account_seeds, program_id).unwrap();
     if account_info.key != &address {
         msg!(
             "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
@@ -159,7 +159,7 @@ pub fn create_program_token_account<'a>(
             system_info.clone(),
             token_program_info.clone(),
         ],
-        &[&account_seeds], // missing things here, we need the full seed for the mint accoutn
+        &[account_seeds], // missing things here, we need the full seed for the mint accoutn
     )?;
 
     invoke(
@@ -213,7 +213,7 @@ pub fn spl_mint_to<'a>(
             mint_to_account.clone(),
             mint_authority_info.clone(),
         ],
-        &[&mint_authority_seeds],
+        &[mint_authority_seeds],
     )?;
 
     Ok(())
