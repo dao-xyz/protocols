@@ -33,7 +33,7 @@ use {
         },
         AUTHORITY_DEPOSIT, AUTHORITY_WITHDRAW, MINIMUM_ACTIVE_STAKE, TRANSIENT_STAKE_SEED_PREFIX,
     },
-    borsh::{BorshSerialize},
+    borsh::BorshSerialize,
     num_traits::FromPrimitive,
     solana_program::{
         account_info::next_account_info,

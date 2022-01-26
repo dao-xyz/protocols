@@ -192,7 +192,6 @@ fn command_create_pool(
     stake_deposit_fee: Fee,
     stake_referral_fee: u8,
     max_validators: u32,
-    stake_pool_keypair: Option<Keypair>,
     validator_list_keypair: Option<Keypair>,
     mint_keypair: Option<Keypair>,
     reserve_keypair: Option<Keypair>,
@@ -203,7 +202,8 @@ fn command_create_pool(
     let mint_keypair = mint_keypair.unwrap_or_else(Keypair::new);
     println!("Creating mint {}", mint_keypair.pubkey());
 
-    let stake_pool_keypair = stake_pool_keypair.unwrap_or_else(Keypair::new);
+    //let stake_pool_keypair = stake_pool_keypair.unwrap_or_else(Keypair::new);
+    let stake_pool = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
 
     let validator_list_keypair = validator_list_keypair.unwrap_or_else(Keypair::new);
 
@@ -234,9 +234,13 @@ fn command_create_pool(
     let default_decimals = spl_token::native_mint::DECIMALS;
 
     // Calculate withdraw authority used for minting pool tokens
-    let (withdraw_authority, _) = find_withdraw_authority_program_address(
+   /*  let (withdraw_authority, _) = find_withdraw_authority_program_address(
         &westake::id(),
         &stake_pool_keypair.pubkey(),
+    ); */
+    let (withdraw_authority, _) = find_withdraw_authority_program_address(
+        &westake::id(),
+        &stake_pool,
     );
 
     if config.verbose {
@@ -268,14 +272,19 @@ fn command_create_pool(
             spl_token::state::Mint::LEN as u64,
             &spl_token::id(),
         ),
+        westake::stake_pool::instruction::setup(
+            &westake::id(),
+            &config.fee_payer.pubkey(),
+            get_packed_len::<westake::stake_pool::state::StakePool>() as u64,
+        )
         // Initialize pool token mint account
-        spl_token::instruction::initialize_mint(
+      /*   spl_token::instruction::initialize_mint(
             &spl_token::id(),
             &mint_keypair.pubkey(),
             &withdraw_authority,
             None,
             default_decimals,
-        )?,
+        )?, */
     ];
 
     let pool_fee_account = add_associated_token_account(
@@ -301,17 +310,17 @@ fn command_create_pool(
                 &westake::id(),
             ),
             // Account for the stake pool
-            system_instruction::create_account(
+           /*  system_instruction::create_account(
                 &config.fee_payer.pubkey(),
                 &stake_pool_keypair.pubkey(),
                 stake_pool_account_lamports,
                 get_packed_len::<StakePool>() as u64,
                 &westake::id(),
-            ),
+            ), */
             // Initialize stake pool
             westake::stake_pool::instruction::initialize(
                 &westake::id(),
-                &stake_pool_keypair.pubkey(),
+                &stake_pool,
                 &config.manager.pubkey(),
                 &config.staker.pubkey(),
                 &withdraw_authority,
@@ -345,12 +354,12 @@ fn command_create_pool(
 
     println!(
         "Creating stake pool {} with validator list {}",
-        stake_pool_keypair.pubkey(),
+        &stake_pool,
         validator_list_keypair.pubkey()
     );
     let mut initialize_signers = vec![
         config.fee_payer.as_ref(),
-        &stake_pool_keypair,
+      //  &stake_pool_keypair,
         &validator_list_keypair,
         config.manager.as_ref(),
     ];
@@ -1895,7 +1904,7 @@ fn main() {
                     .takes_value(true)
                     .help("Deposit authority required to sign all deposits into the stake pool"),
             )
-            .arg(
+           /*  .arg(
                 Arg::with_name("pool_keypair")
                     .long("pool-keypair")
                     .short("p")
@@ -1903,7 +1912,7 @@ fn main() {
                     .value_name("PATH")
                     .takes_value(true)
                     .help("Stake pool keypair [default: new keypair]"),
-            )
+            ) */
             .arg(
                 Arg::with_name("validator_list_keypair")
                     .long("validator-list-keypair")
@@ -2623,7 +2632,7 @@ fn main() {
             let d_denominator = value_t!(arg_matches, "deposit_fee_denominator", u64);
             let referral_fee = value_t!(arg_matches, "referral_fee", u8);
             let max_validators = value_t_or_exit!(arg_matches, "max_validators", u32);
-            let pool_keypair = keypair_of(arg_matches, "pool_keypair");
+         //   let pool_keypair = keypair_of(arg_matches, "pool_keypair");
             let validator_list_keypair = keypair_of(arg_matches, "validator_list_keypair");
             let mint_keypair = keypair_of(arg_matches, "mint_keypair");
             let reserve_keypair = keypair_of(arg_matches, "reserve_keypair");
@@ -2644,7 +2653,7 @@ fn main() {
                 },
                 referral_fee.unwrap_or(0),
                 max_validators,
-                pool_keypair,
+          //      pool_keypair,
                 validator_list_keypair,
                 mint_keypair,
                 reserve_keypair,
