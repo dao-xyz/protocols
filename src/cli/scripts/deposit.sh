@@ -42,16 +42,15 @@ deposit_stakes () {
   while read -r validator
   do
     stake=$(solana-keygen pubkey "$keys_dir/stake_$validator.json")
-    $spl_stake_pool deposit-stake "$stake_pool_pubkey" "$stake" --withdraw-authority "$authority"
+    $westake deposit-stake "$stake_pool_pubkey" "$stake" --withdraw-authority "$authority"
   done < "$validator_list"
 }
 
 keys_dir=keys
 stake_pool_pubkey=$(solana-keygen pubkey "$stake_pool_keyfile")
 
-spl_stake_pool=spl-stake-pool
 # Uncomment to use a locally build CLI
-#spl_stake_pool=../../../target/debug/spl-stake-pool
+westake=../../../target/debug/westake
 
 echo "Setting up keys directory $keys_dir"
 mkdir -p $keys_dir
@@ -70,4 +69,4 @@ sleep 12
 echo "Depositing stakes into stake pool"
 deposit_stakes "$stake_pool_pubkey" "$validator_list" $authority
 echo "Depositing SOL into stake pool"
-$spl_stake_pool deposit-sol "$stake_pool_pubkey" "$sol_amount"
+$westake deposit-sol "$stake_pool_pubkey" "$sol_amount"

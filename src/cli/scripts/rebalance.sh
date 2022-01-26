@@ -4,13 +4,10 @@
 # keyfile and a path to a file containing a list of validator vote accounts
 
 cd "$(dirname "$0")" || exit
-stake_pool_keyfile=$1
-validator_list=$2
-sol_amount=$3
+validator_list=$1
+sol_amount=$2
 
-spl_stake_pool=spl-stake-pool
-# Uncomment to use a locally build CLI
-#spl_stake_pool=../../../target/debug/spl-stake-pool
+westake=../../../target/debug/westake
 
 increase_stakes () {
   stake_pool_pubkey=$1
@@ -18,10 +15,9 @@ increase_stakes () {
   sol_amount=$3
   while read -r validator
   do
-    $spl_stake_pool increase-validator-stake "$stake_pool_pubkey" "$validator" "$sol_amount"
+    $westake increase-validator-stake "$validator" "$sol_amount"
   done < "$validator_list"
 }
 
-stake_pool_pubkey=$(solana-keygen pubkey "$stake_pool_keyfile")
 echo "Increasing amount delegated to each validator in stake pool"
-increase_stakes "$stake_pool_pubkey" "$validator_list" "$sol_amount"
+increase_stakes "$validator_list" "$sol_amount"

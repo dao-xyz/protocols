@@ -12,8 +12,8 @@ command_args=()
 
 # Epoch fee, assessed as a percentage of rewards earned by the pool every epoch,
 # represented as `numerator / denominator`
-command_args+=( --epoch-fee-numerator 0 )
-command_args+=( --epoch-fee-denominator 0 )
+command_args+=( --epoch-fee-numerator 1 )
+command_args+=( --epoch-fee-denominator 100 )
 
 # Withdrawal fee for SOL and stake accounts, represented as `numerator / denominator`
 command_args+=( --withdrawal-fee-numerator 0 )
@@ -37,9 +37,8 @@ command_args+=( --max-validators 3825 ) # Maximum number of validators in the st
 ###################################################
 
 keys_dir=keys
-spl_stake_pool=spl-stake-pool
-# Uncomment to use a local build
-#spl_stake_pool=../../../target/debug/spl-stake-pool
+
+westake=../../../target/debug/westake
 
 mkdir -p $keys_dir
 
@@ -55,16 +54,12 @@ stake_pool_keyfile=$keys_dir/stake-pool.json
 validator_list_keyfile=$keys_dir/validator-list.json
 mint_keyfile=$keys_dir/mint.json
 reserve_keyfile=$keys_dir/reserve.json
-create_keypair $stake_pool_keyfile
 create_keypair $validator_list_keyfile
-create_keypair $mint_keyfile
 create_keypair $reserve_keyfile
 
 set -ex
-$spl_stake_pool \
+$westake \
   create-pool \
   "${command_args[@]}" \
-  --pool-keypair "$stake_pool_keyfile" \
   --validator-list-keypair "$validator_list_keyfile" \
-  --mint-keypair "$mint_keyfile" \
   --reserve-keypair "$reserve_keyfile"

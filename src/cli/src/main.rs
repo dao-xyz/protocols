@@ -193,14 +193,13 @@ fn command_create_pool(
     stake_referral_fee: u8,
     max_validators: u32,
     validator_list_keypair: Option<Keypair>,
-    mint_keypair: Option<Keypair>,
     reserve_keypair: Option<Keypair>,
 ) -> CommandResult {
     let reserve_keypair = reserve_keypair.unwrap_or_else(Keypair::new);
     println!("Creating reserve stake {}", reserve_keypair.pubkey());
 
-    let mint_keypair = mint_keypair.unwrap_or_else(Keypair::new);
-    println!("Creating mint {}", mint_keypair.pubkey());
+    let pool_mint = westake::tokens::spl_utils::find_utility_mint_program_address(&westake::id()).0;
+
 
     //let stake_pool_keypair = stake_pool_keypair.unwrap_or_else(Keypair::new);
     let stake_pool = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
@@ -265,13 +264,13 @@ fn command_create_pool(
             &stake::state::Lockup::default(),
         ),
         // Account for the stake pool mint
-        system_instruction::create_account(
+      /*   system_instruction::create_account(
             &config.fee_payer.pubkey(),
             &mint_keypair.pubkey(),
             mint_account_balance,
             spl_token::state::Mint::LEN as u64,
             &spl_token::id(),
-        ),
+        ), */
         westake::stake_pool::instruction::setup(
             &westake::id(),
             &config.fee_payer.pubkey(),
@@ -289,7 +288,7 @@ fn command_create_pool(
 
     let pool_fee_account = add_associated_token_account(
         config,
-        &mint_keypair.pubkey(),
+        &pool_mint,
         &config.manager.pubkey(),
         &mut instructions,
         &mut total_rent_free_balances,
@@ -326,7 +325,7 @@ fn command_create_pool(
                 &withdraw_authority,
                 &validator_list_keypair.pubkey(),
                 &reserve_keypair.pubkey(),
-                &mint_keypair.pubkey(),
+                &pool_mint,
                 &pool_fee_account,
                 &spl_token::id(),
                 deposit_authority.as_ref().map(|x| x.pubkey()),
@@ -347,7 +346,7 @@ fn command_create_pool(
             + fee_calculator.calculate_fee(setup_transaction.message())
             + fee_calculator.calculate_fee(initialize_transaction.message()),
     )?;
-    let mut setup_signers = vec![config.fee_payer.as_ref(), &mint_keypair, &reserve_keypair];
+    let mut setup_signers = vec![config.fee_payer.as_ref(),  &reserve_keypair]; 
     unique_signers!(setup_signers);
     setup_transaction.sign(&setup_signers, recent_blockhash);
     send_transaction(config, setup_transaction)?;
@@ -382,16 +381,17 @@ fn command_create_pool(
 
 fn command_vsa_add(
     config: &Config,
-    stake_pool_address: &Pubkey,
     vote_account: &Pubkey,
 ) -> CommandResult {
+    let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
+
     let (stake_account_address, _) =
-        find_stake_program_address(&westake::id(), vote_account, stake_pool_address);
+        find_stake_program_address(&westake::id(), vote_account, &stake_pool_address);
     println!(
         "Adding stake account {}, delegated to {}",
         stake_account_address, vote_account
     );
-    let stake_pool = get_stake_pool(&config.rpc_client, stake_pool_address)?;
+    let stake_pool = get_stake_pool(&config.rpc_client, &stake_pool_address)?;
     let validator_list = get_validator_list(&config.rpc_client, &stake_pool.validator_list)?;
     if validator_list.contains(vote_account) {
         println!(
@@ -402,7 +402,7 @@ fn command_vsa_add(
     }
 
     if !config.no_update {
-        command_update(config, stake_pool_address, false, false)?;
+        command_update(config, &stake_pool_address, false, false)?;
     }
 
     let mut signers = vec![config.fee_payer.as_ref(), config.staker.as_ref()];
@@ -413,7 +413,7 @@ fn command_vsa_add(
             westake::stake_pool::instruction::add_validator_to_pool_with_vote(
                 &westake::id(),
                 &stake_pool,
-                stake_pool_address,
+                &stake_pool_address,
                 &config.fee_payer.pubkey(),
                 vote_account,
             ),
@@ -427,23 +427,24 @@ fn command_vsa_add(
 
 fn command_vsa_remove(
     config: &Config,
-    stake_pool_address: &Pubkey,
     vote_account: &Pubkey,
     new_authority: &Option<Pubkey>,
     stake_receiver: &Option<Pubkey>,
 ) -> CommandResult {
+    let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
+
     if !config.no_update {
-        command_update(config, stake_pool_address, false, false)?;
+        command_update(config, &stake_pool_address, false, false)?;
     }
 
     let (stake_account_address, _) =
-        find_stake_program_address(&westake::id(), vote_account, stake_pool_address);
+        find_stake_program_address(&westake::id(), vote_account, &stake_pool_address);
     println!(
         "Removing stake account {}, delegated to {}",
         stake_account_address, vote_account
     );
 
-    let stake_pool = get_stake_pool(&config.rpc_client, stake_pool_address)?;
+    let stake_pool = get_stake_pool(&config.rpc_client, &stake_pool_address)?;
 
     let mut instructions = vec![];
     let mut stake_keypair = None;
@@ -476,7 +477,7 @@ fn command_vsa_remove(
         westake::stake_pool::instruction::remove_validator_from_pool_with_vote(
             &westake::id(),
             &stake_pool,
-            stake_pool_address,
+            &stake_pool_address,
             vote_account,
             new_authority,
             validator_stake_info.transient_seed_suffix_start,
@@ -491,16 +492,17 @@ fn command_vsa_remove(
 
 fn command_increase_validator_stake(
     config: &Config,
-    stake_pool_address: &Pubkey,
     vote_account: &Pubkey,
     amount: f64,
 ) -> CommandResult {
+    let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
+
     let lamports = native_token::sol_to_lamports(amount);
     if !config.no_update {
-        command_update(config, stake_pool_address, false, false)?;
+        command_update(config, &stake_pool_address, false, false)?;
     }
 
-    let stake_pool = get_stake_pool(&config.rpc_client, stake_pool_address)?;
+    let stake_pool = get_stake_pool(&config.rpc_client, &stake_pool_address)?;
     let validator_list = get_validator_list(&config.rpc_client, &stake_pool.validator_list)?;
     let validator_stake_info = validator_list
         .find(vote_account)
@@ -514,7 +516,7 @@ fn command_increase_validator_stake(
             westake::stake_pool::instruction::increase_validator_stake_with_vote(
                 &westake::id(),
                 &stake_pool,
-                stake_pool_address,
+                &stake_pool_address,
                 vote_account,
                 lamports,
                 validator_stake_info.transient_seed_suffix_start,
@@ -528,16 +530,17 @@ fn command_increase_validator_stake(
 
 fn command_decrease_validator_stake(
     config: &Config,
-    stake_pool_address: &Pubkey,
     vote_account: &Pubkey,
     amount: f64,
 ) -> CommandResult {
+    let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
+
     let lamports = native_token::sol_to_lamports(amount);
     if !config.no_update {
-        command_update(config, stake_pool_address, false, false)?;
+        command_update(config, &stake_pool_address, false, false)?;
     }
 
-    let stake_pool = get_stake_pool(&config.rpc_client, stake_pool_address)?;
+    let stake_pool = get_stake_pool(&config.rpc_client, &stake_pool_address)?;
     let validator_list = get_validator_list(&config.rpc_client, &stake_pool.validator_list)?;
     let validator_stake_info = validator_list
         .find(vote_account)
@@ -551,7 +554,7 @@ fn command_decrease_validator_stake(
             westake::stake_pool::instruction::decrease_validator_stake_with_vote(
                 &westake::id(),
                 &stake_pool,
-                stake_pool_address,
+                &stake_pool_address,
                 vote_account,
                 lamports,
                 validator_stake_info.transient_seed_suffix_start,
@@ -565,18 +568,19 @@ fn command_decrease_validator_stake(
 
 fn command_set_preferred_validator(
     config: &Config,
-    stake_pool_address: &Pubkey,
     preferred_type: PreferredValidatorType,
     vote_address: Option<Pubkey>,
 ) -> CommandResult {
-    let stake_pool = get_stake_pool(&config.rpc_client, stake_pool_address)?;
+    let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
+
+    let stake_pool = get_stake_pool(&config.rpc_client, &stake_pool_address)?;
     let mut signers = vec![config.fee_payer.as_ref(), config.staker.as_ref()];
     unique_signers!(signers);
     let transaction = checked_transaction_with_signers(
         config,
         &[westake::stake_pool::instruction::set_preferred_validator(
             &westake::id(),
-            stake_pool_address,
+            &stake_pool_address,
             &config.staker.pubkey(),
             &stake_pool.validator_list,
             preferred_type,
@@ -621,17 +625,18 @@ fn add_associated_token_account(
 
 fn command_deposit_stake(
     config: &Config,
-    stake_pool_address: &Pubkey,
     stake: &Pubkey,
     withdraw_authority: Box<dyn Signer>,
     pool_token_receiver_account: &Option<Pubkey>,
     referrer_token_account: &Option<Pubkey>,
 ) -> CommandResult {
+    let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
+
     if !config.no_update {
-        command_update(config, stake_pool_address, false, false)?;
+        command_update(config, &stake_pool_address, false, false)?;
     }
 
-    let stake_pool = get_stake_pool(&config.rpc_client, stake_pool_address)?;
+    let stake_pool = get_stake_pool(&config.rpc_client, &stake_pool_address)?;
     let stake_state = get_stake_state(&config.rpc_client, stake)?;
 
     if config.verbose {
@@ -650,7 +655,7 @@ fn command_deposit_stake(
 
     // Calculate validator stake account address linked to the pool
     let (validator_stake_account, _) =
-        find_stake_program_address(&westake::id(), &vote_account, stake_pool_address);
+        find_stake_program_address(&westake::id(), &vote_account, &stake_pool_address);
 
     let validator_stake_state = get_stake_state(&config.rpc_client, &validator_stake_account)?;
     println!(
@@ -679,7 +684,7 @@ fn command_deposit_stake(
     let referrer_token_account = referrer_token_account.unwrap_or(pool_token_receiver_account);
 
     let pool_withdraw_authority =
-        find_withdraw_authority_program_address(&westake::id(), stake_pool_address).0;
+        find_withdraw_authority_program_address(&westake::id(), &stake_pool_address).0;
 
     let mut deposit_instructions =
         if let Some(stake_deposit_authority) = config.funding_authority.as_ref() {
@@ -695,7 +700,7 @@ fn command_deposit_stake(
 
             westake::stake_pool::instruction::deposit_stake_with_authority(
                 &westake::id(),
-                stake_pool_address,
+                &stake_pool_address,
                 &stake_pool.validator_list,
                 &stake_deposit_authority.pubkey(),
                 &pool_withdraw_authority,
@@ -712,7 +717,7 @@ fn command_deposit_stake(
         } else {
             westake::stake_pool::instruction::deposit_stake(
                 &westake::id(),
-                stake_pool_address,
+                &stake_pool_address,
                 &stake_pool.validator_list,
                 &pool_withdraw_authority,
                 stake,
@@ -745,18 +750,19 @@ fn command_deposit_stake(
 
 fn command_deposit_all_stake(
     config: &Config,
-    stake_pool_address: &Pubkey,
     stake_authority: &Pubkey,
     withdraw_authority: Box<dyn Signer>,
     pool_token_receiver_account: &Option<Pubkey>,
     referrer_token_account: &Option<Pubkey>,
 ) -> CommandResult {
+    let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
+
     if !config.no_update {
-        command_update(config, stake_pool_address, false, false)?;
+        command_update(config, &stake_pool_address, false, false)?;
     }
 
     let stake_addresses = get_all_stake(&config.rpc_client, stake_authority)?;
-    let stake_pool = get_stake_pool(&config.rpc_client, stake_pool_address)?;
+    let stake_pool = get_stake_pool(&config.rpc_client, &stake_pool_address)?;
 
     // Create token account if not specified
     let mut total_rent_free_balances = 0;
@@ -787,7 +793,7 @@ fn command_deposit_all_stake(
     let referrer_token_account = referrer_token_account.unwrap_or(pool_token_receiver_account);
 
     let pool_withdraw_authority =
-        find_withdraw_authority_program_address(&westake::id(), stake_pool_address).0;
+        find_withdraw_authority_program_address(&westake::id(), &stake_pool_address).0;
     let validator_list = get_validator_list(&config.rpc_client, &stake_pool.validator_list)?;
     let mut signers = if let Some(stake_deposit_authority) = config.funding_authority.as_ref() {
         if stake_deposit_authority.pubkey() != stake_pool.stake_deposit_authority {
@@ -823,7 +829,7 @@ fn command_deposit_all_stake(
 
         // Calculate validator stake account address linked to the pool
         let (validator_stake_account, _) =
-            find_stake_program_address(&westake::id(), &vote_account, stake_pool_address);
+            find_stake_program_address(&westake::id(), &vote_account, &stake_pool_address);
 
         let validator_stake_state = get_stake_state(&config.rpc_client, &validator_stake_account)?;
         println!("Depositing user stake {}: {:?}", stake_address, stake_state);
@@ -836,7 +842,7 @@ fn command_deposit_all_stake(
         {
             westake::stake_pool::instruction::deposit_stake_with_authority(
                 &westake::id(),
-                stake_pool_address,
+                &stake_pool_address,
                 &stake_pool.validator_list,
                 &stake_deposit_authority.pubkey(),
                 &pool_withdraw_authority,
@@ -853,7 +859,7 @@ fn command_deposit_all_stake(
         } else {
             westake::stake_pool::instruction::deposit_stake(
                 &westake::id(),
-                stake_pool_address,
+                &stake_pool_address,
                 &stake_pool.validator_list,
                 &pool_withdraw_authority,
                 &stake_address,
@@ -884,16 +890,16 @@ fn command_deposit_all_stake(
 
 fn command_deposit_sol(
     config: &Config,
-    stake_pool_address: &Pubkey,
     from: &Option<Keypair>,
     pool_token_receiver_account: &Option<Pubkey>,
     referrer_token_account: &Option<Pubkey>,
     amount: f64,
 ) -> CommandResult {
-    if !config.no_update {
-        command_update(config, stake_pool_address, false, false)?;
-    }
+    let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
 
+    if !config.no_update {
+        command_update(config, &stake_pool_address, false, false)?;
+    }
     let amount = native_token::sol_to_lamports(amount);
 
     // Check withdraw_from balance
@@ -910,7 +916,7 @@ fn command_deposit_sol(
         .into());
     }
 
-    let stake_pool = get_stake_pool(&config.rpc_client, stake_pool_address)?;
+    let stake_pool = get_stake_pool(&config.rpc_client, &stake_pool_address)?;
 
     let mut instructions: Vec<Instruction> = vec![];
 
@@ -943,7 +949,7 @@ fn command_deposit_sol(
     let referrer_token_account = referrer_token_account.unwrap_or(pool_token_receiver_account);
 
     let pool_withdraw_authority =
-        find_withdraw_authority_program_address(&westake::id(), stake_pool_address).0;
+        find_withdraw_authority_program_address(&westake::id(), &stake_pool_address).0;
 
     let deposit_instruction = if let Some(deposit_authority) = config.funding_authority.as_ref() {
         let expected_sol_deposit_authority = stake_pool.sol_deposit_authority.ok_or_else(|| {
@@ -961,7 +967,7 @@ fn command_deposit_sol(
 
         westake::stake_pool::instruction::deposit_sol_with_authority(
             &westake::id(),
-            stake_pool_address,
+            &stake_pool_address,
             &deposit_authority.pubkey(),
             &pool_withdraw_authority,
             &stake_pool.reserve_stake,
@@ -976,7 +982,7 @@ fn command_deposit_sol(
     } else {
         westake::stake_pool::instruction::deposit_sol(
             &westake::id(),
-            stake_pool_address,
+            &stake_pool_address,
             &pool_withdraw_authority,
             &stake_pool.reserve_stake,
             &user_sol_transfer.pubkey(),
@@ -1284,23 +1290,24 @@ fn prepare_withdraw_accounts(
 
 fn command_withdraw_stake(
     config: &Config,
-    stake_pool_address: &Pubkey,
     use_reserve: bool,
     vote_account_address: &Option<Pubkey>,
     stake_receiver_param: &Option<Pubkey>,
     pool_token_account: &Option<Pubkey>,
     pool_amount: f64,
 ) -> CommandResult {
+    let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
+
     if !config.no_update {
-        command_update(config, stake_pool_address, false, false)?;
+        command_update(config, &stake_pool_address, false, false)?;
     }
 
-    let stake_pool = get_stake_pool(&config.rpc_client, stake_pool_address)?;
+    let stake_pool = get_stake_pool(&config.rpc_client, &stake_pool_address)?;
     let pool_mint = get_token_mint(&config.rpc_client, &stake_pool.pool_mint)?;
     let pool_amount = spl_token::ui_amount_to_amount(pool_amount, pool_mint.decimals);
 
     let pool_withdraw_authority =
-        find_withdraw_authority_program_address(&westake::id(), stake_pool_address).0;
+        find_withdraw_authority_program_address(&westake::id(), &stake_pool_address).0;
 
     let pool_token_account = pool_token_account.unwrap_or(get_associated_token_address(
         &config.token_owner.pubkey(),
@@ -1335,7 +1342,7 @@ fn command_withdraw_stake(
         let (stake_account_address, _) = find_stake_program_address(
             &westake::id(),
             vote_account_address,
-            stake_pool_address,
+            &stake_pool_address,
         );
         let stake_account = config.rpc_client.get_account(&stake_account_address)?;
 
@@ -1366,7 +1373,7 @@ fn command_withdraw_stake(
             &config.rpc_client,
             &stake_pool,
             pool_amount,
-            stake_pool_address,
+            &stake_pool_address,
             stake_pool.manager_fee_account == pool_token_account,
         )?
     };
@@ -1434,7 +1441,7 @@ fn command_withdraw_stake(
 
         instructions.push(westake::stake_pool::instruction::withdraw_stake(
             &westake::id(),
-            stake_pool_address,
+            &stake_pool_address,
             &stake_pool.validator_list,
             &pool_withdraw_authority,
             &withdraw_account.stake_address,
@@ -1468,16 +1475,17 @@ fn command_withdraw_stake(
 
 fn command_withdraw_sol(
     config: &Config,
-    stake_pool_address: &Pubkey,
+    
     pool_token_account: &Option<Pubkey>,
     sol_receiver: &Pubkey,
     pool_amount: f64,
 ) -> CommandResult {
+    let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
     if !config.no_update {
-        command_update(config, stake_pool_address, false, false)?;
+        command_update(config, &stake_pool_address, false, false)?;
     }
 
-    let stake_pool = get_stake_pool(&config.rpc_client, stake_pool_address)?;
+    let stake_pool = get_stake_pool(&config.rpc_client, &stake_pool_address)?;
     let pool_mint = get_token_mint(&config.rpc_client, &stake_pool.pool_mint)?;
     let pool_amount = spl_token::ui_amount_to_amount(pool_amount, pool_mint.decimals);
 
@@ -1522,7 +1530,7 @@ fn command_withdraw_sol(
     ];
 
     let pool_withdraw_authority =
-        find_withdraw_authority_program_address(&westake::id(), stake_pool_address).0;
+        find_withdraw_authority_program_address(&westake::id(), &stake_pool_address).0;
 
     let withdraw_instruction = if let Some(withdraw_authority) = config.funding_authority.as_ref() {
         let expected_sol_withdraw_authority =
@@ -1541,7 +1549,7 @@ fn command_withdraw_sol(
 
         westake::stake_pool::instruction::withdraw_sol_with_authority(
             &westake::id(),
-            stake_pool_address,
+            &stake_pool_address,
             &withdraw_authority.pubkey(),
             &pool_withdraw_authority,
             &user_transfer_authority.pubkey(),
@@ -1556,7 +1564,7 @@ fn command_withdraw_sol(
     } else {
         westake::stake_pool::instruction::withdraw_sol(
             &westake::id(),
-            stake_pool_address,
+            &stake_pool_address,
             &pool_withdraw_authority,
             &user_transfer_authority.pubkey(),
             &pool_token_account,
@@ -1584,14 +1592,15 @@ fn command_withdraw_sol(
 
 fn command_set_manager(
     config: &Config,
-    stake_pool_address: &Pubkey,
     new_manager: &Option<Keypair>,
     new_fee_receiver: &Option<Pubkey>,
 ) -> CommandResult {
+    let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
+
     if !config.no_update {
-        command_update(config, stake_pool_address, false, false)?;
+        command_update(config, &stake_pool_address, false, false)?;
     }
-    let stake_pool = get_stake_pool(&config.rpc_client, stake_pool_address)?;
+    let stake_pool = get_stake_pool(&config.rpc_client, &stake_pool_address)?;
 
     // If new accounts are missing in the arguments use the old ones
     let (new_manager_pubkey, mut signers): (Pubkey, Vec<&dyn Signer>) = match new_manager {
@@ -1622,7 +1631,7 @@ fn command_set_manager(
         config,
         &[westake::stake_pool::instruction::set_manager(
             &westake::id(),
-            stake_pool_address,
+            &stake_pool_address,
             &config.manager.pubkey(),
             &new_manager_pubkey,
             &new_fee_receiver,
@@ -1635,11 +1644,12 @@ fn command_set_manager(
 
 fn command_set_staker(
     config: &Config,
-    stake_pool_address: &Pubkey,
     new_staker: &Pubkey,
 ) -> CommandResult {
+    let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
+
     if !config.no_update {
-        command_update(config, stake_pool_address, false, false)?;
+        command_update(config, &stake_pool_address, false, false)?;
     }
     let mut signers = vec![config.fee_payer.as_ref(), config.manager.as_ref()];
     unique_signers!(signers);
@@ -1647,7 +1657,7 @@ fn command_set_staker(
         config,
         &[westake::stake_pool::instruction::set_staker(
             &westake::id(),
-            stake_pool_address,
+            &stake_pool_address,
             &config.manager.pubkey(),
             new_staker,
         )],
@@ -1659,12 +1669,13 @@ fn command_set_staker(
 
 fn command_set_funding_authority(
     config: &Config,
-    stake_pool_address: &Pubkey,
     new_authority: Option<Pubkey>,
     funding_type: FundingType,
 ) -> CommandResult {
+    let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
+
     if !config.no_update {
-        command_update(config, stake_pool_address, false, false)?;
+        command_update(config, &stake_pool_address, false, false)?;
     }
     let mut signers = vec![config.fee_payer.as_ref(), config.manager.as_ref()];
     unique_signers!(signers);
@@ -1672,7 +1683,7 @@ fn command_set_funding_authority(
         config,
         &[westake::stake_pool::instruction::set_funding_authority(
             &westake::id(),
-            stake_pool_address,
+            &stake_pool_address,
             &config.manager.pubkey(),
             new_authority.as_ref(),
             funding_type,
@@ -1685,11 +1696,12 @@ fn command_set_funding_authority(
 
 fn command_set_fee(
     config: &Config,
-    stake_pool_address: &Pubkey,
     new_fee: FeeType,
 ) -> CommandResult {
+    let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
+
     if !config.no_update {
-        command_update(config, stake_pool_address, false, false)?;
+        command_update(config, &stake_pool_address, false, false)?;
     }
     let mut signers = vec![config.fee_payer.as_ref(), config.manager.as_ref()];
     unique_signers!(signers);
@@ -1697,7 +1709,7 @@ fn command_set_fee(
         config,
         &[westake::stake_pool::instruction::set_fee(
             &westake::id(),
-            stake_pool_address,
+            &stake_pool_address,
             &config.manager.pubkey(),
             new_fee,
         )],
@@ -1922,14 +1934,6 @@ fn main() {
                     .help("Validator list keypair [default: new keypair]"),
             )
             .arg(
-                Arg::with_name("mint_keypair")
-                    .long("mint-keypair")
-                    .validator(is_keypair_or_ask_keyword)
-                    .value_name("PATH")
-                    .takes_value(true)
-                    .help("Stake pool mint keypair [default: new keypair]"),
-            )
-            .arg(
                 Arg::with_name("reserve_keypair")
                     .long("reserve-keypair")
                     .validator(is_keypair_or_ask_keyword)
@@ -1940,18 +1944,10 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("add-validator")
             .about("Add validator account to the stake pool. Must be signed by the pool staker.")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address"),
-            )
+            
             .arg(
                 Arg::with_name("vote_account")
-                    .index(2)
+                    .index(1)
                     .validator(is_pubkey)
                     .value_name("VOTE_ACCOUNT_ADDRESS")
                     .takes_value(true)
@@ -1961,18 +1957,10 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("remove-validator")
             .about("Remove validator account from the stake pool. Must be signed by the pool staker.")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address"),
-            )
+
             .arg(
                 Arg::with_name("vote_account")
-                    .index(2)
+                    .index(1)
                     .validator(is_pubkey)
                     .value_name("VOTE_ACCOUNT_ADDRESS")
                     .takes_value(true)
@@ -1999,18 +1987,10 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("increase-validator-stake")
             .about("Increase stake to a validator, drawing from the stake pool reserve. Must be signed by the pool staker.")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address"),
-            )
+   
             .arg(
                 Arg::with_name("vote_account")
-                    .index(2)
+                    .index(1)
                     .validator(is_pubkey)
                     .value_name("VOTE_ACCOUNT_ADDRESS")
                     .takes_value(true)
@@ -2019,7 +1999,7 @@ fn main() {
             )
             .arg(
                 Arg::with_name("amount")
-                    .index(3)
+                    .index(2)
                     .validator(is_amount)
                     .value_name("AMOUNT")
                     .takes_value(true)
@@ -2029,17 +2009,8 @@ fn main() {
         .subcommand(SubCommand::with_name("decrease-validator-stake")
             .about("Decrease stake to a validator, splitting from the active stake. Must be signed by the pool staker.")
             .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address"),
-            )
-            .arg(
                 Arg::with_name("vote_account")
-                    .index(2)
+                    .index(1)
                     .validator(is_pubkey)
                     .value_name("VOTE_ACCOUNT_ADDRESS")
                     .takes_value(true)
@@ -2048,7 +2019,7 @@ fn main() {
             )
             .arg(
                 Arg::with_name("amount")
-                    .index(3)
+                    .index(2)
                     .validator(is_amount)
                     .value_name("AMOUNT")
                     .takes_value(true)
@@ -2057,18 +2028,10 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("set-preferred-validator")
             .about("Set the preferred validator for deposits or withdrawals. Must be signed by the pool staker.")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address"),
-            )
+            
             .arg(
                 Arg::with_name("preferred_type")
-                    .index(2)
+                    .index(1)
                     .value_name("OPERATION")
                     .possible_values(&["deposit", "withdraw"]) // PreferredValidatorType enum
                     .takes_value(true)
@@ -2097,18 +2060,10 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("deposit-stake")
             .about("Deposit active stake account into the stake pool in exchange for pool tokens")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address"),
-            )
+           
             .arg(
                 Arg::with_name("stake_account")
-                    .index(2)
+                    .index(1)
                     .validator(is_pubkey)
                     .value_name("STAKE_ACCOUNT_ADDRESS")
                     .takes_value(true)
@@ -2144,18 +2099,10 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("deposit-all-stake")
             .about("Deposit all active stake accounts into the stake pool in exchange for pool tokens")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address"),
-            )
+            
             .arg(
                 Arg::with_name("stake_authority")
-                    .index(2)
+                    .index(1)
                     .validator(is_pubkey)
                     .value_name("ADDRESS")
                     .takes_value(true)
@@ -2192,16 +2139,8 @@ fn main() {
         .subcommand(SubCommand::with_name("deposit-sol")
             .about("Deposit SOL into the stake pool in exchange for pool tokens")
             .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address"),
-            ).arg(
                 Arg::with_name("amount")
-                    .index(2)
+                    .index(1)
                     .validator(is_amount)
                     .value_name("AMOUNT")
                     .takes_value(true)
@@ -2237,27 +2176,11 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("list")
             .about("List stake accounts managed by this pool")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address."),
-            )
+          
         )
         .subcommand(SubCommand::with_name("update")
             .about("Updates all balances in the pool after validator stake accounts receive rewards.")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address."),
-            )
+            
             .arg(
                 Arg::with_name("force")
                     .long("force")
@@ -2273,18 +2196,10 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("withdraw-stake")
             .about("Withdraw active stake from the stake pool in exchange for pool tokens")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address."),
-            )
+           
             .arg(
                 Arg::with_name("amount")
-                    .index(2)
+                    .index(1)
                     .validator(is_amount)
                     .value_name("AMOUNT")
                     .takes_value(true)
@@ -2329,18 +2244,10 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("withdraw-sol")
             .about("Withdraw SOL from the stake pool's reserve in exchange for pool tokens")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address."),
-            )
+           
             .arg(
                 Arg::with_name("sol_receiver")
-                    .index(2)
+                    .index(1)
                     .validator(is_valid_pubkey)
                     .value_name("SYSTEM_ACCOUNT_ADDRESS_OR_KEYPAIR")
                     .takes_value(true)
@@ -2349,7 +2256,7 @@ fn main() {
             )
             .arg(
                 Arg::with_name("amount")
-                    .index(3)
+                    .index(2)
                     .validator(is_amount)
                     .value_name("AMOUNT")
                     .takes_value(true)
@@ -2367,15 +2274,7 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("set-manager")
             .about("Change manager or fee receiver account for the stake pool. Must be signed by the current manager.")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address."),
-            )
+        
             .arg(
                 Arg::with_name("new_manager")
                     .long("new-manager")
@@ -2401,18 +2300,10 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("set-staker")
             .about("Change staker account for the stake pool. Must be signed by the manager or current staker.")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address."),
-            )
+       
             .arg(
                 Arg::with_name("new_staker")
-                    .index(2)
+                    .index(1)
                     .validator(is_pubkey)
                     .value_name("ADDRESS")
                     .takes_value(true)
@@ -2421,18 +2312,10 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("set-funding-authority")
             .about("Change one of the funding authorities for the stake pool. Must be signed by the manager.")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address."),
-            )
+           
             .arg(
                 Arg::with_name("funding_type")
-                    .index(2)
+                    .index(1)
                     .value_name("FUNDING_TYPE")
                     .possible_values(&["stake-deposit", "sol-deposit", "sol-withdraw"]) // FundingType enum
                     .takes_value(true)
@@ -2441,7 +2324,7 @@ fn main() {
             )
             .arg(
                 Arg::with_name("new_authority")
-                    .index(3)
+                    .index(2)
                     .validator(is_pubkey)
                     .value_name("AUTHORITY_ADDRESS")
                     .takes_value(true)
@@ -2461,17 +2344,9 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("set-fee")
             .about("Change the [epoch/withdraw/stake deposit/sol deposit] fee assessed by the stake pool. Must be signed by the manager.")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address."),
-            )
+       
             .arg(Arg::with_name("fee_type")
-                .index(2)
+                .index(1)
                 .value_name("FEE_TYPE")
                 .possible_values(&["epoch", "stake-deposit", "sol-deposit", "stake-withdrawal", "sol-withdrawal"]) // FeeType enum
                 .takes_value(true)
@@ -2480,7 +2355,7 @@ fn main() {
             )
             .arg(
                 Arg::with_name("fee_numerator")
-                    .index(3)
+                    .index(2)
                     .validator(is_parsable::<u64>)
                     .value_name("NUMERATOR")
                     .takes_value(true)
@@ -2489,7 +2364,7 @@ fn main() {
             )
             .arg(
                 Arg::with_name("fee_denominator")
-                    .index(4)
+                    .index(3)
                     .validator(is_parsable::<u64>)
                     .value_name("DENOMINATOR")
                     .takes_value(true)
@@ -2499,17 +2374,9 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("set-referral-fee")
             .about("Change the referral fee assessed by the stake pool for stake deposits. Must be signed by the manager.")
-            .arg(
-                Arg::with_name("pool")
-                    .index(1)
-                    .validator(is_pubkey)
-                    .value_name("POOL_ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Stake pool address."),
-            )
+        
             .arg(Arg::with_name("fee_type")
-                .index(2)
+                .index(1)
                 .value_name("FEE_TYPE")
                 .possible_values(&["stake", "sol"]) // FeeType enum, kind of
                 .takes_value(true)
@@ -2518,7 +2385,7 @@ fn main() {
             )
             .arg(
                 Arg::with_name("fee")
-                    .index(3)
+                    .index(2)
                     .validator(is_valid_percentage)
                     .value_name("FEE_PERCENTAGE")
                     .takes_value(true)
@@ -2634,7 +2501,6 @@ fn main() {
             let max_validators = value_t_or_exit!(arg_matches, "max_validators", u32);
          //   let pool_keypair = keypair_of(arg_matches, "pool_keypair");
             let validator_list_keypair = keypair_of(arg_matches, "validator_list_keypair");
-            let mint_keypair = keypair_of(arg_matches, "mint_keypair");
             let reserve_keypair = keypair_of(arg_matches, "reserve_keypair");
             command_create_pool(
                 &config,
@@ -2653,44 +2519,36 @@ fn main() {
                 },
                 referral_fee.unwrap_or(0),
                 max_validators,
-          //      pool_keypair,
                 validator_list_keypair,
-                mint_keypair,
                 reserve_keypair,
             )
         }
         ("add-validator", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let vote_account_address = pubkey_of(arg_matches, "vote_account").unwrap();
-            command_vsa_add(&config, &stake_pool_address, &vote_account_address)
+            command_vsa_add(&config,  &vote_account_address)
         }
         ("remove-validator", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let vote_account = pubkey_of(arg_matches, "vote_account").unwrap();
             let new_authority = pubkey_of(arg_matches, "new_authority");
             let stake_receiver = pubkey_of(arg_matches, "stake_receiver");
             command_vsa_remove(
                 &config,
-                &stake_pool_address,
                 &vote_account,
                 &new_authority,
                 &stake_receiver,
             )
         }
         ("increase-validator-stake", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let vote_account = pubkey_of(arg_matches, "vote_account").unwrap();
             let amount = value_t_or_exit!(arg_matches, "amount", f64);
-            command_increase_validator_stake(&config, &stake_pool_address, &vote_account, amount)
+            command_increase_validator_stake(&config,  &vote_account, amount)
         }
         ("decrease-validator-stake", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let vote_account = pubkey_of(arg_matches, "vote_account").unwrap();
             let amount = value_t_or_exit!(arg_matches, "amount", f64);
-            command_decrease_validator_stake(&config, &stake_pool_address, &vote_account, amount)
+            command_decrease_validator_stake(&config,  &vote_account, amount)
         }
         ("set-preferred-validator", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let preferred_type = match arg_matches.value_of("preferred_type").unwrap() {
                 "deposit" => PreferredValidatorType::Deposit,
                 "withdraw" => PreferredValidatorType::Withdraw,
@@ -2702,13 +2560,11 @@ fn main() {
             // then vote_account will be None, which is valid for the program
             command_set_preferred_validator(
                 &config,
-                &stake_pool_address,
                 preferred_type,
                 vote_account,
             )
         }
         ("deposit-stake", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let stake_account = pubkey_of(arg_matches, "stake_account").unwrap();
             let token_receiver: Option<Pubkey> = pubkey_of(arg_matches, "token_receiver");
             let referrer: Option<Pubkey> = pubkey_of(arg_matches, "referrer");
@@ -2723,7 +2579,6 @@ fn main() {
             );
             command_deposit_stake(
                 &config,
-                &stake_pool_address,
                 &stake_account,
                 withdraw_authority,
                 &token_receiver,
@@ -2731,32 +2586,29 @@ fn main() {
             )
         }
         ("deposit-sol", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let token_receiver: Option<Pubkey> = pubkey_of(arg_matches, "token_receiver");
             let referrer: Option<Pubkey> = pubkey_of(arg_matches, "referrer");
             let from = keypair_of(arg_matches, "from");
             let amount = value_t_or_exit!(arg_matches, "amount", f64);
             command_deposit_sol(
                 &config,
-                &stake_pool_address,
                 &from,
                 &token_receiver,
                 &referrer,
                 amount,
             )
         }
-        ("list", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
+        ("list", Some(_)) => {
+            let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
             command_list(&config, &stake_pool_address)
         }
         ("update", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
+            let stake_pool_address = westake::stake_pool::find_stake_pool_program_address(&westake::id()).0;
             let no_merge = arg_matches.is_present("no_merge");
             let force = arg_matches.is_present("force");
             command_update(&config, &stake_pool_address, force, no_merge)
         }
         ("withdraw-stake", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let vote_account = pubkey_of(arg_matches, "vote_account");
             let pool_account = pubkey_of(arg_matches, "pool_account");
             let pool_amount = value_t_or_exit!(arg_matches, "amount", f64);
@@ -2764,7 +2616,6 @@ fn main() {
             let use_reserve = arg_matches.is_present("use_reserve");
             command_withdraw_stake(
                 &config,
-                &stake_pool_address,
                 use_reserve,
                 &vote_account,
                 &stake_receiver,
@@ -2773,7 +2624,6 @@ fn main() {
             )
         }
         ("withdraw-sol", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let pool_account = pubkey_of(arg_matches, "pool_account");
             let pool_amount = value_t_or_exit!(arg_matches, "amount", f64);
             let sol_receiver = get_signer(
@@ -2788,30 +2638,25 @@ fn main() {
             .pubkey();
             command_withdraw_sol(
                 &config,
-                &stake_pool_address,
                 &pool_account,
                 &sol_receiver,
                 pool_amount,
             )
         }
         ("set-manager", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let new_manager: Option<Keypair> = keypair_of(arg_matches, "new_manager");
             let new_fee_receiver: Option<Pubkey> = pubkey_of(arg_matches, "new_fee_receiver");
             command_set_manager(
                 &config,
-                &stake_pool_address,
                 &new_manager,
                 &new_fee_receiver,
             )
         }
         ("set-staker", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let new_staker = pubkey_of(arg_matches, "new_staker").unwrap();
-            command_set_staker(&config, &stake_pool_address, &new_staker)
+            command_set_staker(&config, &new_staker)
         }
         ("set-funding-authority", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let new_authority = pubkey_of(arg_matches, "new_authority");
             let funding_type = match arg_matches.value_of("funding_type").unwrap() {
                 "sol-deposit" => FundingType::SolDeposit,
@@ -2820,10 +2665,9 @@ fn main() {
                 _ => unreachable!(),
             };
             let _unset = arg_matches.is_present("unset");
-            command_set_funding_authority(&config, &stake_pool_address, new_authority, funding_type)
+            command_set_funding_authority(&config,  new_authority, funding_type)
         }
         ("set-fee", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let numerator = value_t_or_exit!(arg_matches, "fee_numerator", u64);
             let denominator = value_t_or_exit!(arg_matches, "fee_denominator", u64);
             let new_fee = Fee {
@@ -2831,28 +2675,25 @@ fn main() {
                 numerator,
             };
             match arg_matches.value_of("fee_type").unwrap() {
-                "epoch" => command_set_fee(&config, &stake_pool_address, FeeType::Epoch(new_fee)),
+                "epoch" => command_set_fee(&config,  FeeType::Epoch(new_fee)),
                 "stake-deposit" => {
-                    command_set_fee(&config, &stake_pool_address, FeeType::StakeDeposit(new_fee))
+                    command_set_fee(&config, FeeType::StakeDeposit(new_fee))
                 }
                 "sol-deposit" => {
-                    command_set_fee(&config, &stake_pool_address, FeeType::SolDeposit(new_fee))
+                    command_set_fee(&config,  FeeType::SolDeposit(new_fee))
                 }
                 "stake-withdrawal" => command_set_fee(
                     &config,
-                    &stake_pool_address,
                     FeeType::StakeWithdrawal(new_fee),
                 ),
                 "sol-withdrawal" => command_set_fee(
                     &config,
-                    &stake_pool_address,
                     FeeType::SolWithdrawal(new_fee),
                 ),
                 _ => unreachable!(),
             }
         }
         ("set-referral-fee", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let fee = value_t_or_exit!(arg_matches, "fee", u8);
             assert!(
                 fee <= 100u8,
@@ -2864,11 +2705,10 @@ fn main() {
                 "stake" => FeeType::StakeReferral(fee),
                 _ => unreachable!(),
             };
-            command_set_fee(&config, &stake_pool_address, fee_type)
+            command_set_fee(&config,  fee_type)
         }
         ("list-all", _) => command_list_all_pools(&config),
         ("deposit-all-stake", Some(arg_matches)) => {
-            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let stake_authority = pubkey_of(arg_matches, "stake_authority").unwrap();
             let token_receiver: Option<Pubkey> = pubkey_of(arg_matches, "token_receiver");
             let referrer: Option<Pubkey> = pubkey_of(arg_matches, "referrer");
@@ -2883,7 +2723,6 @@ fn main() {
             );
             command_deposit_all_stake(
                 &config,
-                &stake_pool_address,
                 &stake_authority,
                 withdraw_authority,
                 &token_receiver,
