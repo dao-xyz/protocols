@@ -4,7 +4,6 @@ use super::super::utils::program_test;
 use {
     super::helpers::*,
     bincode::deserialize,
-    borsh::BorshSerialize,
     solana_program::{
         borsh::try_from_slice_unchecked,
         instruction::{AccountMeta, Instruction, InstructionError},
@@ -42,8 +41,7 @@ async fn setup() -> (
         .await
         .unwrap();
 
-    let validator_stake =
-        ValidatorStakeAccount::new(&stake_pool_accounts.stake_pool, u64::MAX);
+    let validator_stake = ValidatorStakeAccount::new(&stake_pool_accounts.stake_pool, u64::MAX);
     create_vote(
         &mut context.banks_client,
         &context.payer,

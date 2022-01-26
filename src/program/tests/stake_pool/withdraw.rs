@@ -4,7 +4,6 @@ use super::super::utils::program_test;
 use {
     super::helpers::*,
     bincode::deserialize,
-    borsh::BorshSerialize,
     solana_program::{
         borsh::try_from_slice_unchecked,
         hash::Hash,

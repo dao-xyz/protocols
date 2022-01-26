@@ -215,7 +215,6 @@ async fn fail_with_wrong_max_validators() {
     .await;
 
     let rent = banks_client.get_rent().await.unwrap();
-    let rent_stake_pool = rent.minimum_balance(get_packed_len::<state::StakePool>());
     let validator_list_size = get_instance_packed_len(&state::ValidatorList::new(
         stake_pool_accounts.max_validators - 1,
     ))
@@ -459,7 +458,6 @@ async fn fail_with_wrong_token_program_id() {
     .unwrap();
 
     let rent = banks_client.get_rent().await.unwrap();
-    let rent_stake_pool = rent.minimum_balance(get_packed_len::<state::StakePool>());
     let validator_list_size = get_instance_packed_len(&state::ValidatorList::new(
         stake_pool_accounts.max_validators,
     ))
@@ -516,7 +514,7 @@ async fn fail_with_wrong_token_program_id() {
         TransportError::TransactionError(TransactionError::InstructionError(_, error)) => {
             assert_eq!(error, InstructionError::IncorrectProgramId);
         }
-        e => panic!(
+        _ => panic!(
             "Wrong error occurs while try to initialize stake pool with wrong token program ID"
         ),
     }
@@ -550,7 +548,6 @@ async fn fail_with_fee_owned_by_wrong_token_program_id() {
     );
     banks_client.process_transaction(transaction).await.unwrap();
 
-    let rent_stake_pool = rent.minimum_balance(get_packed_len::<state::StakePool>());
     let validator_list_size = get_instance_packed_len(&state::ValidatorList::new(
         stake_pool_accounts.max_validators,
     ))
@@ -787,8 +784,6 @@ async fn fail_with_not_rent_exempt_validator_list() {
     )
     .await;
 
-    let rent = banks_client.get_rent().await.unwrap();
-    let rent_stake_pool = rent.minimum_balance(get_packed_len::<state::StakePool>());
     let validator_list_size = get_instance_packed_len(&state::ValidatorList::new(
         stake_pool_accounts.max_validators,
     ))
