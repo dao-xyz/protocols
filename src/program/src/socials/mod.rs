@@ -13,7 +13,12 @@ use solana_program::pubkey::{PubkeyError, MAX_SEEDS, MAX_SEED_LEN};
 use solana_program::rent::Rent;
 use solana_program::{msg, system_instruction};
 
-const USER: &[u8] = b"user";
+pub trait MaxSize {
+    /// Returns max account size or None if max size is not known and actual instance size should be used
+    fn get_max_size(&self) -> Option<usize> {
+        None
+    }
+}
 
 /// Find user account program owned address from username
 pub fn find_user_account_program_address(program_id: &Pubkey, username: &str) -> (Pubkey, u8) {
@@ -24,10 +29,7 @@ pub fn find_user_account_program_address(program_id: &Pubkey, username: &str) ->
 
 /// Create post mint program address
 pub fn create_user_account_program_address_seeds(username: &str) -> Vec<Vec<u8>> {
-    let mut seeds = generate_seeds_from_string(username).unwrap();
-    seeds.extend_from_slice(&[USER.to_vec()]);
-    seeds.reverse();
-    seeds
+    generate_seeds_from_string(username).unwrap()
 }
 
 /**
@@ -55,7 +57,7 @@ pub fn generate_seeds_from_string(str: &str) -> Result<Vec<Vec<u8>>, PubkeyError
 
 /// Creates a new account and serializes data into it using the provided seeds to invoke signed CPI call
 /// Note: This functions also checks the provided account PDA matches the supplied seeds
-pub fn create_and_serialize_account_signed_verify<'a, T: BorshSerialize>(
+pub fn create_and_serialize_account_signed_verify<'a, T: BorshSerialize + MaxSize>(
     payer_info: &AccountInfo<'a>,
     account_info: &AccountInfo<'a>,
     account_data: &T,
@@ -86,7 +88,7 @@ pub fn create_and_serialize_account_signed_verify<'a, T: BorshSerialize>(
 
 /// Creates a new account and serializes data into it using the provided seeds to invoke signed CPI call
 /// Note: This functions also checks the provided account PDA matches the supplied seeds
-fn create_and_serialize_account_signed_from_pda<'a, T: BorshSerialize>(
+fn create_and_serialize_account_signed_from_pda<'a, T: BorshSerialize + MaxSize>(
     payer_info: &AccountInfo<'a>,
     account_info: &AccountInfo<'a>,
     account_data: &T,
@@ -95,7 +97,9 @@ fn create_and_serialize_account_signed_from_pda<'a, T: BorshSerialize>(
     system_info: &AccountInfo<'a>,
     rent: &Rent,
 ) -> Result<(), ProgramError> {
-    let (serialized_data, account_size) = {
+    let (serialized_data, account_size) = if let Some(max_size) = account_data.get_max_size() {
+        (None, max_size)
+    } else {
         let serialized_data = account_data.try_to_vec()?;
         let account_size = serialized_data.len();
         (Some(serialized_data), account_size)

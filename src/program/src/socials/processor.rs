@@ -1,3 +1,4 @@
+use borsh::BorshSerialize;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -11,7 +12,7 @@ use solana_program::{
 use super::{
     create_and_serialize_account_signed_verify, create_user_account_program_address_seeds,
     instruction::SocialInstruction,
-    state::{AccountContainer, ProfilePicture, UserAccount, UserDescription},
+    state::{deserialize_user_account, AccountContainer, UserAccount},
 };
 
 pub struct Processor {}
@@ -22,8 +23,7 @@ impl Processor {
         program_id: &Pubkey,
         accounts: &[AccountInfo],
         name: String,
-        profile: Option<ProfilePicture>,
-        description: Option<UserDescription>,
+        profile: Option<String>,
         user_account_bump_seed: u8,
     ) -> ProgramResult {
         let accounts_iter = &mut accounts.iter();
@@ -33,14 +33,10 @@ impl Processor {
             return Err(ProgramError::InvalidArgument);
         }
         // check if leading or trailing spaces, if so name is invalid
-        msg!("NAME CHECK");
-
         let mut chars = name.chars();
         if chars.next().unwrap().is_whitespace() || chars.last().unwrap_or('_').is_whitespace() {
             return Err(ProgramError::InvalidArgument);
         }
-
-        msg!("NAME OK {}: ", name);
 
         let user_acount_info = next_account_info(accounts_iter)?;
         let system_account = next_account_info(accounts_iter)?;
@@ -52,7 +48,6 @@ impl Processor {
 
         let user_account = UserAccount {
             name,
-            description,
             profile,
             owner: *payer_account.key, // payer becomes owner
         };
@@ -69,6 +64,24 @@ impl Processor {
         Ok(())
     }
 
+    pub fn process_update_user(accounts: &[AccountInfo], profile: Option<String>) -> ProgramResult {
+        let accounts_iter = &mut accounts.iter();
+        let payer_account = next_account_info(accounts_iter)?;
+
+        if !payer_account.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        let user_account_info = next_account_info(accounts_iter)?;
+        let mut user = deserialize_user_account(&*user_account_info.data.borrow())?;
+        if &user.owner != payer_account.key {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        user.profile = profile;
+        AccountContainer::UserAccount(user).serialize(&mut *user_account_info.data.borrow_mut())?;
+        Ok(())
+    }
+
     pub fn process(
         program_id: &Pubkey,
         accounts: &[AccountInfo],
@@ -78,7 +91,7 @@ impl Processor {
             SocialInstruction::CreateUser {
                 name,
                 profile,
-                description,
+
                 user_account_bump_seed,
             } => {
                 msg!("Instruction: Create user");
@@ -87,9 +100,12 @@ impl Processor {
                     accounts,
                     name,
                     profile,
-                    description,
                     user_account_bump_seed,
                 )
+            }
+            SocialInstruction::UpdateUser { profile } => {
+                msg!("Instruction: Update user");
+                Self::process_update_user(accounts, profile)
             }
         }
     }

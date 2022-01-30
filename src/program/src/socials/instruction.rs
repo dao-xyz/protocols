@@ -9,19 +9,18 @@ use solana_program::{
 
 use crate::{instruction::CHAT_INSTRUCTION_INDEX, shared::io_utils::try_to_vec_prepend};
 
-use super::{
-    find_user_account_program_address,
-    state::{ProfilePicture, UserAccount, UserDescription},
-};
+use super::find_user_account_program_address;
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum SocialInstruction {
     // Message builder is user to build a message that later can be submitted with the submitt message instruction
     CreateUser {
         name: String,
-        profile: Option<ProfilePicture>,
-        description: Option<UserDescription>,
+        profile: Option<String>,
         user_account_bump_seed: u8,
+    },
+    UpdateUser {
+        profile: Option<String>,
     },
 }
 
@@ -35,15 +34,19 @@ impl SocialInstruction {
 }
 
 /// Creates a create user transction
-pub fn create_user_transaction(program_id: &Pubkey, username: &str, payer: &Pubkey) -> Instruction {
+pub fn create_user_transaction(
+    program_id: &Pubkey,
+    username: &str,
+    profile: Option<String>,
+    payer: &Pubkey,
+) -> Instruction {
     let (user_account, user_account_bump_seed) =
         find_user_account_program_address(program_id, username);
     Instruction {
         program_id: *program_id,
         data: SocialInstruction::CreateUser {
             name: username.into(),
-            profile: None,
-            description: None,
+            profile: profile,
             user_account_bump_seed,
         }
         .try_to_vec()
@@ -52,6 +55,26 @@ pub fn create_user_transaction(program_id: &Pubkey, username: &str, payer: &Pubk
             AccountMeta::new(*payer, true),
             AccountMeta::new(user_account, false),
             AccountMeta::new(system_program::id(), false),
+        ],
+    }
+}
+
+/// Creates a create user transction
+pub fn create_update_user_transaction(
+    program_id: &Pubkey,
+    username: &str,
+    profile: Option<String>,
+    payer: &Pubkey,
+) -> Instruction {
+    let (user_account, _) = find_user_account_program_address(program_id, username);
+    Instruction {
+        program_id: *program_id,
+        data: SocialInstruction::UpdateUser { profile: profile }
+            .try_to_vec()
+            .unwrap(),
+        accounts: vec![
+            AccountMeta::new(*payer, true),
+            AccountMeta::new(user_account, false),
         ],
     }
 }
