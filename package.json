@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@solvei/borsh": "^0.0.15",
-    "@solana/web3.js": "^1.7.0",
+    "@solana/web3.js": "^1.32.1",
     "mz": "^2.7.0",
     "reflect-metadata": "^0.1.13",
     "yaml": "^1.10.2"
