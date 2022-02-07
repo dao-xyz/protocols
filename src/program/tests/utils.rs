@@ -3,8 +3,8 @@
 use solana_program_test::*;
 
 
-use westake::processor::Processor;
+use s2g::processor::Processor;
 
 pub fn program_test() -> ProgramTest {
-    ProgramTest::new("westake", westake::id(), processor!(Processor::process))
+    ProgramTest::new("s2g", s2g::id(), processor!(Processor::process))
 }

@@ -3,6 +3,7 @@ use super::super::utils::program_test;
 
 use {
     super::helpers::*,
+    s2g::stake_pool::{error::StakePoolError, state::StakePool},
     solana_program::{
         borsh::try_from_slice_unchecked, instruction::InstructionError, pubkey::Pubkey,
     },
@@ -11,7 +12,6 @@ use {
         signature::{Keypair, Signer},
         transaction::TransactionError,
     },
-    westake::stake_pool::{error::StakePoolError, state::StakePool},
 };
 
 async fn setup() -> (

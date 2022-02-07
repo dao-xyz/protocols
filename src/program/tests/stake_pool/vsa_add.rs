@@ -5,6 +5,8 @@ use {
     super::helpers::*,
     bincode::deserialize,
     borsh::BorshSerialize,
+    s2g::id,
+    s2g::stake_pool::{error::StakePoolError, find_stake_program_address, instruction, state},
     solana_program::{
         borsh::try_from_slice_unchecked,
         hash::Hash,
@@ -18,8 +20,6 @@ use {
         transaction::{Transaction, TransactionError},
         transport::TransportError,
     },
-    westake::id,
-    westake::stake_pool::{error::StakePoolError, find_stake_program_address, instruction, state},
 };
 
 async fn setup() -> (
@@ -172,7 +172,7 @@ async fn fail_double_add() {
         )
         .await;
 
-    let latest_blockhash = banks_client.get_recent_blockhash().await.unwrap();
+    let latest_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let transaction_error = stake_pool_accounts
         .add_validator_to_pool(

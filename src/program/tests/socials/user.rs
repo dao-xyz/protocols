@@ -1,4 +1,9 @@
-use solana_program::borsh::try_from_slice_unchecked;
+use s2g::socials::find_user_account_program_address;
+use s2g::socials::instruction::SocialInstruction;
+use s2g::socials::user::instruction::{
+    create_update_user_transaction, create_user_transaction, UserInstruction,
+};
+use s2g::socials::user::state::deserialize_user_account;
 use solana_program::hash::Hash;
 use solana_program::instruction::{AccountMeta, Instruction, InstructionError};
 use solana_program_test::*;
@@ -7,11 +12,6 @@ use solana_sdk::signature::Keypair;
 use solana_sdk::transaction::TransactionError;
 use solana_sdk::transport::TransportError;
 use solana_sdk::{pubkey::Pubkey, signer::Signer, transaction::Transaction};
-use westake::socials::find_user_account_program_address;
-use westake::socials::instruction::{
-    create_update_user_transaction, create_user_transaction, SocialInstruction,
-};
-use westake::socials::state::deserialize_user_account;
 
 use crate::utils::program_test;
 
@@ -26,8 +26,8 @@ pub async fn create_and_verify_user(
     banks_client
         .process_transaction(Transaction::new_signed_with_payer(
             &[create_user_transaction(
-                &westake::id(),
-                username.into(),
+                &s2g::id(),
+                username,
                 Some(profile.into()),
                 &payer.pubkey(),
             )],
@@ -39,9 +39,9 @@ pub async fn create_and_verify_user(
         .unwrap();
 
     // Verify username name
-    let user_account_address = find_user_account_program_address(&westake::id(), username).0;
+    let user_account_address = find_user_account_program_address(&s2g::id(), username).0;
     let user_account_info = banks_client
-        .get_account(user_account_address.clone())
+        .get_account(user_account_address)
         .await
         .expect("get_user")
         .expect("user not found");
@@ -81,8 +81,8 @@ async fn success_update() {
     banks_client
         .process_transaction(Transaction::new_signed_with_payer(
             &[create_update_user_transaction(
-                &westake::id(),
-                username.into(),
+                &s2g::id(),
+                username,
                 Some(profile.into()),
                 &payer.pubkey(),
             )],
@@ -94,9 +94,9 @@ async fn success_update() {
         .unwrap();
 
     // Verify profile changed
-    let user_account_address = find_user_account_program_address(&westake::id(), username).0;
+    let user_account_address = find_user_account_program_address(&s2g::id(), username).0;
     let user_account_info = banks_client
-        .get_account(user_account_address.clone())
+        .get_account(user_account_address)
         .await
         .expect("get_user")
         .expect("user not found");
@@ -130,8 +130,8 @@ async fn fail_update_wrong_payer() {
     let err = banks_client
         .process_transaction(Transaction::new_signed_with_payer(
             &[create_update_user_transaction(
-                &westake::id(),
-                username.into(),
+                &s2g::id(),
+                username,
                 Some(profile.into()),
                 &wrong_payer.pubkey(),
             )],
@@ -176,15 +176,15 @@ async fn fail_update_not_signer() {
     .await;
 
     let profile = "updated_profile";
-    let (user_account, _) = find_user_account_program_address(&westake::id(), username);
+    let (user_account, _) = find_user_account_program_address(&s2g::id(), username);
 
     let err = banks_client
         .process_transaction(Transaction::new_signed_with_payer(
             &[Instruction {
-                program_id: westake::id(),
-                data: SocialInstruction::UpdateUser {
+                program_id: s2g::id(),
+                data: SocialInstruction::UserInstruction(UserInstruction::UpdateUser {
                     profile: Some(profile.into()),
-                }
+                })
                 .try_to_vec()
                 .unwrap(),
                 accounts: vec![
@@ -217,7 +217,7 @@ async fn fail_invalid_username() {
     let error = banks_client
         .process_transaction(Transaction::new_signed_with_payer(
             &[create_user_transaction(
-                &westake::id(),
+                &s2g::id(),
                 " x",
                 None,
                 &payer.pubkey(),
@@ -240,8 +240,51 @@ async fn fail_invalid_username() {
     let error = banks_client
         .process_transaction(Transaction::new_signed_with_payer(
             &[create_user_transaction(
-                &westake::id(),
+                &s2g::id(),
                 "x ",
+                None,
+                &payer.pubkey(),
+            )],
+            Some(&payer.pubkey()),
+            &[&payer],
+            recent_blockhash,
+        ))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        TransportError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::InvalidArgument
+        ))
+    ));
+}
+
+#[tokio::test]
+async fn fail_already_exist() {
+    let program = program_test();
+    let (mut banks_client, payer, recent_blockhash) = program.start().await;
+    banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[create_user_transaction(
+                &s2g::id(),
+                "X",
+                None,
+                &payer.pubkey(),
+            )],
+            Some(&payer.pubkey()),
+            &[&payer],
+            recent_blockhash,
+        ))
+        .await
+        .unwrap();
+
+    let error = banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[create_user_transaction(
+                &s2g::id(),
+                "x",
                 None,
                 &payer.pubkey(),
             )],

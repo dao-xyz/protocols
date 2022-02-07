@@ -3,6 +3,12 @@ use super::super::utils::program_test;
 
 use {
     super::helpers::*,
+    s2g::id,
+    s2g::stake_pool::{
+        error::StakePoolError,
+        instruction::{self, FundingType},
+        state,
+    },
     solana_program::{
         borsh::try_from_slice_unchecked, instruction::InstructionError, pubkey::Pubkey, stake,
     },
@@ -11,12 +17,6 @@ use {
         signature::{Keypair, Signer},
         transaction::Transaction,
         transaction::TransactionError,
-    },
-    westake::id,
-    westake::stake_pool::{
-        error::StakePoolError,
-        instruction::{self, FundingType},
-        state,
     },
 };
 
@@ -78,11 +78,8 @@ async fn success() {
     let (mut context, stake_pool_accounts, user, pool_token_account, pool_tokens) = setup().await;
 
     // Save stake pool state before withdrawing
-    let pre_stake_pool = get_account(
-        &mut context.banks_client,
-        &stake_pool_accounts.stake_pool,
-    )
-    .await;
+    let pre_stake_pool =
+        get_account(&mut context.banks_client, &stake_pool_accounts.stake_pool).await;
     let pre_stake_pool =
         try_from_slice_unchecked::<state::StakePool>(pre_stake_pool.data.as_slice()).unwrap();
 
@@ -108,11 +105,8 @@ async fn success() {
     assert!(error.is_none());
 
     // Stake pool should add its balance to the pool balance
-    let post_stake_pool = get_account(
-        &mut context.banks_client,
-        &stake_pool_accounts.stake_pool,
-    )
-    .await;
+    let post_stake_pool =
+        get_account(&mut context.banks_client, &stake_pool_accounts.stake_pool).await;
     let post_stake_pool =
         try_from_slice_unchecked::<state::StakePool>(post_stake_pool.data.as_slice()).unwrap();
     let amount_withdrawn_minus_fee =

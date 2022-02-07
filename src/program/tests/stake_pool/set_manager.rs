@@ -6,6 +6,8 @@ use super::super::utils::program_test;
 use {
     super::helpers::*,
     borsh::BorshSerialize,
+    s2g::id,
+    s2g::stake_pool::{error, instruction, state},
     solana_program::{
         borsh::try_from_slice_unchecked,
         hash::Hash,
@@ -16,8 +18,6 @@ use {
         instruction::InstructionError, signature::Keypair, signature::Signer,
         transaction::Transaction, transaction::TransactionError, transport::TransportError,
     },
-    westake::id,
-    westake::stake_pool::{error, instruction, state},
 };
 
 async fn setup() -> (

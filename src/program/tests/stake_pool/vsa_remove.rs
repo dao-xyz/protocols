@@ -4,6 +4,10 @@ use super::super::utils::program_test;
 use {
     super::helpers::*,
     bincode::deserialize,
+    s2g::id,
+    s2g::stake_pool::{
+        error::StakePoolError, find_transient_stake_program_address, instruction, state,
+    },
     solana_program::{
         borsh::try_from_slice_unchecked,
         instruction::{AccountMeta, Instruction, InstructionError},
@@ -15,10 +19,6 @@ use {
         signature::{Keypair, Signer},
         transaction::{Transaction, TransactionError},
         transport::TransportError,
-    },
-    westake::id,
-    westake::stake_pool::{
-        error::StakePoolError, find_transient_stake_program_address, instruction, state,
     },
 };
 
@@ -300,7 +300,7 @@ async fn fail_double_remove() {
         .await;
     assert!(error.is_none());
 
-    let _latest_blockhash = context.banks_client.get_recent_blockhash().await.unwrap();
+    let _latest_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
     let destination_stake = Keypair::new();
     let error = stake_pool_accounts

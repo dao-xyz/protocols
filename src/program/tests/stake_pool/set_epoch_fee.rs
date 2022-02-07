@@ -3,17 +3,17 @@ use super::super::utils::program_test;
 
 use {
     super::helpers::*,
+    s2g::id,
+    s2g::stake_pool::{
+        error, instruction,
+        state::{Fee, FeeType, StakePool},
+    },
     solana_program_test::*,
     solana_sdk::{
         borsh::try_from_slice_unchecked,
         instruction::InstructionError,
         signature::{Keypair, Signer},
         transaction::{Transaction, TransactionError},
-    },
-    westake::id,
-    westake::stake_pool::{
-        error, instruction,
-        state::{Fee, FeeType, StakePool},
     },
 };
 
@@ -41,11 +41,7 @@ async fn setup() -> (ProgramTestContext, StakePoolAccounts, Fee) {
 async fn success() {
     let (mut context, stake_pool_accounts, new_fee) = setup().await;
 
-    let stake_pool = get_account(
-        &mut context.banks_client,
-        &stake_pool_accounts.stake_pool,
-    )
-    .await;
+    let stake_pool = get_account(&mut context.banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
     let old_fee = stake_pool.epoch_fee;
 
@@ -66,11 +62,7 @@ async fn success() {
         .await
         .unwrap();
 
-    let stake_pool = get_account(
-        &mut context.banks_client,
-        &stake_pool_accounts.stake_pool,
-    )
-    .await;
+    let stake_pool = get_account(&mut context.banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
 
     assert_eq!(stake_pool.epoch_fee, old_fee);
@@ -92,11 +84,7 @@ async fn success() {
         )
         .await;
 
-    let stake_pool = get_account(
-        &mut context.banks_client,
-        &stake_pool_accounts.stake_pool,
-    )
-    .await;
+    let stake_pool = get_account(&mut context.banks_client, &stake_pool_accounts.stake_pool).await;
     let stake_pool = try_from_slice_unchecked::<StakePool>(stake_pool.data.as_slice()).unwrap();
     assert_eq!(stake_pool.epoch_fee, new_fee);
     assert_eq!(stake_pool.next_epoch_fee, None);

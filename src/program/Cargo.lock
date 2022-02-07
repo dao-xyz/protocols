@@ -2010,6 +2010,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c9613b5a66ab9ba26415184cfc41156594925a9cf3a2057e57f31ff145f6568"
 
 [[package]]
+name = "s2g"
+version = "0.0.1"
+dependencies = [
+ "arrayref",
+ "bincode",
+ "borsh 0.9.1",
+ "borsh-derive 0.9.1",
+ "num-derive",
+ "num-traits",
+ "proptest",
+ "solana-program",
+ "solana-program-test",
+ "solana-sdk",
+ "solana-vote-program",
+ "spl-associated-token-account",
+ "spl-math",
+ "spl-token",
+ "thiserror",
+]
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3301,27 +3322,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aabe153544e473b775453675851ecc86863d2a81d786d741f6b76778f2a48940"
 dependencies = [
  "webpki 0.21.4",
-]
-
-[[package]]
-name = "westake"
-version = "0.0.1"
-dependencies = [
- "arrayref",
- "bincode",
- "borsh 0.9.1",
- "borsh-derive 0.9.1",
- "num-derive",
- "num-traits",
- "proptest",
- "solana-program",
- "solana-program-test",
- "solana-sdk",
- "solana-vote-program",
- "spl-associated-token-account",
- "spl-math",
- "spl-token",
- "thiserror",
 ]
 
 [[package]]

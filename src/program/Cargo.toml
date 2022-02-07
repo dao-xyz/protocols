@@ -1,8 +1,8 @@
 
 [package]
-name = "westake"
+name = "s2g"
 version = "0.0.1"
-description = "WeStake Social Media, the Web3 way!"
+description = "S2G (Stake Together), the Web3 way!"
 authors = ["Marcus Pousette <marcus.pousette@quantleaf.com>"]
 license = "Apache-2.0"
 edition = "2018"
@@ -34,5 +34,5 @@ proptest = "1.0"
 
 
 [lib]
-name = "westake"
+name = "s2g"
 crate-type = ["cdylib", "lib"]

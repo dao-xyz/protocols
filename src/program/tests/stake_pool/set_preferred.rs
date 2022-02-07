@@ -12,8 +12,8 @@ use {
         signature::{Keypair, Signer},
         transaction::{Transaction, TransactionError},
     },
-    westake::id,
-    westake::stake_pool::{
+    s2g::id,
+    s2g::stake_pool::{
         error, find_transient_stake_program_address,
         instruction::{self, PreferredValidatorType},
         state::StakePool,

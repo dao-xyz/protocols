@@ -10,8 +10,8 @@ use {
         system_instruction,
         transaction::Transaction,
     },
-    westake::id,
-    westake::stake_pool::{
+    s2g::id,
+    s2g::stake_pool::{
         find_transient_stake_program_address, instruction,
         state::{StakePool, StakeStatus, ValidatorList},
         MAX_VALIDATORS_TO_UPDATE, MINIMUM_ACTIVE_STAKE,

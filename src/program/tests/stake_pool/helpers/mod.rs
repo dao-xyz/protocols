@@ -1,11 +1,18 @@
 #![allow(dead_code)]
 
-use westake::{
+use s2g::{
     stake_pool::find_stake_pool_program_address,
     tokens::spl_utils::find_utility_mint_program_address,
 };
 
 use {
+    s2g::id,
+    s2g::stake_pool::{
+        find_deposit_authority_program_address, find_stake_program_address,
+        find_transient_stake_program_address, find_withdraw_authority_program_address, instruction,
+        state::{self, FeeType, ValidatorList},
+        MINIMUM_ACTIVE_STAKE,
+    },
     solana_program::{
         borsh::{get_instance_packed_len, get_packed_len, try_from_slice_unchecked},
         hash::Hash,
@@ -23,13 +30,6 @@ use {
     solana_vote_program::{
         self, vote_instruction,
         vote_state::{VoteInit, VoteState},
-    },
-    westake::id,
-    westake::stake_pool::{
-        find_deposit_authority_program_address, find_stake_program_address,
-        find_transient_stake_program_address, find_withdraw_authority_program_address, instruction,
-        state::{self, FeeType, ValidatorList},
-        MINIMUM_ACTIVE_STAKE,
     },
 };
 
@@ -51,7 +51,7 @@ pub async fn create_pool_and_mint(
     recent_blockhash: &Hash,
 ) -> Result<(), TransportError> {
     let mut transaction = Transaction::new_with_payer(
-        &[westake::stake_pool::instruction::setup(
+        &[s2g::stake_pool::instruction::setup(
             &id(),
             &payer.pubkey(),
             get_packed_len::<state::StakePool>() as u64,
@@ -379,7 +379,7 @@ pub async fn create_stake_pool(
                 validator_list_size as u64,
                 &id(),
             ),
-            westake::stake_pool::instruction::initialize(
+            s2g::stake_pool::instruction::initialize(
                 &id(),
                 stake_pool,
                 &manager.pubkey(),

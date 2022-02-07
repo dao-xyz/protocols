@@ -1,12 +1,14 @@
 #![cfg(feature = "test-bpf")]
 
-use westake::stake_pool::{error, instruction};
+use s2g::stake_pool::{error, instruction};
 
 use super::super::utils::program_test;
 use super::helpers::*;
 
 use {
     borsh::BorshSerialize,
+    s2g::id,
+    s2g::stake_pool::state,
     solana_program::{
         borsh::{get_instance_packed_len, get_packed_len, try_from_slice_unchecked},
         hash::Hash,
@@ -20,8 +22,6 @@ use {
         instruction::InstructionError, signature::Keypair, signature::Signer,
         transaction::Transaction, transaction::TransactionError, transport::TransportError,
     },
-    westake::id,
-    westake::stake_pool::state,
 };
 
 async fn create_required_accounts(
@@ -94,7 +94,7 @@ async fn fail_double_initialize() {
         .await
         .unwrap();
 
-    let latest_blockhash = banks_client.get_recent_blockhash().await.unwrap();
+    let latest_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let mut second_stake_pool_accounts = StakePoolAccounts::new();
     second_stake_pool_accounts.stake_pool = stake_pool_accounts.stake_pool;
@@ -125,7 +125,7 @@ async fn fail_with_already_initialized_validator_list() {
         .await
         .unwrap();
 
-    let latest_blockhash = banks_client.get_recent_blockhash().await.unwrap();
+    let latest_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let mut second_stake_pool_accounts = StakePoolAccounts::new();
     second_stake_pool_accounts.validator_list = stake_pool_accounts.validator_list;

@@ -6,9 +6,13 @@ use solana_program::program::invoke_signed;
 use solana_program::program_error::ProgramError;
 use solana_program::pubkey::Pubkey;
 
+pub mod channel;
 pub mod instruction;
+pub mod post;
 pub mod processor;
 pub mod state;
+pub mod user;
+
 use solana_program::pubkey::{PubkeyError, MAX_SEEDS, MAX_SEED_LEN};
 use solana_program::rent::Rent;
 use solana_program::{msg, system_instruction};
@@ -35,10 +39,13 @@ pub fn create_user_account_program_address_seeds(username: &str) -> Vec<Vec<u8>>
 /**
  * Generete seed slices from string
  * in correct length (max length 32 bytes)
+ * Will perform lowercase before generating seed
  */
 pub fn generate_seeds_from_string(str: &str) -> Result<Vec<Vec<u8>>, PubkeyError> {
     let seeds = str
         .chars()
+        .map(|c| c.to_lowercase())
+        .flatten()
         .collect::<Vec<char>>()
         .chunks(MAX_SEED_LEN)
         .map(|char| {
@@ -119,7 +126,7 @@ fn create_and_serialize_account_signed_from_pda<'a, T: BorshSerialize + MaxSize>
             account_info.clone(),
             system_info.clone(),
         ],
-        &[&seeds[..]],
+        &[seeds],
     )?;
 
     if let Some(serialized_data) = serialized_data {

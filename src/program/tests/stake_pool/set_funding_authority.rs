@@ -4,6 +4,12 @@ use super::super::utils::program_test;
 use {
     super::helpers::*,
     borsh::BorshSerialize,
+    s2g::id,
+    s2g::stake_pool::{
+        error, find_deposit_authority_program_address,
+        instruction::{self, FundingType},
+        state,
+    },
     solana_program::{
         borsh::try_from_slice_unchecked,
         hash::Hash,
@@ -13,12 +19,6 @@ use {
     solana_sdk::{
         instruction::InstructionError, signature::Keypair, signature::Signer,
         transaction::Transaction, transaction::TransactionError, transport::TransportError,
-    },
-    westake::id,
-    westake::stake_pool::{
-        error, find_deposit_authority_program_address,
-        instruction::{self, FundingType},
-        state,
     },
 };
 
