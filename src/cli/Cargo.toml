@@ -1,0 +1,34 @@
+[package]
+authors = ["S2G Maintainers"]
+description = "S2G Command-line Utility"
+edition = "2018"
+homepage = "https://github.com/s2g"
+license = "Apache-2.0"
+name = "s2g-cli"
+repository = "https://github.com/s2g"
+version = "0.0.1"
+
+[dependencies]
+borsh = "0.9"
+clap = "2.33.3"
+serde = "1.0.130"
+serde_derive = "1.0.130"
+serde_json = "1.0.68"
+solana-account-decoder = "=1.9.4"
+solana-clap-utils = "=1.9.4"
+solana-cli-config = "=1.9.4"
+solana-cli-output = "1.9.4"
+solana-client = "=1.9.4"
+solana-logger = "=1.9.4"
+solana-program = "=1.9.4"
+solana-remote-wallet = "=1.9.4"
+solana-sdk = "=1.9.4"
+spl-associated-token-account = { version = "1.0", features = [ "no-entrypoint" ] }
+s2g = { version = "0.0.1", path="../program", features = [ "no-entrypoint" ] }
+spl-token = { version = "3.2", features = [ "no-entrypoint" ]  }
+bs58 = "0.4.0"
+bincode = "1.3.1"
+
+[[bin]]
+name = "s2g"
+path = "src/main.rs"

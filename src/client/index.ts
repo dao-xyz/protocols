@@ -55,7 +55,7 @@ export const getProgramInfo = async(connection:Connection):Promise<ProgramInfo> 
   if (programInfo === null) {
     if (fs.existsSync(PROGRAM_SO_PATH)) {
       throw new Error(
-        'Program needs to be deployed with `solana program deploy dist/program/solvei.so`',
+        'Program needs to be deployed with `solana program deploy dist/program/westake.so`',
       );
     } else {
       throw new Error('Program needs to be built and deployed');
