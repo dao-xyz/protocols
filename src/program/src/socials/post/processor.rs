@@ -1,5 +1,6 @@
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
+    clock::Clock,
     entrypoint::ProgramResult,
     msg,
     program::{invoke, invoke_signed},
@@ -101,6 +102,7 @@ impl Processor {
             );
             return Err(ProgramError::InvalidSeeds);
         }
+        msg!("Create escrow account");
         create_program_token_account(
             escrow_utility_token_account_info,
             &escrow_account_seeds,
@@ -112,13 +114,15 @@ impl Processor {
             system_account,
             program_id,
         )?;
+        let timestamp = Clock::get()?.unix_timestamp;
+
         create_and_serialize_account_signed_verify(
             payer_account,
             post_account_info,
             &AccountContainer::PostAccount(PostAccount {
                 channel: post.channel,
                 content: post.content,
-                timestamp: post.timestamp,
+                timestamp: timestamp as u64,
                 creator: *user_account_info.key,
                 asset: super::state::Asset::NonAsset,
             }),

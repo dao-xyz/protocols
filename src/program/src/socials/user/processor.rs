@@ -1,6 +1,7 @@
 use borsh::BorshSerialize;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
+    clock::Clock,
     entrypoint::ProgramResult,
     msg,
     program_error::ProgramError,
@@ -55,6 +56,7 @@ impl Processor {
         let user_account = UserAccount {
             name,
             profile,
+            creation_timestamp: Clock::get()?.unix_timestamp as u64,
             owner: *payer_account.key, // payer becomes owner
         };
 

@@ -22,7 +22,6 @@ use super::{
 pub struct CreatePost {
     pub creator: Pubkey,
     pub channel: Pubkey,
-    pub timestamp: u64,
     pub content: Content,
     pub post_bump_seed: u8,
     pub escrow_bump_seed: u8,
@@ -52,7 +51,6 @@ pub fn create_post_transaction(
     payer: &Pubkey,
     user: &Pubkey,
     channel: &Pubkey,
-    timestamp: u64,
     content: &Content,
 ) -> Instruction {
     let (post_address, post_bump_seed) = find_post_program_address(program_id, &content.hash);
@@ -94,7 +92,6 @@ pub fn create_post_transaction(
             mint_downvote_bump_seed,
             mint_authority_bump_seed,
             escrow_bump_seed,
-            timestamp,
             content: content.clone(),
             post_bump_seed,
         }))

@@ -9,6 +9,7 @@ pub const MAX_URI_LENGTH: usize = 200;
 pub const MAX_NAME_LENGTH: usize = 100;
 
 pub const MAX_USER_LEN: usize = 32 // owner pubkey
+    + 8 // timestamp
     + MAX_NAME_LENGTH
     + 1  // option
     + MAX_URI_LENGTH
@@ -17,6 +18,7 @@ pub const MAX_USER_LEN: usize = 32 // owner pubkey
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct UserAccount {
     pub owner: Pubkey,
+    pub creation_timestamp: u64,
     pub name: String,
     pub profile: Option<String>, // The link to the profile data
 }

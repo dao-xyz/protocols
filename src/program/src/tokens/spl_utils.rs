@@ -84,7 +84,7 @@ pub fn create_program_account_mint_account_with_seed<'a>(
 ) -> ProgramResult {
     let rent = Rent::get()?;
     let mint_rent = rent.minimum_balance(Mint::LEN);
-    let decimals = 9; // for now
+    let decimals = spl_token::native_mint::DECIMALS; // for now
     let address = Pubkey::create_program_address(mint_account_seeds, program_id).unwrap();
     if mint_info.key != &address {
         msg!(

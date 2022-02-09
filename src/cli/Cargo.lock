@@ -2031,6 +2031,48 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73b4b750c782965c211b42f022f59af1fbceabdd026623714f104152f1ec149f"
 
 [[package]]
+name = "s2g"
+version = "0.0.1"
+dependencies = [
+ "arrayref",
+ "bincode",
+ "borsh 0.9.1",
+ "borsh-derive 0.9.1",
+ "num-derive",
+ "num-traits",
+ "solana-program",
+ "spl-associated-token-account",
+ "spl-math",
+ "spl-token",
+ "thiserror",
+]
+
+[[package]]
+name = "s2g-cli"
+version = "0.0.1"
+dependencies = [
+ "bincode",
+ "borsh 0.9.1",
+ "bs58",
+ "clap",
+ "s2g",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "solana-account-decoder",
+ "solana-clap-utils",
+ "solana-cli-config",
+ "solana-cli-output",
+ "solana-client",
+ "solana-logger",
+ "solana-program",
+ "solana-remote-wallet",
+ "solana-sdk",
+ "spl-associated-token-account",
+ "spl-token",
+]
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3385,48 +3427,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "552ceb903e957524388c4d3475725ff2c8b7960922063af6ce53c9a43da07449"
 dependencies = [
  "webpki",
-]
-
-[[package]]
-name = "westake"
-version = "0.0.1"
-dependencies = [
- "arrayref",
- "bincode",
- "borsh 0.9.1",
- "borsh-derive 0.9.1",
- "num-derive",
- "num-traits",
- "solana-program",
- "spl-associated-token-account",
- "spl-math",
- "spl-token",
- "thiserror",
-]
-
-[[package]]
-name = "westake-cli"
-version = "0.0.1"
-dependencies = [
- "bincode",
- "borsh 0.9.1",
- "bs58",
- "clap",
- "serde",
- "serde_derive",
- "serde_json",
- "solana-account-decoder",
- "solana-clap-utils",
- "solana-cli-config",
- "solana-cli-output",
- "solana-client",
- "solana-logger",
- "solana-program",
- "solana-remote-wallet",
- "solana-sdk",
- "spl-associated-token-account",
- "spl-token",
- "westake",
 ]
 
 [[package]]

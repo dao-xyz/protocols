@@ -7,7 +7,7 @@ cd "$(dirname "$0")" || exit
 validator_list=$1
 sol_amount=$2
 
-westake=../../../target/debug/westake
+s2g=../../../target/debug/s2g
 
 increase_stakes () {
   stake_pool_pubkey=$1
@@ -15,7 +15,7 @@ increase_stakes () {
   sol_amount=$3
   while read -r validator
   do
-    $westake increase-validator-stake "$validator" "$sol_amount"
+    $s2g increase-validator-stake "$validator" "$sol_amount"
   done < "$validator_list"
 }
 

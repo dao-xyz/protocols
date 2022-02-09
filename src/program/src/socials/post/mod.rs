@@ -1,7 +1,5 @@
 use solana_program::pubkey::Pubkey;
 
-
-
 pub mod instruction;
 pub mod processor;
 pub mod state;
@@ -68,7 +66,7 @@ pub fn create_post_mint_program_account<'a>(
 ) -> ProgramResult {
     let rent = Rent::get()?;
     let mint_rent = rent.minimum_balance(Mint::LEN);
-    let decimals = 9; // for now
+    let decimals = spl_token::native_mint::DECIMALS; // for now
     let mint_bump_seed = &[mint_bump_seed];
     let mint_account_seeds = match vote {
         Vote::UP => create_post_upvote_mint_program_address_seeds(post, mint_bump_seed),

@@ -19,15 +19,15 @@ withdraw_stakes () {
   pool_amount=$2
   while read -r validator
   do
-    $westake withdraw-stake "$pool_amount" --vote-account "$validator"
+    $s2g withdraw-stake "$pool_amount" --vote-account "$validator"
   done < "$validator_list"
 }
 
 keys_dir=keys
 
-westake=westake
+s2g=s2g
 # Uncomment to use a locally build CLI
-#westake=../../../target/debug/westake
+#s2g=../../../target/debug/s2g
 
 echo "Setting up keys directory $keys_dir"
 mkdir -p $keys_dir
@@ -38,4 +38,4 @@ create_keypair $authority
 echo "Withdrawing stakes from stake pool"
 withdraw_stakes "$stake_pool_pubkey" "$validator_list" "$withdraw_sol_amount"
 echo "Withdrawing SOL from stake pool to authority"
-$westake withdraw-sol "$stake_pool_pubkey" $authority "$withdraw_sol_amount"
+$s2g withdraw-sol "$stake_pool_pubkey" $authority "$withdraw_sol_amount"

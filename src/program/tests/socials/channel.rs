@@ -24,7 +24,7 @@ async fn create_and_verify_channel(
     channel_name: &str,
     channel_owner_user: &Pubkey,
     link: Option<String>,
-) -> Pubkey {
+) -> Result<Pubkey, TransportError> {
     let (channel_address_pda, _bump) =
         find_channel_program_address(&s2g::id(), channel_name).unwrap();
 
@@ -39,10 +39,7 @@ async fn create_and_verify_channel(
         Some(&payer.pubkey()),
     );
     transaction_create.sign(&[payer], *recent_blockhash);
-    banks_client
-        .process_transaction(transaction_create)
-        .await
-        .unwrap();
+    banks_client.process_transaction(transaction_create).await?;
 
     // Verify channel name
     let channel_account_info = banks_client
@@ -53,7 +50,7 @@ async fn create_and_verify_channel(
     let channel_account = deserialize_channel_account(&channel_account_info.data).unwrap();
 
     assert_eq!(channel_account.name.as_str(), channel_name);
-    channel_address_pda
+    Ok(channel_address_pda)
 }
 
 #[tokio::test]
@@ -79,7 +76,8 @@ pub async fn success() {
         &user,
         Some("link".into()),
     )
-    .await;
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -103,7 +101,8 @@ async fn success_update() {
         &user,
         Some("link".into()),
     )
-    .await;
+    .await
+    .unwrap();
 
     let new_link =
         "ipfs://kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk";
@@ -137,6 +136,64 @@ async fn success_update() {
 }
 
 #[tokio::test]
+async fn fail_already_exist() {
+    let mut program = program_test();
+    let wrong_payer = Keypair::new();
+    program.add_account(
+        wrong_payer.pubkey(),
+        Account {
+            lamports: 1000000,
+            ..Account::default()
+        },
+    );
+    let (mut banks_client, payer, recent_blockhash) = program.start().await;
+    let username = "name";
+    let user = create_and_verify_user(
+        &mut banks_client,
+        &payer,
+        &recent_blockhash,
+        username,
+        "profile",
+    )
+    .await;
+    let channel_name = "Channel";
+    create_and_verify_channel(
+        &mut banks_client,
+        &payer,
+        &recent_blockhash,
+        channel_name,
+        &user,
+        Some("link".into()),
+    )
+    .await
+    .unwrap();
+    let latest_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Same transaction again
+    let err = create_and_verify_channel(
+        &mut banks_client,
+        &payer,
+        &latest_blockhash,
+        channel_name,
+        &user,
+        Some("link".into()),
+    )
+    .await
+    .unwrap_err();
+
+    match err {
+        TransportError::TransactionError(transaction_error) => match transaction_error {
+            TransactionError::InstructionError(_, instruction_error) => match instruction_error {
+                InstructionError::InvalidAccountData => {}
+                _ => panic!("Wrong error type"),
+            },
+            _ => panic!("Wrong error type"),
+        },
+        _ => panic!("Wrong error type"),
+    };
+}
+
+#[tokio::test]
 async fn fail_update_wrong_payer() {
     let mut program = program_test();
     let wrong_payer = Keypair::new();
@@ -166,7 +223,8 @@ async fn fail_update_wrong_payer() {
         &user,
         Some("link".into()),
     )
-    .await;
+    .await
+    .unwrap();
 
     let new_link =
         "ipfs://kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk";

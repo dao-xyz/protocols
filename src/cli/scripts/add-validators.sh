@@ -12,12 +12,12 @@ add_validator_stakes () {
   validator_list=$2
   while read -r validator
   do
-    $westake add-validator "$stake_pool" "$validator"
+    $s2g add-validator "$stake_pool" "$validator"
   done < "$validator_list"
 }
 
 # Uncomment to use a local build
-westake=../../../target/debug/westake
+s2g=../../../target/debug/s2g
 
 stake_pool_pubkey=$(solana-keygen pubkey "$stake_pool_keyfile")
 echo "Adding validator stake accounts to the pool"

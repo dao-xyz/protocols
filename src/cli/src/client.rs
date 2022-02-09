@@ -8,7 +8,7 @@ use {
         rpc_filter::{Memcmp, MemcmpEncodedBytes, MemcmpEncoding, RpcFilterType},
     },
     solana_program::{borsh::try_from_slice_unchecked, program_pack::Pack, pubkey::Pubkey, stake},
-    westake::stake_pool::{
+    s2g::stake_pool::{
         find_withdraw_authority_program_address,
         state::{StakePool, ValidatorList},
     },
@@ -83,7 +83,7 @@ pub(crate) fn get_stake_pools(
 ) -> Result<Vec<(Pubkey, StakePool, ValidatorList, Pubkey)>, ClientError> {
     rpc_client
         .get_program_accounts_with_config(
-            &westake::id(),
+            &s2g::id(),
             RpcProgramAccountsConfig {
                 filters: Some(vec![RpcFilterType::Memcmp(Memcmp {
                     offset: 0, // 0 is the account type
@@ -102,7 +102,7 @@ pub(crate) fn get_stake_pools(
                 .into_iter()
                 .filter_map(|(address, account)| {
                     let pool_withdraw_authority =
-                        find_withdraw_authority_program_address(&westake::id(), &address).0;
+                        find_withdraw_authority_program_address(&s2g::id(), &address).0;
                     match try_from_slice_unchecked::<StakePool>(account.data.as_slice()) {
                         Ok(stake_pool) => {
                             get_validator_list(rpc_client, &stake_pool.validator_list)

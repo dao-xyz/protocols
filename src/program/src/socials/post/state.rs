@@ -37,7 +37,7 @@ pub const MAX_URI_LENGTH: usize = 200;
 pub const MAX_NAME_LENGTH: usize = 100;
 
 pub const MAX_POST_LEN: usize = 32 // creator pubkey
-    + 32 // creator pubkey
+    + 32 // channel pubkey
     + 8 // timestamp
     + MAX_CONTENT_LEN
     + 400; // some padding for asset info

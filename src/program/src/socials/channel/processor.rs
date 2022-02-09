@@ -1,6 +1,7 @@
 use borsh::BorshSerialize;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
+    clock::Clock,
     entrypoint::ProgramResult,
     msg,
     program_error::ProgramError,
@@ -43,7 +44,7 @@ impl Processor {
             return Err(ProgramError::IllegalOwner); // To prevent someone to create a channel for someone else
         }
         if &owner != owner_user_account_info.key {
-            return Err(ProgramError::InvalidAccountData);
+            return Err(ProgramError::IllegalOwner);
         }
         if !entity_name_is_valid(name.as_ref()) {
             return Err(ProgramError::InvalidArgument);
@@ -51,9 +52,13 @@ impl Processor {
 
         let channel_account_info = next_account_info(accounts_iter)?;
 
+        msg!(
+            "EMPTY? {}",
+            channel_account_info.try_data_is_empty().unwrap()
+        );
         if !channel_account_info.try_data_is_empty()? {
             // Channel already exist
-            return Err(ProgramError::InvalidArgument);
+            return Err(ProgramError::InvalidAccountData);
         }
 
         let system_account = next_account_info(accounts_iter)?;
@@ -68,7 +73,12 @@ impl Processor {
         create_and_serialize_account_signed_verify(
             payer_account,
             channel_account_info,
-            &AccountContainer::ChannelAccount(ChannelAccount { owner, link, name }),
+            &AccountContainer::ChannelAccount(ChannelAccount {
+                owner,
+                link,
+                name,
+                creation_timestamp: Clock::get()?.unix_timestamp as u64,
+            }),
             seed_slice,
             program_id,
             system_account,
@@ -97,7 +107,12 @@ impl Processor {
 
         let mut channel = deserialize_channel_account(*channel_account_info.data.borrow())?;
         if &channel.owner != owner_user_account_info.key {
-            return Err(ProgramError::InvalidArgument);
+            msg!(
+                "Expected owner {} but got {}",
+                channel.owner,
+                owner_user_account_info.key
+            );
+            return Err(ProgramError::IllegalOwner);
         }
         channel.link = link;
         AccountContainer::ChannelAccount(channel)
