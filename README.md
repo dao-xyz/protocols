@@ -1,31 +1,36 @@
 [<img  align="left" w src="./logo.png" style="width: 80px; height: 80px" alt="Resume application project app icon">](https://github.com/marcus-pousette/solvei)
 
-# WeStake - Social media app on Solana
-
+# StakeTogether -  One-stop place for governing Web3 projects
+Stake Together is a staked social media trying to bring services like Discord and Reddit to Web3 and providing utility to control Web3 projects in a truly decentralized and transparent way.
+ 
 ## Combining social media and staking
 - Protocol handles creation of posts, channels and users
 - Content is stored on distributed file servers (IPFS).
-- Assets are staked behind the scenes to create passive rewards.
-- Every post issues three tokens. Ownership, Upvote and downvote token. Ownership token corresponds to a fractionalized ownership of the content. Buying one of these corresponds to an upvote or downvote action.
-
-## Post mechanics
-Upon creation of a *post*, three tokens are issued: "Ownership", "Upvote" and "Downvote". Upvote and downvote will be purchased risk free (can be bought and sold for same price at any time). By holding Upvote or Downvote tokens, you are "staking", or validating content using PoS. This means that it will also will be possible to recieve returns from the trading activities from trading activities of the underlying ownership token. 
-
-By connecting upvotes and downvotes to real value, relevance on the platform well be automatically moderated. Users will be motivated to liquidate their positions in content that is not relevant, as elapsed or by that the content itself prove to be false, or non-proven), in order to take more relevant positions (in order to earn rewards through higher trading activities of the underlying).
-
-### Content is unique and immutable
-The content of the posts has to be unique. The post creator will not be permitted to create a post if someone else has previously created the same content. Instead it is better to upvote or downvote previous post again.
-
-Content is immutable. But deletion can happen, see below.
-
-### Content moderation, legal vs illegal.
-Not all content is legal. Information and data that is deemed illegal by common law is to also be moderated on the platform. This will be handled symbolically in the same way illegal companies are handled. The owner tokens of the illegal content will be liquidated. The value that is liquidated will be distributed in two ways. First, a portion will be burnt to pay symbolically for the damage done to the community. A portion will be put to increase the value of the downvote tokens. 
-
-The authority, custodian service, that deletes the post, will not be compensated by their action (to prevent malicious custodians). Instead custodians have ownership of governance tokens which are valued proportionally to a treasury. This gives incentives to moderate well, as the value of the treasury (which is built by collecting fees) increases when more users are using the platform.
-
+- Every post issues two tokens: Upvote and downvote token. Votes can have expiry and actions that are performed on expire.
+ 
+## Channels for DAOs
+The channels on the platform are intended to serve as communication channels for governance token holders. Posts that exist on the channel are intended to serve as a way of communicating information and/or perform actions after voting.
+ 
+Upvote and downvote can be acquired by swapping governance tokens. This means that voting power will by default be proportional to the stake owners have in organizations.
+ 
+If a user creates an informational post, the post has no expiry time, and voting can be seen as a measure of quality.
+ 
+If a user creates a post to perform an action within an organization, then the vote decides whether the action should happen or not.
+ 
+## Channels for non-DAOs (social media channels)
+Channels do not necessarily have to be associated with a DAO. The protocol is providing a platform wide utility token that can be used on non-DAO channels (for voting) and on DAO channels that allow non-owners to participate.
+ 
+ 
+## Content moderation
+Not all content is legal. Information and data that is deemed illegal by common law is to also be moderated on the platform. This will (can) be handled symbolically in the same way illegal companies are handled.
+ 
+Do remove content (posts) on a channel owned by a DAO a post with a "delete" action should be created. Voting on this will determine whether the post will be deleted or not.
+ 
+There has to also be a global governing control to prevent illegal content to threaten the existence of the entire protocol itself. The protocol will control itself through its own DAO channel where these actions can be performed, by the owners of this protocol.
+ 
 # Contribute? 
 
-[Contact me](https://github.com/marcus-pousette)
+[Join discord](https://discord.gg/z2h3rdfB)
 
 
 
