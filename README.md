@@ -24,7 +24,7 @@ Channels do not necessarily have to be associated with a DAO. The protocol is pr
 ## Content moderation
 Not all content is legal. Information and data that is deemed illegal by common law is to also be moderated on the platform. This will (can) be handled symbolically in the same way illegal companies are handled.
  
-Do remove content (posts) on a channel owned by a DAO a post with a "delete" action should be created. Voting on this will determine whether the post will be deleted or not.
+To remove content (posts) on a channel owned by a DAO a post with a "delete" action should be created, voted on, and executed (if approved).
  
 There has to also be a global governing control to prevent illegal content to threaten the existence of the entire protocol itself. The protocol will control itself through its own DAO channel where these actions can be performed, by the owners of this protocol.
  
