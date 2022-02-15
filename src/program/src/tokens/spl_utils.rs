@@ -1,3 +1,4 @@
+use arrayref::array_ref;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -15,6 +16,8 @@ use spl_token::{
     instruction::{initialize_account, initialize_mint, mint_to},
     state::Mint,
 };
+
+use crate::pack::check_data_len;
 
 pub const MINT_SEED: &[u8] = b"mint";
 pub const UTILITY_MINT: &[u8] = b"utility";
@@ -281,4 +284,14 @@ pub fn token_transfer_signed<'a>(
         &[source, destination, authority, token_program],
         &[seeds],
     )
+}
+
+/// Returns Token Mint supply.
+/// Extrats supply field without unpacking entire struct.
+pub fn get_token_supply(token_mint: &AccountInfo) -> Result<u64, ProgramError> {
+    let data = token_mint.try_borrow_data()?;
+    check_data_len(&data, spl_token::state::Mint::get_packed_len())?;
+    let supply = array_ref![data, 36, 8];
+
+    Ok(u64::from_le_bytes(*supply))
 }

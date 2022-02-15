@@ -14,7 +14,7 @@ use super::{
     find_escrow_program_address, find_post_downvote_mint_program_address,
     find_post_mint_authority_program_address, find_post_program_address,
     find_post_upvote_mint_program_address,
-    state::{Content, PostAccount},
+    state::{ContentSource, PostAccount},
     Vote,
 };
 
@@ -22,7 +22,9 @@ use super::{
 pub struct CreatePost {
     pub creator: Pubkey,
     pub channel: Pubkey,
-    pub content: Content,
+    pub utility_mint_address: Pubkey, // either utility mint or goverence mint
+    pub hash: [u8; 32],
+    pub source: ContentSource,
     pub post_bump_seed: u8,
     pub escrow_bump_seed: u8,
     pub mint_upvote_bump_seed: u8,
@@ -44,6 +46,7 @@ pub enum PostInstruction {
     CreatePost(CreatePost),
     Vote(PostVote),
     Unvote(PostVote),
+    ExecutePost,
 }
 
 pub fn create_post_transaction(
@@ -51,9 +54,11 @@ pub fn create_post_transaction(
     payer: &Pubkey,
     user: &Pubkey,
     channel: &Pubkey,
-    content: &Content,
+    utility_mint_address: &Pubkey,
+    hash: &[u8; 32],
+    source: &ContentSource,
 ) -> Instruction {
-    let (post_address, post_bump_seed) = find_post_program_address(program_id, &content.hash);
+    let (post_address, post_bump_seed) = find_post_program_address(program_id, &hash);
     let (mint_upvote_address, mint_upvote_bump_seed) =
         find_post_upvote_mint_program_address(program_id, &post_address);
 
@@ -63,7 +68,6 @@ pub fn create_post_transaction(
     let (mint_authority_address, mint_authority_bump_seed) =
         find_post_mint_authority_program_address(program_id, &post_address);
 
-    let (utility_mint_address, _) = find_utility_mint_program_address(program_id);
     /*   let (user_post_token_account, user_post_token_account_bump_seed) =
     find_user_post_token_program_address(program_id, &post_address, user); */
     let mut accounts = vec![
@@ -73,7 +77,7 @@ pub fn create_post_transaction(
         AccountMeta::new(mint_upvote_address, false),
         AccountMeta::new(mint_downvote_address, false),
         AccountMeta::new(mint_authority_address, false),
-        AccountMeta::new(utility_mint_address, false),
+        AccountMeta::new(*utility_mint_address, false),
         AccountMeta::new_readonly(system_program::id(), false),
         AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         AccountMeta::new_readonly(spl_token::id(), false),
@@ -88,11 +92,13 @@ pub fn create_post_transaction(
         data: SocialInstruction::PostInstruction(PostInstruction::CreatePost(CreatePost {
             creator: *user,
             channel: *channel,
+            utility_mint_address: *utility_mint_address,
+            hash: *hash,
+            source: source.clone(),
             mint_upvote_bump_seed,
             mint_downvote_bump_seed,
             mint_authority_bump_seed,
             escrow_bump_seed,
-            content: content.clone(),
             post_bump_seed,
         }))
         .try_to_vec()
@@ -106,7 +112,6 @@ pub fn create_post_vote_transaction(
     program_id: &Pubkey,
     payer: &Pubkey,
     post: &Pubkey,
-    _post_account: &PostAccount,
     stake: u64,
     vote: Vote,
 ) -> Instruction {
@@ -161,7 +166,6 @@ pub fn create_post_unvote_transaction(
     program_id: &Pubkey,
     payer: &Pubkey,
     post: &Pubkey,
-    _post_account: &PostAccount,
     stake: u64,
     vote: Vote,
 ) -> Instruction {

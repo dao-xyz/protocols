@@ -5,6 +5,7 @@ use s2g::socials::channel::instruction::{
 use s2g::socials::channel::state::deserialize_channel_account;
 
 use s2g::socials::instruction::SocialInstruction;
+use s2g::tokens::spl_utils::find_utility_mint_program_address;
 use solana_program::hash::Hash;
 use solana_program::instruction::{AccountMeta, Instruction, InstructionError};
 use solana_program_test::*;
@@ -17,12 +18,13 @@ use solana_sdk::{pubkey::Pubkey, signer::Signer, transaction::Transaction};
 use crate::socials::user::create_and_verify_user;
 use crate::utils::program_test;
 
-async fn create_and_verify_channel(
+pub async fn create_and_verify_channel(
     banks_client: &mut BanksClient,
     payer: &Keypair,
     recent_blockhash: &Hash,
     channel_name: &str,
     channel_owner_user: &Pubkey,
+    utility_mint_address: &Pubkey,
     link: Option<String>,
 ) -> Result<Pubkey, TransportError> {
     let (channel_address_pda, _bump) =
@@ -33,6 +35,7 @@ async fn create_and_verify_channel(
             &s2g::id(),
             channel_name,
             channel_owner_user,
+            &utility_mint_address,
             link,
             &payer.pubkey(),
         )],
@@ -67,6 +70,7 @@ pub async fn success() {
         "profile",
     )
     .await;
+    let (utility_mint_address, __bump) = find_utility_mint_program_address(&s2g::id());
 
     create_and_verify_channel(
         &mut banks_client,
@@ -74,6 +78,7 @@ pub async fn success() {
         &recent_blockhash,
         "Channel",
         &user,
+        &utility_mint_address,
         Some("link".into()),
     )
     .await
@@ -93,12 +98,15 @@ async fn success_update() {
     )
     .await;
     let channel_name = "Channel";
+    let (utility_mint_address, __bump) = find_utility_mint_program_address(&s2g::id());
+
     create_and_verify_channel(
         &mut banks_client,
         &payer,
         &recent_blockhash,
         channel_name,
         &user,
+        &utility_mint_address,
         Some("link".into()),
     )
     .await
@@ -156,18 +164,25 @@ async fn fail_already_exist() {
         "profile",
     )
     .await;
+
     let channel_name = "Channel";
+
+    let (utility_mint_address, __bump) = find_utility_mint_program_address(&s2g::id());
+
     create_and_verify_channel(
         &mut banks_client,
         &payer,
         &recent_blockhash,
         channel_name,
         &user,
+        &utility_mint_address,
         Some("link".into()),
     )
     .await
     .unwrap();
     let latest_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    let (utility_mint_address, __bump) = find_utility_mint_program_address(&s2g::id());
 
     // Same transaction again
     let err = create_and_verify_channel(
@@ -176,6 +191,7 @@ async fn fail_already_exist() {
         &latest_blockhash,
         channel_name,
         &user,
+        &utility_mint_address,
         Some("link".into()),
     )
     .await
@@ -215,12 +231,16 @@ async fn fail_update_wrong_payer() {
     )
     .await;
     let channel_name = "Channel";
+
+    let (utility_mint_address, __bump) = find_utility_mint_program_address(&s2g::id());
+
     create_and_verify_channel(
         &mut banks_client,
         &payer,
         &recent_blockhash,
         channel_name,
         &user,
+        &utility_mint_address,
         Some("link".into()),
     )
     .await

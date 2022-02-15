@@ -1,25 +1,12 @@
 //! Program state processor
-use crate::tokens::spl_utils::{
-    self, create_program_account_mint_account_with_seed, create_utility_mint_program_address_seeds,
-    find_utility_mint_program_address,
-};
-/// Check account owner is the given program
-pub fn check_account_owner(
-    account_info: &AccountInfo,
-    program_id: &Pubkey,
-) -> Result<(), ProgramError> {
-    if *program_id != *account_info.owner {
-        msg!(
-            "Expected account to be owned by program {}, received {}",
-            program_id,
-            account_info.owner
-        );
-        Err(ProgramError::IncorrectProgramId)
-    } else {
-        Ok(())
-    }
-}
 use super::{find_stake_pool_program_address, STAKE_POOL};
+use crate::{
+    shared::accounts::check_account_owner,
+    tokens::spl_utils::{
+        self, create_program_account_mint_account_with_seed,
+        create_utility_mint_program_address_seeds, find_utility_mint_program_address,
+    },
+};
 
 use {
     crate::stake_pool::{
@@ -529,7 +516,7 @@ impl Processor {
             );
             return Err(StakePoolError::UnexpectedValidatorListAccountSize.into());
         }
-        validator_list.header.account_type = AccountType::ValidatorList;
+        validator_list.header.stake_pool_account_type = AccountType::ValidatorList;
         validator_list.header.max_validators = max_validators;
         validator_list.validators.clear();
 
@@ -672,7 +659,7 @@ impl Processor {
 
         validator_list.serialize(&mut *validator_list_info.data.borrow_mut())?;
 
-        stake_pool.account_type = AccountType::StakePool;
+        stake_pool.stake_pool_account_type = AccountType::StakePool;
         stake_pool.manager = *manager_info.key;
         stake_pool.staker = *staker_info.key;
         stake_pool.stake_deposit_authority = stake_deposit_authority;

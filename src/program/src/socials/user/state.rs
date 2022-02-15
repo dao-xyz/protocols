@@ -3,7 +3,10 @@ use std::io::Result;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_program::{borsh::try_from_slice_unchecked, pubkey::Pubkey};
 
-use crate::socials::{state::AccountContainer, MaxSize};
+use crate::{
+    instruction::S2GAccountType,
+    socials::{state::AccountType, MaxSize},
+};
 
 pub const MAX_URI_LENGTH: usize = 200;
 pub const MAX_NAME_LENGTH: usize = 100;
@@ -17,6 +20,8 @@ pub const MAX_USER_LEN: usize = 32 // owner pubkey
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct UserAccount {
+    pub account_type: S2GAccountType,
+    pub social_account_type: AccountType,
     pub owner: Pubkey,
     pub creation_timestamp: u64,
     pub name: String,
@@ -30,8 +35,6 @@ impl MaxSize for UserAccount {
 }
 
 pub fn deserialize_user_account(data: &[u8]) -> Result<UserAccount> {
-    if let AccountContainer::UserAccount(account) = try_from_slice_unchecked(data)? {
-        return Ok(account);
-    }
-    panic!("Unkown data")
+    let user_account: UserAccount = try_from_slice_unchecked(data)?;
+    return Ok(user_account);
 }

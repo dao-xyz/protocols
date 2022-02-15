@@ -32,8 +32,13 @@ const UPVOTE: &[u8] = b"up";
 /// Seed for downvote
 const DOWNVOTE: &[u8] = b"down";
 
-/// Seed for downvote
+/// Seed for MINT
 const MINT: &[u8] = b"mint";
+
+// Seed for stats
+const STATS: &[u8] = b"stats";
+
+const RULE: &[u8] = b"rule";
 
 #[derive(Copy, Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum Vote {
@@ -129,6 +134,19 @@ pub fn create_post_upvote_mint_program_address_seeds<'a>(
     [MINT_SEED, UPVOTE, post.as_ref(), bump_seed]
 }
 
+/// Find post stats account address
+pub fn find_post_stats_program_address(program_id: &Pubkey, post: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[STATS, &post.to_bytes()], program_id)
+}
+
+/// Create post stats acount address
+pub fn create_post_stats_program_address_seeds<'a>(
+    post: &'a Pubkey,
+    bump_seed: &'a [u8],
+) -> [&'a [u8]; 3] {
+    [STATS, post.as_ref(), bump_seed]
+}
+
 /// Find address for the token downvote mint for the post account
 pub fn find_post_downvote_mint_program_address(program_id: &Pubkey, post: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[MINT_SEED, DOWNVOTE, &post.to_bytes()], program_id)
@@ -140,6 +158,22 @@ pub fn create_post_downvote_mint_program_address_seeds<'a>(
     bump_seed: &'a [u8],
 ) -> [&'a [u8]; 4] {
     [MINT_SEED, DOWNVOTE, post.as_ref(), bump_seed]
+}
+
+/// Find rule account address
+pub fn find_create_rule_associated_prgoram_address(
+    program_id: &Pubkey,
+    channel: &Pubkey,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[RULE, &channel.to_bytes()], program_id)
+}
+
+/// Create rule account address
+pub fn create_rule_associated_prgoram_address<'a>(
+    channel: &'a Pubkey,
+    bump_seed: &'a [u8],
+) -> [&'a [u8]; 3] {
+    [RULE, channel.as_ref(), bump_seed]
 }
 
 /// Find address for the token mint authority for the post account

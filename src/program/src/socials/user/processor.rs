@@ -14,7 +14,7 @@ use crate::{
     shared::names::entity_name_is_valid,
     socials::{
         create_and_serialize_account_signed_verify, create_user_account_program_address_seeds,
-        state::AccountContainer,
+        state::AccountType,
     },
 };
 
@@ -54,6 +54,8 @@ impl Processor {
         let seed_slice = &seeds.iter().map(|x| &x[..]).collect::<Vec<&[u8]>>()[..];
 
         let user_account = UserAccount {
+            account_type: crate::instruction::S2GAccountType::Social,
+            social_account_type: AccountType::UserAccount,
             name,
             profile,
             creation_timestamp: Clock::get()?.unix_timestamp as u64,
@@ -63,7 +65,7 @@ impl Processor {
         create_and_serialize_account_signed_verify(
             payer_account,
             user_acount_info,
-            &AccountContainer::UserAccount(user_account),
+            &user_account,
             seed_slice,
             program_id,
             system_account,
@@ -86,7 +88,7 @@ impl Processor {
             return Err(ProgramError::InvalidAccountData);
         }
         user.profile = profile;
-        AccountContainer::UserAccount(user).serialize(&mut *user_account_info.data.borrow_mut())?;
+        user.serialize(&mut *user_account_info.data.borrow_mut())?;
         Ok(())
     }
 

@@ -1,4 +1,6 @@
 #![cfg(feature = "test-bpf")]
+use s2g::instruction::S2GAccountType;
+
 use super::super::utils::program_test;
 
 use {
@@ -83,7 +85,8 @@ async fn success() {
         validator_list,
         state::ValidatorList {
             header: state::ValidatorListHeader {
-                account_type: state::AccountType::ValidatorList,
+                account_type: S2GAccountType::StakePool,
+                stake_pool_account_type: state::AccountType::ValidatorList,
                 max_validators: stake_pool_accounts.max_validators,
             },
             validators: vec![state::ValidatorStakeInfo {

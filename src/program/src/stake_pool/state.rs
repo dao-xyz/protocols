@@ -1,6 +1,8 @@
 //! State transition types
 
 use spl_token::state::{Account, AccountState};
+
+use crate::instruction::S2GAccountType;
 use {
     crate::stake_pool::{
         big_vec::BigVec, error::StakePoolError, MAX_WITHDRAWAL_FEE_INCREASE,
@@ -42,10 +44,13 @@ impl Default for AccountType {
 
 /// Initialized program details.
 #[repr(C)]
-#[derive(Clone, Debug, Default, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
+#[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
 pub struct StakePool {
+    /// General account type
+    pub account_type: S2GAccountType,
+
     /// Account type, must be StakePool currently
-    pub account_type: AccountType,
+    pub stake_pool_account_type: AccountType,
 
     /// Manager authority, allows for updating the staker, manager, and fee account
     pub manager: Pubkey,
@@ -153,6 +158,43 @@ pub struct StakePool {
 
     /// Last epoch's total lamports, used only for APR estimation
     pub last_epoch_total_lamports: u64,
+}
+impl Default for StakePool {
+    fn default() -> Self {
+        return Self {
+            account_type: S2GAccountType::StakePool,
+            epoch_fee: Default::default(),
+            last_epoch_pool_token_supply: Default::default(),
+            last_epoch_total_lamports: Default::default(),
+            last_update_epoch: Default::default(),
+            lockup: Default::default(),
+            manager: Default::default(),
+            manager_fee_account: Default::default(),
+            next_epoch_fee: Default::default(),
+            next_sol_withdrawal_fee: Default::default(),
+            next_stake_withdrawal_fee: Default::default(),
+            pool_mint: Default::default(),
+            pool_token_supply: Default::default(),
+            preferred_deposit_validator_vote_address: Default::default(),
+            preferred_withdraw_validator_vote_address: Default::default(),
+            reserve_stake: Default::default(),
+            sol_deposit_authority: Default::default(),
+            sol_deposit_fee: Default::default(),
+            sol_referral_fee: Default::default(),
+            sol_withdraw_authority: Default::default(),
+            sol_withdrawal_fee: Default::default(),
+            stake_deposit_authority: Default::default(),
+            stake_deposit_fee: Default::default(),
+            stake_pool_account_type: Default::default(),
+            stake_referral_fee: Default::default(),
+            stake_withdraw_bump_seed: Default::default(),
+            stake_withdrawal_fee: Default::default(),
+            staker: Default::default(),
+            token_program_id: Default::default(),
+            total_lamports: Default::default(),
+            validator_list: Default::default(),
+        };
+    }
 }
 impl StakePool {
     /// calculate the pool tokens that should be minted for a deposit of `stake_lamports`
@@ -450,12 +492,13 @@ impl StakePool {
 
     /// Check if StakePool is actually initialized as a stake pool
     pub fn is_valid(&self) -> bool {
-        self.account_type == AccountType::StakePool
+        self.account_type == S2GAccountType::StakePool
+            && self.stake_pool_account_type == AccountType::StakePool
     }
 
     /// Check if StakePool is currently uninitialized
     pub fn is_uninitialized(&self) -> bool {
-        self.account_type == AccountType::Uninitialized
+        self.stake_pool_account_type == AccountType::Uninitialized
     }
 
     /// Updates one of the StakePool's fees.
@@ -492,13 +535,26 @@ pub struct ValidatorList {
 
 /// Helper type to deserialize just the start of a ValidatorList
 #[repr(C)]
-#[derive(Clone, Debug, Default, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
+#[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
 pub struct ValidatorListHeader {
+    /// General account type
+    pub account_type: S2GAccountType,
+
     /// Account type, must be ValidatorList currently
-    pub account_type: AccountType,
+    pub stake_pool_account_type: AccountType,
 
     /// Maximum allowable number of validators
     pub max_validators: u32,
+}
+
+impl Default for ValidatorListHeader {
+    fn default() -> Self {
+        return Self {
+            account_type: S2GAccountType::StakePool,
+            max_validators: Default::default(),
+            stake_pool_account_type: Default::default(),
+        };
+    }
 }
 
 /// Status of the stake account in the validator list, for accounting
@@ -618,7 +674,8 @@ impl ValidatorList {
     pub fn new(max_validators: u32) -> Self {
         Self {
             header: ValidatorListHeader {
-                account_type: AccountType::ValidatorList,
+                account_type: S2GAccountType::StakePool,
+                stake_pool_account_type: AccountType::ValidatorList,
                 max_validators,
             },
             validators: vec![ValidatorStakeInfo::default(); max_validators as usize],
@@ -658,16 +715,17 @@ impl ValidatorList {
 }
 
 impl ValidatorListHeader {
-    const LEN: usize = 1 + 4;
+    const LEN: usize = 1 + 1 + 4;
 
     /// Check if validator stake list is actually initialized as a validator stake list
     pub fn is_valid(&self) -> bool {
-        self.account_type == AccountType::ValidatorList
+        self.account_type == S2GAccountType::StakePool
+            && self.stake_pool_account_type == AccountType::ValidatorList
     }
 
     /// Check if the validator stake list is uninitialized
     pub fn is_uninitialized(&self) -> bool {
-        self.account_type == AccountType::Uninitialized
+        self.stake_pool_account_type == AccountType::Uninitialized
     }
 
     /// Extracts a slice of ValidatorStakeInfo types from the vec part
@@ -835,7 +893,8 @@ mod test {
     fn uninitialized_validator_list() -> ValidatorList {
         ValidatorList {
             header: ValidatorListHeader {
-                account_type: AccountType::Uninitialized,
+                account_type: S2GAccountType::StakePool,
+                stake_pool_account_type: AccountType::Uninitialized,
                 max_validators: 0,
             },
             validators: vec![],
@@ -845,7 +904,8 @@ mod test {
     fn test_validator_list(max_validators: u32) -> ValidatorList {
         ValidatorList {
             header: ValidatorListHeader {
-                account_type: AccountType::ValidatorList,
+                account_type: S2GAccountType::StakePool,
+                stake_pool_account_type: AccountType::ValidatorList,
                 max_validators,
             },
             validators: vec![
@@ -894,7 +954,8 @@ mod test {
         // Empty, one preferred key
         let stake_list = ValidatorList {
             header: ValidatorListHeader {
-                account_type: AccountType::ValidatorList,
+                account_type: S2GAccountType::StakePool,
+                stake_pool_account_type: AccountType::ValidatorList,
                 max_validators: 0,
             },
             validators: vec![],
@@ -936,7 +997,8 @@ mod test {
             stake_list.validators.len(),
         )
         .unwrap();
-        assert_eq!(header.account_type, AccountType::ValidatorList);
+        assert_eq!(header.account_type, S2GAccountType::StakePool);
+        assert_eq!(header.stake_pool_account_type, AccountType::ValidatorList);
         assert_eq!(header.max_validators, max_validators);
         assert!(list
             .iter()

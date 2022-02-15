@@ -1,3 +1,4 @@
+use borsh::BorshSerialize;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -13,18 +14,24 @@ use spl_associated_token_account::create_associated_token_account;
 use spl_token::instruction::burn;
 
 use crate::{
+    shared::accounts::check_account_owner,
     socials::{
-        create_and_serialize_account_signed_verify, state::AccountContainer,
-        user::state::deserialize_user_account,
+        channel::state::deserialize_channel_account, create_and_serialize_account_signed_verify,
+        post::state::InformationPost, state::AccountType, user::state::deserialize_user_account,
     },
-    tokens::spl_utils::{create_program_token_account, spl_mint_to, token_transfer},
+    tokens::spl_utils::{
+        create_program_token_account, get_token_supply, spl_mint_to, token_transfer,
+    },
 };
 
 use super::{
     create_escrow_program_address_seeds, create_post_mint_authority_program_address_seeds,
     create_post_mint_program_account,
     instruction::{CreatePost, PostInstruction, PostVote},
-    state::PostAccount,
+    state::{
+        deserialize_action_rule_account, deserialize_post_account, Action, ActionStatus,
+        PostAccount, PostType,
+    },
     Vote,
 };
 
@@ -50,12 +57,12 @@ impl Processor {
         let mint_upvote_account_info = next_account_info(accounts_iter)?;
         let mint_downvote_account_info = next_account_info(accounts_iter)?;
         let mint_authority_account_info = next_account_info(accounts_iter)?;
-        let utility_mint_account_info = next_account_info(accounts_iter)?;
+        let governence_mint_account_info = next_account_info(accounts_iter)?;
         let system_account = next_account_info(accounts_iter)?;
         let rent_info = next_account_info(accounts_iter)?;
         let token_program_info = next_account_info(accounts_iter)?;
         let rent = Rent::get()?;
-        let content_hash = post.content.hash;
+        let content_hash = post.hash;
 
         // Upvote tokens
         create_post_mint_program_account(
@@ -106,7 +113,7 @@ impl Processor {
         create_program_token_account(
             escrow_utility_token_account_info,
             &escrow_account_seeds,
-            utility_mint_account_info,
+            governence_mint_account_info,
             mint_authority_account_info,
             payer_account,
             rent_info,
@@ -114,18 +121,27 @@ impl Processor {
             system_account,
             program_id,
         )?;
-        let timestamp = Clock::get()?.unix_timestamp;
+        let timestamp = Clock::get()?.unix_timestamp as u64;
 
         create_and_serialize_account_signed_verify(
             payer_account,
             post_account_info,
-            &AccountContainer::PostAccount(PostAccount {
+            &PostAccount {
+                account_type: crate::instruction::S2GAccountType::Social,
+                social_account_type: AccountType::PostAccount,
+                post_type: PostType::SimplePost(InformationPost {
+                    created_at: timestamp,
+                    updated_at: timestamp,
+                    downvotes: 0,
+                    upvotes: 0,
+                }),
+                utility_mint_address: post.utility_mint_address,
                 channel: post.channel,
-                content: post.content,
-                timestamp: timestamp as u64,
+                hash: post.hash,
+                source: post.source,
                 creator: *user_account_info.key,
                 asset: super::state::Asset::NonAsset,
-            }),
+            },
             &[&content_hash, &[post.post_bump_seed]],
             program_id,
             system_account,
@@ -142,8 +158,9 @@ impl Processor {
     ) -> ProgramResult {
         let accounts_iter = &mut accounts.iter();
         let payer_account = next_account_info(accounts_iter)?;
-        let payer_utility_token_account = next_account_info(accounts_iter)?;
+        let payer_governence_token_account = next_account_info(accounts_iter)?;
         let post_account_info = next_account_info(accounts_iter)?;
+        let mut post = deserialize_post_account(&post_account_info.data.borrow())?;
         let mint_upvote_account_info = next_account_info(accounts_iter)?;
         let mint_downvote_account_info = next_account_info(accounts_iter)?;
         let mint_authority_account_info = next_account_info(accounts_iter)?;
@@ -203,7 +220,7 @@ impl Processor {
 
         token_transfer(
             token_program_info.clone(),
-            payer_utility_token_account.clone(),
+            payer_governence_token_account.clone(),
             escrow_token_account_info.clone(),
             payer_account.clone(),
             stake.stake,
@@ -222,6 +239,25 @@ impl Processor {
             program_id,
         )?;
 
+        post.post_type = match post.post_type {
+            PostType::SimplePost(mut info) => {
+                match stake.vote {
+                    Vote::UP => info.upvotes += stake.stake,
+                    Vote::DOWN => info.downvotes += stake.stake,
+                };
+                PostType::SimplePost(info)
+            }
+            PostType::ActionPost(mut info) => {
+                match stake.vote {
+                    Vote::UP => info.upvotes += stake.stake,
+                    Vote::DOWN => info.downvotes += stake.stake,
+                };
+                PostType::ActionPost(info)
+            }
+        };
+
+        post.serialize(&mut *post_account_info.data.borrow_mut())?;
+
         Ok(())
     }
 
@@ -232,8 +268,9 @@ impl Processor {
     ) -> ProgramResult {
         let accounts_iter = &mut accounts.iter();
         let payer_account = next_account_info(accounts_iter)?;
-        let payer_utility_token_account = next_account_info(accounts_iter)?;
+        let payer_governence_token_account = next_account_info(accounts_iter)?;
         let post_account_info = next_account_info(accounts_iter)?;
+        let mut post = deserialize_post_account(&post_account_info.data.borrow())?;
         let mint_upvote_account_info = next_account_info(accounts_iter)?;
         let mint_downvote_account_info = next_account_info(accounts_iter)?;
         let mint_authority_account_info = next_account_info(accounts_iter)?;
@@ -270,14 +307,14 @@ impl Processor {
             &spl_token::instruction::transfer(
                 token_program_info.key,
                 escrow_token_account_info.key,
-                payer_utility_token_account.key,
+                payer_governence_token_account.key,
                 mint_authority_account_info.key,
                 &[],
                 stake.stake,
             )?,
             &[
                 escrow_token_account_info.clone(),
-                payer_utility_token_account.clone(),
+                payer_governence_token_account.clone(),
                 mint_authority_account_info.clone(),
                 token_program_info.clone(),
             ],
@@ -300,6 +337,74 @@ impl Processor {
                 token_program_info.clone(),
             ],
         )?;
+
+        post.post_type = match post.post_type {
+            PostType::SimplePost(mut info) => {
+                match stake.vote {
+                    Vote::UP => info.upvotes -= stake.stake,
+                    Vote::DOWN => info.downvotes -= stake.stake,
+                };
+                PostType::SimplePost(info)
+            }
+            PostType::ActionPost(mut info) => {
+                match stake.vote {
+                    Vote::UP => info.upvotes -= stake.stake,
+                    Vote::DOWN => info.downvotes -= stake.stake,
+                };
+                PostType::ActionPost(info)
+            }
+        };
+
+        post.serialize(&mut *post_account_info.data.borrow_mut())?;
+
+        Ok(())
+    }
+
+    pub fn process_execute_post(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+        let accounts_iter = &mut accounts.iter();
+        let post_account_info = next_account_info(accounts_iter)?;
+        let mut post = deserialize_post_account(*post_account_info.data.borrow())?;
+        let channel_account_info = next_account_info(accounts_iter)?;
+        let action_rule_info = next_account_info(accounts_iter)?;
+        let action_rule = deserialize_action_rule_account(*action_rule_info.data.borrow())?;
+        let utility_mint_info = next_account_info(accounts_iter)?;
+        let supply = get_token_supply(utility_mint_info)?;
+        let channel = deserialize_channel_account(*channel_account_info.data.borrow())?;
+
+        check_account_owner(post_account_info, program_id)?;
+        check_account_owner(channel_account_info, program_id)?;
+        check_account_owner(action_rule_info, program_id)?;
+
+        if &action_rule.channel != channel_account_info.key {
+            return Err(ProgramError::InvalidArgument);
+        }
+        if &post.channel != channel_account_info.key {
+            return Err(ProgramError::InvalidArgument);
+        }
+
+        post.post_type = match post.post_type {
+            PostType::ActionPost(mut action) => {
+                // check if vote is settled
+                if action_rule.is_approved(&action, supply).unwrap() {
+                    action.status = ActionStatus::Approved;
+                    match action.action {
+                        Action::DeletePost(post) => {}
+                        Action::Event(x) => {}
+                        Action::ManageRule() => {}
+                        Action::SelfDestruct() => {}
+                        Action::TransferTreasury() => {}
+                    }
+                } else {
+                    action.status = ActionStatus::Rejected;
+                }
+                PostType::ActionPost(action)
+            }
+            _ => {
+                panic!("Can not execute a non action post")
+            }
+        };
+
+        post.serialize(&mut *post_account_info.data.borrow_mut())?;
 
         Ok(())
     }
@@ -328,6 +433,12 @@ impl Processor {
                 //let token_account_info = next_account_info(accounts_iter)?;
                 msg!("Create unvote");
                 Self::process_create_post_unvote(program_id, accounts, stake)
+            }
+
+            PostInstruction::ExecutePost => {
+                //let token_account_info = next_account_info(accounts_iter)?;
+                msg!("Create unvote");
+                Self::process_execute_post(program_id, accounts)
             }
         }
     }

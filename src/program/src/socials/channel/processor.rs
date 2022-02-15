@@ -13,7 +13,7 @@ use solana_program::{
 use crate::{
     shared::names::entity_name_is_valid,
     socials::{
-        create_and_serialize_account_signed_verify, state::AccountContainer,
+        create_and_serialize_account_signed_verify, state::AccountType,
         user::state::deserialize_user_account,
     },
 };
@@ -31,7 +31,8 @@ impl Processor {
     pub fn process_create_channel(
         program_id: &Pubkey,
         accounts: &[AccountInfo],
-        owner: Pubkey, // a user
+        owner: Pubkey, // a
+        governence_mint: Pubkey,
         name: String,
         link: Option<String>,
         channel_account_bump_seed: u8,
@@ -51,11 +52,6 @@ impl Processor {
         }
 
         let channel_account_info = next_account_info(accounts_iter)?;
-
-        msg!(
-            "EMPTY? {}",
-            channel_account_info.try_data_is_empty().unwrap()
-        );
         if !channel_account_info.try_data_is_empty()? {
             // Channel already exist
             return Err(ProgramError::InvalidAccountData);
@@ -73,12 +69,15 @@ impl Processor {
         create_and_serialize_account_signed_verify(
             payer_account,
             channel_account_info,
-            &AccountContainer::ChannelAccount(ChannelAccount {
+            &ChannelAccount {
+                account_type: crate::instruction::S2GAccountType::Social,
+                social_account_type: AccountType::ChannelAccount,
                 owner,
+                governence_mint,
                 link,
                 name,
                 creation_timestamp: Clock::get()?.unix_timestamp as u64,
-            }),
+            },
             seed_slice,
             program_id,
             system_account,
@@ -115,8 +114,7 @@ impl Processor {
             return Err(ProgramError::IllegalOwner);
         }
         channel.link = link;
-        AccountContainer::ChannelAccount(channel)
-            .serialize(&mut *channel_account_info.data.borrow_mut())?;
+        channel.serialize(&mut *channel_account_info.data.borrow_mut())?;
 
         Ok(())
     }
@@ -129,6 +127,7 @@ impl Processor {
         match instruction {
             ChannelInstruction::CreateChannel {
                 owner,
+                governence_mint,
                 name,
                 link,
                 channel_account_bump_seed,
@@ -138,6 +137,7 @@ impl Processor {
                     program_id,
                     accounts,
                     owner,
+                    governence_mint,
                     name,
                     link,
                     channel_account_bump_seed,

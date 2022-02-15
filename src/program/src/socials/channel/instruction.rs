@@ -16,6 +16,8 @@ pub enum ChannelInstruction {
         #[allow(dead_code)] // but it's not
         owner: Pubkey,
         #[allow(dead_code)] // but it's not
+        governence_mint: Pubkey,
+        #[allow(dead_code)] // but it's not
         name: String,
         #[allow(dead_code)] // but it's not
         link: Option<String>,
@@ -35,6 +37,7 @@ pub fn create_channel_transaction(
     program_id: &Pubkey,
     channel_name: &str,
     owner: &Pubkey,
+    governence_mint: &Pubkey,
     link: Option<String>,
     payer: &Pubkey,
 ) -> Instruction {
@@ -46,6 +49,7 @@ pub fn create_channel_transaction(
         data: SocialInstruction::ChannelInstruction(ChannelInstruction::CreateChannel {
             name: channel_name.into(),
             link,
+            governence_mint: *governence_mint,
             owner: *owner,
             channel_account_bump_seed,
         })

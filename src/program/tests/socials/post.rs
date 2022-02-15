@@ -10,7 +10,7 @@ use s2g::{
                 create_post_transaction, create_post_unvote_transaction,
                 create_post_vote_transaction,
             },
-            state::{deserialize_post_account, Content, ContentSource},
+            state::{deserialize_post_account, ContentSource, PostType},
             Vote,
         },
     },
@@ -24,7 +24,10 @@ use solana_sdk::{
 };
 use spl_associated_token_account::{create_associated_token_account, get_associated_token_address};
 
-use crate::{socials::user::create_and_verify_user, utils::program_test};
+use crate::{
+    socials::{channel::create_and_verify_channel, user::create_and_verify_user},
+    utils::program_test,
+};
 
 pub async fn get_token_balance(banks_client: &mut BanksClient, token: &Pubkey) -> u64 {
     let token_account = banks_client.get_account(*token).await.unwrap().unwrap();
@@ -33,16 +36,17 @@ pub async fn get_token_balance(banks_client: &mut BanksClient, token: &Pubkey) -
     account_info.amount
 }
 
-pub fn create_content() -> Content {
-    Content {
-        hash: Pubkey::new_unique().to_bytes(),
-        source: ContentSource::External {
+pub fn create_content() -> ([u8; 32], ContentSource) {
+    (
+        Pubkey::new_unique().to_bytes(),
+        ContentSource::External {
             url: "ipfs:xyz".into(),
         },
-    }
+    )
 }
 
 async fn assert_token_balance(banks_client: &mut BanksClient, account: &Pubkey, amount: u64) {
+    banks_client.get_latest_blockhash().await.unwrap();
     assert_eq!(
         spl_token::state::Account::unpack(
             &*banks_client
@@ -127,16 +131,19 @@ struct SocialAccounts {
     downvote_mint: Pubkey,
     downvote_token_account: Pubkey,
     channel: Pubkey,
-    content: Content,
+    hash: [u8; 32],
+    source: ContentSource,
+    governence_mint: Pubkey,
 }
 
 impl SocialAccounts {
     pub fn new(payer: &Pubkey) -> Self {
         let username = "name";
-        let content = create_content();
-        let post = find_post_program_address(&s2g::id(), &content.hash).0;
+        let (hash, source) = create_content();
+        let post = find_post_program_address(&s2g::id(), &hash).0;
         let upvote_mint = find_post_upvote_mint_program_address(&s2g::id(), &post).0;
         let downvote_mint = find_post_downvote_mint_program_address(&s2g::id(), &post).0;
+        let (utility_mint_address, __bump) = find_utility_mint_program_address(&s2g::id());
 
         Self {
             username: username.into(),
@@ -146,12 +153,14 @@ impl SocialAccounts {
                 &find_utility_mint_program_address(&s2g::id()).0,
             ),
             post,
-            content,
+            hash,
+            source,
             channel: Pubkey::new_unique(),
             upvote_mint,
             downvote_mint,
             upvote_token_account: get_associated_token_address(payer, &upvote_mint),
             downvote_token_account: get_associated_token_address(payer, &downvote_mint),
+            governence_mint: utility_mint_address,
         }
     }
     pub async fn initialize(
@@ -173,7 +182,36 @@ impl SocialAccounts {
         )
         .await;
 
+        let channel = create_and_verify_channel(
+            banks_client,
+            payer,
+            recent_blockhash,
+            "Channel",
+            &user,
+            &self.governence_mint,
+            None,
+        )
+        .await
+        .unwrap();
+
         assert_eq!(user, self.user);
+    }
+    pub async fn assert_vote(&self, banks_client: &mut BanksClient, upvotes: u64, downvotes: u64) {
+        let post = deserialize_post_account(
+            &*banks_client
+                .get_account(self.post)
+                .await
+                .unwrap()
+                .unwrap()
+                .data,
+        )
+        .unwrap();
+        match post.post_type {
+            PostType::SimplePost(s) => {
+                assert_eq!(s.upvotes, upvotes);
+                assert_eq!(s.downvotes, downvotes);
+            }
+        };
     }
 
     pub async fn vote(
@@ -199,7 +237,6 @@ impl SocialAccounts {
                     &s2g::id(),
                     &payer.pubkey(),
                     &self.post,
-                    &post_account,
                     amount,
                     Vote::UP,
                 )],
@@ -210,7 +247,6 @@ impl SocialAccounts {
                     &s2g::id(),
                     &payer.pubkey(),
                     &self.post,
-                    &post_account,
                     amount,
                     Vote::DOWN,
                 )],
@@ -228,23 +264,12 @@ impl SocialAccounts {
         vote: Vote,
         amount: u64,
     ) {
-        let post_account = deserialize_post_account(
-            &*banks_client
-                .get_account(self.post)
-                .await
-                .unwrap()
-                .unwrap()
-                .data,
-        )
-        .unwrap();
-
         let mut tx = match vote {
             Vote::UP => Transaction::new_with_payer(
                 &[create_post_unvote_transaction(
                     &s2g::id(),
                     &payer.pubkey(),
                     &self.post,
-                    &post_account,
                     amount,
                     Vote::UP,
                 )],
@@ -255,7 +280,6 @@ impl SocialAccounts {
                     &s2g::id(),
                     &payer.pubkey(),
                     &self.post,
-                    &post_account,
                     amount,
                     Vote::DOWN,
                 )],
@@ -283,7 +307,9 @@ async fn success_upvote() {
             &payer.pubkey(),
             &socials.user,
             &socials.channel,
-            &socials.content,
+            &socials.governence_mint,
+            &socials.hash,
+            &socials.source,
         )],
         Some(&payer.pubkey()),
     );
@@ -319,6 +345,7 @@ async fn success_upvote() {
     .await;
     assert_token_balance(&mut banks_client, &socials.upvote_token_account, stake).await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake).await;
+    socials.assert_vote(&mut banks_client, stake, 0).await;
 
     // Stake more
     socials
@@ -334,6 +361,7 @@ async fn success_upvote() {
 
     assert_token_balance(&mut banks_client, &socials.upvote_token_account, stake * 2).await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake * 2).await;
+    socials.assert_vote(&mut banks_client, stake * 2, 0).await;
 
     // Unstake
     socials
@@ -348,6 +376,7 @@ async fn success_upvote() {
     .await;
     assert_token_balance(&mut banks_client, &socials.upvote_token_account, stake).await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake).await;
+    socials.assert_vote(&mut banks_client, stake, 0).await;
 
     // Unstake, same amount (we should now 0 token accounts)
     socials
@@ -362,6 +391,7 @@ async fn success_upvote() {
     .await;
     assert_token_balance(&mut banks_client, &socials.upvote_token_account, 0).await;
     assert_token_balance(&mut banks_client, &escrow_account_info, 0).await;
+    socials.assert_vote(&mut banks_client, 0, 0).await;
 }
 
 #[tokio::test]
@@ -380,7 +410,9 @@ async fn success_downvote() {
             &payer.pubkey(),
             &socials.user,
             &socials.channel,
-            &socials.content,
+            &socials.governence_mint,
+            &socials.hash,
+            &socials.source,
         )],
         Some(&payer.pubkey()),
     );
@@ -391,7 +423,6 @@ async fn success_downvote() {
         .unwrap();
 
     let (escrow_account_info, _) = find_escrow_program_address(&s2g::id(), &socials.post);
-
     let rent = Rent::default();
     let stake = 1000;
 
@@ -416,6 +447,7 @@ async fn success_downvote() {
     .await;
     assert_token_balance(&mut banks_client, &socials.downvote_token_account, stake).await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake).await;
+    socials.assert_vote(&mut banks_client, 0, stake).await;
 
     // Stake more
     socials
@@ -436,6 +468,7 @@ async fn success_downvote() {
     )
     .await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake * 2).await;
+    socials.assert_vote(&mut banks_client, 0, stake * 2);
 
     // Unstake
     socials
@@ -450,6 +483,7 @@ async fn success_downvote() {
     .await;
     assert_token_balance(&mut banks_client, &socials.downvote_token_account, stake).await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake).await;
+    socials.assert_vote(&mut banks_client, 0, stake);
 
     // Unstake, same amount (we should now 0 token accounts)
     socials
@@ -464,4 +498,5 @@ async fn success_downvote() {
     .await;
     assert_token_balance(&mut banks_client, &socials.downvote_token_account, 0).await;
     assert_token_balance(&mut banks_client, &escrow_account_info, 0).await;
+    socials.assert_vote(&mut banks_client, 0, 0);
 }

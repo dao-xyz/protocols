@@ -1,19 +1,24 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 
 use super::{
-    channel::state::ChannelAccount, post::state::PostAccount, user::state::UserAccount, MaxSize,
+    channel::state::ChannelAccount,
+    post::state::{InformationPost, PostAccount},
+    user::state::UserAccount,
+    MaxSize,
 };
 
-/// Used to prefix accounts
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
-
-pub enum AccountContainer {
-    UserAccount(UserAccount),
-    ChannelAccount(ChannelAccount),
-    PostAccount(PostAccount),
+/// Enum representing the account type managed by the program
+#[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
+pub enum AccountType {
+    /// User account
+    UserAccount,
+    /// Stake pool
+    ChannelAccount,
+    /// Post account
+    PostAccount,
 }
 
-impl MaxSize for AccountContainer {
+/* impl MaxSize for AccountContainer {
     fn get_max_size(&self) -> Option<usize> {
         match self {
             AccountContainer::UserAccount(user) => user.get_max_size(),
@@ -22,3 +27,4 @@ impl MaxSize for AccountContainer {
         }
     }
 }
+ */
