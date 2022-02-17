@@ -1,7 +1,7 @@
 //! Program state processor
 use super::{find_stake_pool_program_address, STAKE_POOL};
 use crate::{
-    shared::accounts::check_account_owner,
+    shared::accounts::{check_account_owner, check_system_program},
     tokens::spl_utils::{
         self, create_program_account_mint_account_with_seed,
         create_utility_mint_program_address_seeds, find_utility_mint_program_address,
@@ -97,20 +97,6 @@ fn check_transient_stake_address(
         Err(StakePoolError::InvalidStakeAccountAddress.into())
     } else {
         Ok(bump_seed)
-    }
-}
-
-/// Check system program address
-fn check_system_program(program_id: &Pubkey) -> Result<(), ProgramError> {
-    if *program_id != system_program::id() {
-        msg!(
-            "Expected system program {}, received {}",
-            system_program::id(),
-            program_id
-        );
-        Err(ProgramError::IncorrectProgramId)
-    } else {
-        Ok(())
     }
 }
 

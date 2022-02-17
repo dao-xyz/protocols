@@ -14,7 +14,7 @@ use crate::{
     shared::names::entity_name_is_valid,
     socials::{
         create_and_serialize_account_signed_verify, create_user_account_program_address_seeds,
-        state::AccountType,
+        post::state::ContentSource, state::AccountType,
     },
 };
 
@@ -31,7 +31,7 @@ impl Processor {
         program_id: &Pubkey,
         accounts: &[AccountInfo],
         name: String,
-        profile: Option<String>,
+        profile: Option<ContentSource>,
         user_account_bump_seed: u8,
     ) -> ProgramResult {
         let accounts_iter = &mut accounts.iter();
@@ -74,7 +74,10 @@ impl Processor {
         Ok(())
     }
 
-    pub fn process_update_user(accounts: &[AccountInfo], profile: Option<String>) -> ProgramResult {
+    pub fn process_update_user(
+        accounts: &[AccountInfo],
+        profile: Option<ContentSource>,
+    ) -> ProgramResult {
         let accounts_iter = &mut accounts.iter();
         let payer_account = next_account_info(accounts_iter)?;
 

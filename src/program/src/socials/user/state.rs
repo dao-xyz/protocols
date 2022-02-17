@@ -5,7 +5,7 @@ use solana_program::{borsh::try_from_slice_unchecked, pubkey::Pubkey};
 
 use crate::{
     instruction::S2GAccountType,
-    socials::{state::AccountType, MaxSize},
+    socials::{post::state::ContentSource, state::AccountType, MaxSize},
 };
 
 pub const MAX_URI_LENGTH: usize = 200;
@@ -25,7 +25,7 @@ pub struct UserAccount {
     pub owner: Pubkey,
     pub creation_timestamp: u64,
     pub name: String,
-    pub profile: Option<String>, // The link to the profile data
+    pub profile: Option<ContentSource>, // The link to the profile data
 }
 
 impl MaxSize for UserAccount {

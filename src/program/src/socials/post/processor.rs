@@ -14,10 +14,16 @@ use spl_associated_token_account::create_associated_token_account;
 use spl_token::instruction::burn;
 
 use crate::{
-    shared::accounts::check_account_owner,
+    shared::accounts::{check_account_owner, check_system_program},
     socials::{
-        channel::state::deserialize_channel_account, create_and_serialize_account_signed_verify,
-        post::state::InformationPost, state::AccountType, user::state::deserialize_user_account,
+        channel::state::deserialize_channel_account,
+        create_and_serialize_account_signed_verify,
+        post::{
+            instruction::CreatePostType,
+            state::{ActionPost, InformationPost},
+        },
+        state::AccountType,
+        user::state::deserialize_user_account,
     },
     tokens::spl_utils::{
         create_program_token_account, get_token_supply, spl_mint_to, token_transfer,
@@ -26,11 +32,11 @@ use crate::{
 
 use super::{
     create_escrow_program_address_seeds, create_post_mint_authority_program_address_seeds,
-    create_post_mint_program_account,
+    create_post_mint_program_account, create_rule_associated_program_address_seeds,
     instruction::{CreatePost, PostInstruction, PostVote},
     state::{
-        deserialize_action_rule_account, deserialize_post_account, Action, ActionStatus,
-        PostAccount, PostType,
+        deserialize_action_rule_account, deserialize_post_account, Action, ActionRule,
+        ActionStatus, PostAccount, PostType, VotingRuleUpdate,
     },
     Vote,
 };
@@ -121,6 +127,7 @@ impl Processor {
             system_account,
             program_id,
         )?;
+
         let timestamp = Clock::get()?.unix_timestamp as u64;
 
         create_and_serialize_account_signed_verify(
@@ -129,18 +136,33 @@ impl Processor {
             &PostAccount {
                 account_type: crate::instruction::S2GAccountType::Social,
                 social_account_type: AccountType::PostAccount,
-                post_type: PostType::SimplePost(InformationPost {
-                    created_at: timestamp,
-                    updated_at: timestamp,
-                    downvotes: 0,
-                    upvotes: 0,
-                }),
+                post_type: match post.post_type {
+                    CreatePostType::SimplePost => PostType::InformalPost(InformationPost {
+                        created_at: timestamp,
+                        downvotes: 0,
+                        upvotes: 0,
+                    }),
+                    CreatePostType::ActionPost { action, expires_at } => {
+                        if expires_at < timestamp {
+                            return Err(ProgramError::InvalidArgument);
+                        }
+                        PostType::ActionPost(ActionPost {
+                            action,
+                            created_at: timestamp,
+                            downvotes: 0,
+                            expires_at: expires_at,
+                            status: ActionStatus::Pending,
+                            upvotes: 0,
+                        })
+                    }
+                },
                 utility_mint_address: post.utility_mint_address,
                 channel: post.channel,
                 hash: post.hash,
                 source: post.source,
                 creator: *user_account_info.key,
                 asset: super::state::Asset::NonAsset,
+                deleted: false,
             },
             &[&content_hash, &[post.post_bump_seed]],
             program_id,
@@ -240,12 +262,12 @@ impl Processor {
         )?;
 
         post.post_type = match post.post_type {
-            PostType::SimplePost(mut info) => {
+            PostType::InformalPost(mut info) => {
                 match stake.vote {
                     Vote::UP => info.upvotes += stake.stake,
                     Vote::DOWN => info.downvotes += stake.stake,
                 };
-                PostType::SimplePost(info)
+                PostType::InformalPost(info)
             }
             PostType::ActionPost(mut info) => {
                 match stake.vote {
@@ -339,12 +361,12 @@ impl Processor {
         )?;
 
         post.post_type = match post.post_type {
-            PostType::SimplePost(mut info) => {
+            PostType::InformalPost(mut info) => {
                 match stake.vote {
                     Vote::UP => info.upvotes -= stake.stake,
                     Vote::DOWN => info.downvotes -= stake.stake,
                 };
-                PostType::SimplePost(info)
+                PostType::InformalPost(info)
             }
             PostType::ActionPost(mut info) => {
                 match stake.vote {
@@ -365,11 +387,12 @@ impl Processor {
         let post_account_info = next_account_info(accounts_iter)?;
         let mut post = deserialize_post_account(*post_account_info.data.borrow())?;
         let channel_account_info = next_account_info(accounts_iter)?;
-        let action_rule_info = next_account_info(accounts_iter)?;
-        let action_rule = deserialize_action_rule_account(*action_rule_info.data.borrow())?;
-        let utility_mint_info = next_account_info(accounts_iter)?;
-        let supply = get_token_supply(utility_mint_info)?;
         let channel = deserialize_channel_account(*channel_account_info.data.borrow())?;
+        let action_rule_info = next_account_info(accounts_iter)?;
+        msg!("DER ACTION {}", action_rule_info.try_data_is_empty()?);
+        let action_rule = deserialize_action_rule_account(*action_rule_info.data.borrow())?;
+        let governence_mint_info = next_account_info(accounts_iter)?;
+        let supply = get_token_supply(governence_mint_info)?;
 
         check_account_owner(post_account_info, program_id)?;
         check_account_owner(channel_account_info, program_id)?;
@@ -382,17 +405,100 @@ impl Processor {
             return Err(ProgramError::InvalidArgument);
         }
 
+        if &channel.governence_mint != governence_mint_info.key {
+            return Err(ProgramError::InvalidArgument);
+        }
+
         post.post_type = match post.post_type {
             PostType::ActionPost(mut action) => {
                 // check if vote is settled
+                if action.expires_at <= Clock::get()?.unix_timestamp as u64 {
+                    return Err(ProgramError::Custom(123)); // Not ready yet!
+                }
+
                 if action_rule.is_approved(&action, supply).unwrap() {
                     action.status = ActionStatus::Approved;
-                    match action.action {
-                        Action::DeletePost(post) => {}
-                        Action::Event(x) => {}
-                        Action::ManageRule() => {}
-                        Action::SelfDestruct() => {}
-                        Action::TransferTreasury() => {}
+                    match &action.action {
+                        Action::DeletePost(post_to_delete) => {
+                            let delete_post_account_info = next_account_info(accounts_iter)?;
+                            if post_to_delete != delete_post_account_info.key {
+                                return Err(ProgramError::InvalidArgument);
+                            }
+                            let mut post_deleted =
+                                deserialize_post_account(*delete_post_account_info.data.borrow())?;
+                            post_deleted.deleted = true;
+                            post_deleted
+                                .serialize(&mut *delete_post_account_info.data.borrow_mut())?;
+                        }
+                        Action::TransferTreasury { from, to, amount } => {
+                            let from_info = next_account_info(accounts_iter)?;
+                            let to_info = next_account_info(accounts_iter)?;
+                            if from != from_info.key {
+                                return Err(ProgramError::InvalidArgument);
+                            }
+                            if to != to_info.key {
+                                return Err(ProgramError::InvalidArgument);
+                            }
+                            let transfer_authority = next_account_info(accounts_iter)?;
+                            let token_program_info = next_account_info(accounts_iter)?;
+                            token_transfer(
+                                token_program_info.clone(),
+                                from_info.clone(),
+                                to_info.clone(),
+                                transfer_authority.clone(),
+                                *amount,
+                            )?;
+                        }
+                        Action::ManageRule(modification) => match modification {
+                            VotingRuleUpdate::CreateRule { rule, bump_seed } => {
+                                let payer_info = next_account_info(accounts_iter)?;
+                                let new_rule_info = next_account_info(accounts_iter)?;
+                                let system_account = next_account_info(accounts_iter)?;
+                                check_system_program(system_account.key)?;
+                                let bump_seeds = &[*bump_seed];
+                                let seeds = create_rule_associated_program_address_seeds(
+                                    channel_account_info.key,
+                                    &rule.action,
+                                    bump_seeds,
+                                );
+                                create_and_serialize_account_signed_verify(
+                                    payer_info,
+                                    new_rule_info,
+                                    &ActionRule {
+                                        social_account_type: AccountType::RuleAccount,
+                                        account_type: crate::instruction::S2GAccountType::Social,
+                                        action: rule.action.clone(),
+                                        channel: rule.channel,
+                                        info: rule.info.clone(),
+                                        name: rule.name.clone(),
+                                        criteria: rule.criteria.clone(),
+                                        deleted: false,
+                                    },
+                                    &seeds,
+                                    program_id,
+                                    system_account,
+                                    &Rent::get()?,
+                                )?;
+                            }
+                            VotingRuleUpdate::DeleteRule(rule) => {
+                                let rule_info = next_account_info(accounts_iter)?;
+                                check_account_owner(rule_info, program_id)?;
+
+                                if rule_info.key != rule {
+                                    return Err(ProgramError::InvalidArgument);
+                                }
+                                let mut rule =
+                                    deserialize_action_rule_account(*rule_info.data.borrow())?;
+                                if &rule.channel != channel_account_info.key {
+                                    return Err(ProgramError::InvalidArgument);
+                                }
+                                rule.deleted = true;
+                                rule.serialize(&mut *rule_info.data.borrow_mut())?;
+                            }
+                        },
+                        Action::CustomEvent { data, event_type } => {
+                            // well we dont need to do anything since the data is already on chain and the approved status has/will be set, so integration can be made
+                        }
                     }
                 } else {
                     action.status = ActionStatus::Rejected;
@@ -437,7 +543,7 @@ impl Processor {
 
             PostInstruction::ExecutePost => {
                 //let token_account_info = next_account_info(accounts_iter)?;
-                msg!("Create unvote");
+                msg!("Create post execution");
                 Self::process_execute_post(program_id, accounts)
             }
         }

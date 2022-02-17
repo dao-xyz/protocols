@@ -1,5 +1,3 @@
-
-
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_program::{
     instruction::{AccountMeta, Instruction},
@@ -7,8 +5,8 @@ use solana_program::{
     system_program,
 };
 
-use crate::{
-    socials::{find_user_account_program_address, instruction::SocialInstruction},
+use crate::socials::{
+    find_user_account_program_address, instruction::SocialInstruction, post::state::ContentSource,
 };
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
@@ -18,13 +16,13 @@ pub enum UserInstruction {
         #[allow(dead_code)] // but it's not
         name: String,
         #[allow(dead_code)] // but it's not
-        profile: Option<String>,
+        profile: Option<ContentSource>,
         #[allow(dead_code)] // but it's not
         user_account_bump_seed: u8,
     },
     UpdateUser {
         #[allow(dead_code)] // but it's not
-        profile: Option<String>,
+        profile: Option<ContentSource>,
     },
 }
 
@@ -32,7 +30,7 @@ pub enum UserInstruction {
 pub fn create_user_transaction(
     program_id: &Pubkey,
     username: &str,
-    profile: Option<String>,
+    profile: Option<ContentSource>,
     payer: &Pubkey,
 ) -> Instruction {
     let (user_account, user_account_bump_seed) =
@@ -58,7 +56,7 @@ pub fn create_user_transaction(
 pub fn create_update_user_transaction(
     program_id: &Pubkey,
     username: &str,
-    profile: Option<String>,
+    profile: Option<ContentSource>,
     payer: &Pubkey,
 ) -> Instruction {
     let (user_account, _) = find_user_account_program_address(program_id, username);

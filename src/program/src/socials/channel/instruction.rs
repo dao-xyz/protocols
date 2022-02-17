@@ -5,7 +5,13 @@ use solana_program::{
     system_program,
 };
 
-use crate::socials::instruction::SocialInstruction;
+use crate::socials::{
+    instruction::SocialInstruction,
+    post::{
+        find_create_rule_associated_program_address,
+        state::{ActionType, ContentSource, RuleUpdateType},
+    },
+};
 
 use super::{find_channel_program_address, state::ChannelAccount};
 
@@ -20,16 +26,19 @@ pub enum ChannelInstruction {
         #[allow(dead_code)] // but it's not
         name: String,
         #[allow(dead_code)] // but it's not
-        link: Option<String>,
+        link: Option<ContentSource>,
         #[allow(dead_code)] // but it's not
         channel_account_bump_seed: u8,
+        #[allow(dead_code)] // but it's not
+        create_rule_address_bump_seed: u8,
     },
 
     // Update channel (the tail message)
     UpdateChannel {
         #[allow(dead_code)] // but it's not
-        link: Option<String>,
+        link: Option<ContentSource>,
     },
+    CreateTokenTreasury(Pubkey),
 }
 
 /// Creates a create user transction
@@ -38,11 +47,20 @@ pub fn create_channel_transaction(
     channel_name: &str,
     owner: &Pubkey,
     governence_mint: &Pubkey,
-    link: Option<String>,
+    link: Option<ContentSource>,
     payer: &Pubkey,
 ) -> Instruction {
     let (channel, channel_account_bump_seed) =
         find_channel_program_address(program_id, channel_name).unwrap();
+
+    // The create rule address is a rule that defines what the approval critera is to allow the channel to create a new rule
+
+    let (create_rule_address, create_rule_address_bump_seed) =
+        find_create_rule_associated_program_address(
+            program_id,
+            &ActionType::ManageRule(RuleUpdateType::Create),
+            &channel,
+        );
 
     Instruction {
         program_id: *program_id,
@@ -52,6 +70,7 @@ pub fn create_channel_transaction(
             governence_mint: *governence_mint,
             owner: *owner,
             channel_account_bump_seed,
+            create_rule_address_bump_seed,
         })
         .try_to_vec()
         .unwrap(),
@@ -59,6 +78,7 @@ pub fn create_channel_transaction(
             AccountMeta::new(*payer, true),
             AccountMeta::new(*owner, false),
             AccountMeta::new(channel, false),
+            AccountMeta::new(create_rule_address, false),
             AccountMeta::new(system_program::id(), false),
         ],
     }
@@ -69,7 +89,7 @@ pub fn create_update_channel_transacation(
     program_id: &Pubkey,
     channel_name: &str,
     owner: &Pubkey,
-    link: Option<String>,
+    link: Option<ContentSource>,
     payer: &Pubkey,
 ) -> Instruction {
     let (channel, _) = find_channel_program_address(program_id, channel_name).unwrap();

@@ -4,16 +4,24 @@ use solana_program::{
     clock::Clock,
     entrypoint::ProgramResult,
     msg,
+    program::invoke,
     program_error::ProgramError,
     pubkey::Pubkey,
     rent::Rent,
     sysvar::Sysvar,
 };
+use spl_associated_token_account::create_associated_token_account;
 
 use crate::{
     shared::names::entity_name_is_valid,
     socials::{
-        create_and_serialize_account_signed_verify, state::AccountType,
+        create_and_serialize_account_signed_verify,
+        post::{
+            create_rule_associated_program_address_seeds,
+            find_create_rule_associated_program_address,
+            state::{AcceptenceCriteria, ActionRule, ActionType, ContentSource, RuleUpdateType},
+        },
+        state::AccountType,
         user::state::deserialize_user_account,
     },
 };
@@ -34,8 +42,9 @@ impl Processor {
         owner: Pubkey, // a
         governence_mint: Pubkey,
         name: String,
-        link: Option<String>,
+        link: Option<ContentSource>,
         channel_account_bump_seed: u8,
+        create_rule_address_bump_seed: u8,
     ) -> ProgramResult {
         let accounts_iter = &mut accounts.iter();
         let payer_account = next_account_info(accounts_iter)?;
@@ -44,6 +53,7 @@ impl Processor {
         if &owner_user.owner != payer_account.key {
             return Err(ProgramError::IllegalOwner); // To prevent someone to create a channel for someone else
         }
+
         if &owner != owner_user_account_info.key {
             return Err(ProgramError::IllegalOwner);
         }
@@ -56,6 +66,7 @@ impl Processor {
             // Channel already exist
             return Err(ProgramError::InvalidAccountData);
         }
+        let new_rule_account_info = next_account_info(accounts_iter)?;
 
         let system_account = next_account_info(accounts_iter)?;
         let rent = Rent::get()?;
@@ -83,10 +94,44 @@ impl Processor {
             system_account,
             &rent,
         )?;
+
+        // Create initial rules (the only rule we need to create is that it is possible to create more rules)            payer_account,
+        let create_rule_bump_seeds = &[create_rule_address_bump_seed];
+        let rule_type = ActionType::ManageRule(RuleUpdateType::Create);
+        let create_rule_seeds = create_rule_associated_program_address_seeds(
+            channel_account_info.key,
+            &rule_type,
+            create_rule_bump_seeds,
+        );
+
+        // Create a rule with acceptance criteria on the channel that allows
+        // proposals to made to create other rules
+        create_and_serialize_account_signed_verify(
+            payer_account,
+            new_rule_account_info,
+            &ActionRule {
+                social_account_type: AccountType::RuleAccount,
+                account_type: crate::instruction::S2GAccountType::Social,
+                action: ActionType::ManageRule(RuleUpdateType::Create).clone(),
+                channel: *channel_account_info.key,
+                info: None, // Does not matter, rule is self evident
+                name: None, // Does not matter, rule is self evident
+                criteria: AcceptenceCriteria::default(),
+                deleted: false,
+            },
+            &create_rule_seeds,
+            program_id,
+            system_account,
+            &Rent::get()?,
+        )?;
+
         Ok(())
     }
 
-    pub fn process_update_channel(accounts: &[AccountInfo], link: Option<String>) -> ProgramResult {
+    pub fn process_update_channel(
+        accounts: &[AccountInfo],
+        link: Option<ContentSource>,
+    ) -> ProgramResult {
         let accounts_iter = &mut accounts.iter();
         let payer_account = next_account_info(accounts_iter)?;
         let owner_user_account_info = next_account_info(accounts_iter)?;
@@ -119,6 +164,17 @@ impl Processor {
         Ok(())
     }
 
+    pub fn process_create_treasury(accounts: &[AccountInfo], mint: &Pubkey) -> ProgramResult {
+        let accounts_iter = &mut accounts.iter();
+        let payer_info = next_account_info(accounts_iter)?;
+        let channel_info = next_account_info(accounts_iter)?;
+        let mint_info = next_account_info(accounts_iter)?;
+        invoke(
+            &create_associated_token_account(payer_info.key, channel_info.key, mint_info.key),
+            &[payer_info.clone(), channel_info.clone(), mint_info.clone()],
+        )
+    }
+
     pub fn process(
         program_id: &Pubkey,
         accounts: &[AccountInfo],
@@ -131,6 +187,7 @@ impl Processor {
                 name,
                 link,
                 channel_account_bump_seed,
+                create_rule_address_bump_seed,
             } => {
                 msg!("Instruction: Create channel");
                 Self::process_create_channel(
@@ -141,10 +198,14 @@ impl Processor {
                     name,
                     link,
                     channel_account_bump_seed,
+                    create_rule_address_bump_seed,
                 )
             }
             ChannelInstruction::UpdateChannel { link } => {
                 Self::process_update_channel(accounts, link)
+            }
+            ChannelInstruction::CreateTokenTreasury(mint) => {
+                Self::process_create_treasury(accounts, &mint)
             }
         }
     }

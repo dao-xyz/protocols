@@ -5,7 +5,7 @@ use solana_program::{borsh::try_from_slice_unchecked, pubkey::Pubkey};
 
 use crate::{
     instruction::S2GAccountType,
-    socials::{state::AccountType, MaxSize},
+    socials::{post::state::ContentSource, state::AccountType, MaxSize},
 };
 pub const MAX_URI_LENGTH: usize = 200;
 pub const MAX_NAME_LENGTH: usize = 100;
@@ -25,7 +25,7 @@ pub struct ChannelAccount {
     pub governence_mint: Pubkey,
     pub creation_timestamp: u64,
     pub name: String,
-    pub link: Option<String>, // The link to to info data
+    pub link: Option<ContentSource>, // The link to to info data
 }
 
 impl MaxSize for ChannelAccount {
@@ -38,4 +38,3 @@ pub fn deserialize_channel_account(data: &[u8]) -> Result<ChannelAccount> {
     let account: ChannelAccount = try_from_slice_unchecked(data)?;
     return Ok(account);
 }
-

@@ -5,6 +5,7 @@ use s2g::socials::channel::instruction::{
 use s2g::socials::channel::state::deserialize_channel_account;
 
 use s2g::socials::instruction::SocialInstruction;
+use s2g::socials::post::state::ContentSource;
 use s2g::tokens::spl_utils::find_utility_mint_program_address;
 use solana_program::hash::Hash;
 use solana_program::instruction::{AccountMeta, Instruction, InstructionError};
@@ -15,7 +16,7 @@ use solana_sdk::transaction::TransactionError;
 use solana_sdk::transport::TransportError;
 use solana_sdk::{pubkey::Pubkey, signer::Signer, transaction::Transaction};
 
-use crate::socials::user::create_and_verify_user;
+use crate::social::user::create_and_verify_user;
 use crate::utils::program_test;
 
 pub async fn create_and_verify_channel(
@@ -25,7 +26,7 @@ pub async fn create_and_verify_channel(
     channel_name: &str,
     channel_owner_user: &Pubkey,
     utility_mint_address: &Pubkey,
-    link: Option<String>,
+    link: Option<ContentSource>,
 ) -> Result<Pubkey, TransportError> {
     let (channel_address_pda, _bump) =
         find_channel_program_address(&s2g::id(), channel_name).unwrap();

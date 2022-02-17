@@ -23,6 +23,8 @@ use crate::tokens::spl_utils::{
     find_mint_authority_program_address, find_mint_escrow_program_address, MINT_SEED,
 };
 
+use self::state::{Action, ActionType, RuleUpdateType, VotingRuleUpdate};
+
 /// Seed for UPVOTE
 const USER: &[u8] = b"user";
 
@@ -161,19 +163,48 @@ pub fn create_post_downvote_mint_program_address_seeds<'a>(
 }
 
 /// Find rule account address
-pub fn find_create_rule_associated_prgoram_address(
+pub fn find_create_rule_associated_program_address(
     program_id: &Pubkey,
+    action_type: &ActionType,
     channel: &Pubkey,
 ) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[RULE, &channel.to_bytes()], program_id)
+    match action_type {
+        ActionType::DeletePost => {
+            Pubkey::find_program_address(&[RULE, b"delete", channel.as_ref()], program_id)
+        }
+        ActionType::CustomEvent(event_type) => {
+            Pubkey::find_program_address(&[RULE, event_type.as_ref(), channel.as_ref()], program_id)
+        }
+        ActionType::ManageRule(manage_rule) => match manage_rule {
+            RuleUpdateType::Create => {
+                Pubkey::find_program_address(&[RULE, b"rule_create", channel.as_ref()], program_id)
+            }
+            RuleUpdateType::Delete => {
+                Pubkey::find_program_address(&[RULE, b"rule_delete", channel.as_ref()], program_id)
+            }
+        },
+        ActionType::TransferTreasury => Pubkey::find_program_address(
+            &[RULE, b"transfer_treasury", channel.as_ref()],
+            program_id,
+        ),
+    }
 }
 
 /// Create rule account address
-pub fn create_rule_associated_prgoram_address<'a>(
+pub fn create_rule_associated_program_address_seeds<'a>(
     channel: &'a Pubkey,
+    action_type: &'a ActionType,
     bump_seed: &'a [u8],
-) -> [&'a [u8]; 3] {
-    [RULE, channel.as_ref(), bump_seed]
+) -> [&'a [u8]; 4] {
+    match action_type {
+        ActionType::CustomEvent(key) => [RULE, key.as_ref(), channel.as_ref(), bump_seed],
+        ActionType::DeletePost => [RULE, b"delete", channel.as_ref(), bump_seed],
+        ActionType::ManageRule(manage_rule) => match manage_rule {
+            RuleUpdateType::Create => [RULE, b"rule_create", channel.as_ref(), bump_seed],
+            RuleUpdateType::Delete => [RULE, b"rule_delete", channel.as_ref(), bump_seed],
+        },
+        ActionType::TransferTreasury => [RULE, b"transfer_treasury", channel.as_ref(), bump_seed],
+    }
 }
 
 /// Find address for the token mint authority for the post account

@@ -11,12 +11,21 @@ use crate::{
 };
 
 use super::{
-    find_escrow_program_address, find_post_downvote_mint_program_address,
-    find_post_mint_authority_program_address, find_post_program_address,
-    find_post_upvote_mint_program_address,
-    state::{ContentSource, PostAccount},
+    find_create_rule_associated_program_address, find_escrow_program_address,
+    find_post_downvote_mint_program_address, find_post_mint_authority_program_address,
+    find_post_program_address, find_post_upvote_mint_program_address,
+    state::{
+        AcceptenceCriteria, Action, ActionType, ContentSource, PostAccount, PostType,
+        RuleUpdateType, VotingRuleUpdate,
+    },
     Vote,
 };
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
+pub enum CreatePostType {
+    SimplePost,
+    ActionPost { expires_at: u64, action: Action },
+}
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct CreatePost {
@@ -25,6 +34,7 @@ pub struct CreatePost {
     pub utility_mint_address: Pubkey, // either utility mint or goverence mint
     pub hash: [u8; 32],
     pub source: ContentSource,
+    pub post_type: CreatePostType,
     pub post_bump_seed: u8,
     pub escrow_bump_seed: u8,
     pub mint_upvote_bump_seed: u8,
@@ -56,6 +66,7 @@ pub fn create_post_transaction(
     channel: &Pubkey,
     utility_mint_address: &Pubkey,
     hash: &[u8; 32],
+    post_type: &CreatePostType,
     source: &ContentSource,
 ) -> Instruction {
     let (post_address, post_bump_seed) = find_post_program_address(program_id, &hash);
@@ -94,6 +105,7 @@ pub fn create_post_transaction(
             channel: *channel,
             utility_mint_address: *utility_mint_address,
             hash: *hash,
+            post_type: post_type.clone(),
             source: source.clone(),
             mint_upvote_bump_seed,
             mint_downvote_bump_seed,
@@ -207,6 +219,72 @@ pub fn create_post_unvote_transaction(
         }))
         .try_to_vec()
         .unwrap(),
+        accounts,
+    }
+}
+
+// "Unstake" solvei tokens
+pub fn create_post_execution_transaction(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    post: &Pubkey,
+    post_account: &PostAccount,
+    action_type: &ActionType,
+    governence_mint: &Pubkey,
+) -> Instruction {
+    let (rule_address, _bump) = find_create_rule_associated_program_address(
+        program_id,
+        &ActionType::ManageRule(RuleUpdateType::Create),
+        &post_account.channel,
+    );
+
+    let mut accounts = vec![
+        AccountMeta::new(*post, false),
+        AccountMeta::new(post_account.channel, false),
+        AccountMeta::new(rule_address, false),
+        AccountMeta::new(*governence_mint, false),
+    ];
+
+    match &post_account.post_type {
+        PostType::ActionPost(action) => match &action.action {
+            Action::CustomEvent { .. } => {
+                // Nothing since custom events approvals are not updating any states, just flagges post as approved
+            }
+            Action::DeletePost(key) => {
+                accounts.push(AccountMeta::new(*key, false));
+            }
+            Action::ManageRule(update) => match update {
+                VotingRuleUpdate::CreateRule { rule, .. } => {
+                    let (rule, _) = find_create_rule_associated_program_address(
+                        program_id,
+                        &rule.action,
+                        &rule.channel,
+                    );
+                    accounts.push(AccountMeta::new(*payer, true));
+                    accounts.push(AccountMeta::new(rule, false));
+                    accounts.push(AccountMeta::new_readonly(system_program::id(), false));
+                }
+                VotingRuleUpdate::DeleteRule(key) => {
+                    accounts.push(AccountMeta::new(*key, false));
+                }
+            },
+            Action::TransferTreasury { from, to, .. } => {
+                accounts.push(AccountMeta::new(*from, false));
+                accounts.push(AccountMeta::new(*to, false));
+                //   accounts.push(AccountMeta::new(, false));
+                accounts.push(AccountMeta::new_readonly(spl_token::id(), false));
+            }
+        },
+        _ => {
+            panic!("Unexpected");
+        }
+    };
+
+    Instruction {
+        program_id: *program_id,
+        data: SocialInstruction::PostInstruction(PostInstruction::ExecutePost)
+            .try_to_vec()
+            .unwrap(),
         accounts,
     }
 }

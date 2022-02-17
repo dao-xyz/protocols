@@ -1,12 +1,5 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 
-use super::{
-    channel::state::ChannelAccount,
-    post::state::{InformationPost, PostAccount},
-    user::state::UserAccount,
-    MaxSize,
-};
-
 /// Enum representing the account type managed by the program
 #[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
 pub enum AccountType {
@@ -16,6 +9,8 @@ pub enum AccountType {
     ChannelAccount,
     /// Post account
     PostAccount,
+    /// Rule account
+    RuleAccount,
 }
 
 /* impl MaxSize for AccountContainer {

@@ -10,7 +10,14 @@ use crate::{
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum ContentSource {
-    External { url: String }, // like ipfs
+    External { url: String },
+    String(String),
+}
+
+impl From<&str> for ContentSource {
+    fn from(string: &str) -> Self {
+        return ContentSource::String(string.to_string());
+    }
 }
 
 pub const MAX_CONTENT_LEN: usize = 32 // hash pubkey
@@ -24,7 +31,7 @@ pub enum Asset {
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum PostType {
-    SimplePost(InformationPost),
+    InformalPost(InformationPost),
     ActionPost(ActionPost),
 }
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
@@ -34,6 +41,7 @@ pub struct PostAccount {
     pub creator: Pubkey,
     pub channel: Pubkey,
     pub utility_mint_address: Pubkey, // either utility mint or goverence mint
+    pub deleted: bool,
     pub hash: [u8; 32],
     pub post_type: PostType,
     pub source: ContentSource,
@@ -43,13 +51,12 @@ pub struct PostAccount {
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct InformationPost {
     pub created_at: u64,
-    pub updated_at: u64,
     pub upvotes: u64,
     pub downvotes: u64,
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub enum VoteRule {
+pub enum AcceptenceCriteria {
     Majority {
         upvote_numerator: u64, // upvote rate has to be atleast this fraction
         upvote_denominator: u64,
@@ -58,18 +65,39 @@ pub enum VoteRule {
     },
 }
 
+impl Default for AcceptenceCriteria {
+    fn default() -> Self {
+        // Atleast 50% upvotes,
+        // and not more than 50% downvotes
+        Self::Majority {
+            downvote_denominator: 100,
+            downvote_numerator: 50,
+            upvote_denominator: 100,
+            upvote_numerator: 50,
+        }
+    }
+}
+
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
 pub struct ActionRule {
+    pub account_type: S2GAccountType,
+    pub social_account_type: AccountType,
     pub channel: Pubkey,
-    pub name: String,
     pub action: ActionType,
-    pub rule: VoteRule,
-    pub info: Option<String>,
+    pub criteria: AcceptenceCriteria,
+    pub name: Option<String>,
+    pub info: Option<ContentSource>,
+    pub deleted: bool,
+}
+impl MaxSize for ActionRule {
+    fn get_max_size(&self) -> Option<usize> {
+        None
+    }
 }
 impl ActionRule {
     pub fn is_approved(&self, action: &ActionPost, total_supply: u64) -> Option<bool> {
-        match self.rule {
-            VoteRule::Majority {
+        match self.criteria {
+            AcceptenceCriteria::Majority {
                 downvote_denominator,
                 downvote_numerator,
                 upvote_denominator,
@@ -106,46 +134,53 @@ pub fn deserialize_action_rule_account(data: &[u8]) -> Result<ActionRule> {
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub enum VotingRuleUpdate {
-    DeleteEventType(Pubkey),
-    CreateEventType(ActionRule),
-    UpdateEventType {
-        rule: VoteRule,
-        info: Option<String>,
-    },
+pub enum RuleUpdateType {
+    Delete,
+    Create,
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub enum VotingRuleUpdateType {
-    DeleteEventType,
-    CreateEventType,
-    UpdateEventType,
+pub struct CreateRule {
+    pub channel: Pubkey,
+    pub action: ActionType,
+    pub criteria: AcceptenceCriteria,
+    pub name: Option<String>,
+    pub info: Option<ContentSource>,
+}
+
+impl MaxSize for CreateRule {
+    fn get_max_size(&self) -> Option<usize> {
+        None
+    }
+}
+
+#[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
+pub enum VotingRuleUpdate {
+    DeleteRule(Pubkey),
+    CreateRule { rule: CreateRule, bump_seed: u8 },
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
-
 pub enum Action {
-    Event {
+    CustomEvent {
         event_type: Pubkey,
         data: Vec<u8>,
     },
     ManageRule(VotingRuleUpdate),
     TransferTreasury {
-        from: Pubkey, // treasury source
-        to: Pubkey,   // reciever
+        from: Pubkey,
+        to: Pubkey,
         amount: u64,
     },
     DeletePost(Pubkey),
-    SelfDestruct,
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum ActionType {
-    Event(Pubkey), // event pubkey
-    ManageRuleType(VotingRuleUpdateType),
+    CustomEvent(Pubkey), // event pubkey
+    ManageRule(RuleUpdateType),
     TransferTreasury,
     DeletePost,
-    SelfDestruct,
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
@@ -158,7 +193,6 @@ pub enum ActionStatus {
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct ActionPost {
     pub created_at: u64,
-    pub updated_at: u64,
     pub upvotes: u64,
     pub downvotes: u64,
     pub expires_at: u64,
