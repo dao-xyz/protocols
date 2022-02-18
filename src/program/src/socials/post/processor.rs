@@ -36,7 +36,7 @@ use super::{
     instruction::{CreatePost, PostInstruction, PostVote},
     state::{
         deserialize_action_rule_account, deserialize_post_account, Action, ActionRule,
-        ActionStatus, PostAccount, PostType, VotingRuleUpdate,
+        ActionStatus, PostAccount, PostType, TreasuryAction, VotingRuleUpdate,
     },
     Vote,
 };
@@ -73,7 +73,7 @@ impl Processor {
         // Upvote tokens
         create_post_mint_program_account(
             post_account_info.key,
-            Vote::UP,
+            Vote::Up,
             mint_upvote_account_info,
             post.mint_upvote_bump_seed,
             mint_authority_account_info,
@@ -87,7 +87,7 @@ impl Processor {
         // Downvote tokens
         create_post_mint_program_account(
             post_account_info.key,
-            Vote::DOWN,
+            Vote::Down,
             mint_downvote_account_info,
             post.mint_downvote_bump_seed,
             mint_authority_account_info,
@@ -193,8 +193,8 @@ impl Processor {
         let spl_associated_token_acount_program_info = next_account_info(accounts_iter)?;
 
         let mint_account_info = match stake.vote {
-            Vote::UP => mint_upvote_account_info,
-            Vote::DOWN => mint_downvote_account_info,
+            Vote::Up => mint_upvote_account_info,
+            Vote::Down => mint_downvote_account_info,
         };
 
         if mint_associated_token_account.data.borrow().is_empty() {
@@ -264,15 +264,15 @@ impl Processor {
         post.post_type = match post.post_type {
             PostType::InformalPost(mut info) => {
                 match stake.vote {
-                    Vote::UP => info.upvotes += stake.stake,
-                    Vote::DOWN => info.downvotes += stake.stake,
+                    Vote::Up => info.upvotes += stake.stake,
+                    Vote::Down => info.downvotes += stake.stake,
                 };
                 PostType::InformalPost(info)
             }
             PostType::ActionPost(mut info) => {
                 match stake.vote {
-                    Vote::UP => info.upvotes += stake.stake,
-                    Vote::DOWN => info.downvotes += stake.stake,
+                    Vote::Up => info.upvotes += stake.stake,
+                    Vote::Down => info.downvotes += stake.stake,
                 };
                 PostType::ActionPost(info)
             }
@@ -300,8 +300,8 @@ impl Processor {
         let token_program_info = next_account_info(accounts_iter)?;
 
         let mint_account_info = match stake.vote {
-            Vote::UP => mint_upvote_account_info,
-            Vote::DOWN => mint_downvote_account_info,
+            Vote::Up => mint_upvote_account_info,
+            Vote::Down => mint_downvote_account_info,
         };
 
         let escrow_token_account_info = next_account_info(accounts_iter)?;
@@ -363,15 +363,15 @@ impl Processor {
         post.post_type = match post.post_type {
             PostType::InformalPost(mut info) => {
                 match stake.vote {
-                    Vote::UP => info.upvotes -= stake.stake,
-                    Vote::DOWN => info.downvotes -= stake.stake,
+                    Vote::Up => info.upvotes -= stake.stake,
+                    Vote::Down => info.downvotes -= stake.stake,
                 };
                 PostType::InformalPost(info)
             }
             PostType::ActionPost(mut info) => {
                 match stake.vote {
-                    Vote::UP => info.upvotes -= stake.stake,
-                    Vote::DOWN => info.downvotes -= stake.stake,
+                    Vote::Up => info.upvotes -= stake.stake,
+                    Vote::Down => info.downvotes -= stake.stake,
                 };
                 PostType::ActionPost(info)
             }
@@ -389,7 +389,6 @@ impl Processor {
         let channel_account_info = next_account_info(accounts_iter)?;
         let channel = deserialize_channel_account(*channel_account_info.data.borrow())?;
         let action_rule_info = next_account_info(accounts_iter)?;
-        msg!("DER ACTION {}", action_rule_info.try_data_is_empty()?);
         let action_rule = deserialize_action_rule_account(*action_rule_info.data.borrow())?;
         let governence_mint_info = next_account_info(accounts_iter)?;
         let supply = get_token_supply(governence_mint_info)?;
@@ -430,36 +429,57 @@ impl Processor {
                             post_deleted
                                 .serialize(&mut *delete_post_account_info.data.borrow_mut())?;
                         }
-                        Action::TransferTreasury { from, to, amount } => {
-                            let from_info = next_account_info(accounts_iter)?;
-                            let to_info = next_account_info(accounts_iter)?;
-                            if from != from_info.key {
-                                return Err(ProgramError::InvalidArgument);
+                        Action::Treasury(treasury_action) => match treasury_action {
+                            TreasuryAction::Transfer { from, to, amount } => {
+                                let from_info = next_account_info(accounts_iter)?;
+                                let to_info = next_account_info(accounts_iter)?;
+                                if from != from_info.key {
+                                    return Err(ProgramError::InvalidArgument);
+                                }
+                                if to != to_info.key {
+                                    return Err(ProgramError::InvalidArgument);
+                                }
+                                let transfer_authority = next_account_info(accounts_iter)?;
+                                let token_program_info = next_account_info(accounts_iter)?;
+                                token_transfer(
+                                    token_program_info.clone(),
+                                    from_info.clone(),
+                                    to_info.clone(),
+                                    transfer_authority.clone(),
+                                    *amount,
+                                )?;
                             }
-                            if to != to_info.key {
-                                return Err(ProgramError::InvalidArgument);
+                            TreasuryAction::Create { mint } => {
+                                let payer_info = next_account_info(accounts_iter)?;
+                                let mint_info = next_account_info(accounts_iter)?;
+                                if mint != mint_info.key {
+                                    invoke(
+                                        &create_associated_token_account(
+                                            payer_info.key,
+                                            channel_account_info.key,
+                                            mint_info.key,
+                                        ),
+                                        &[
+                                            payer_info.clone(),
+                                            channel_account_info.clone(),
+                                            mint_info.clone(),
+                                        ],
+                                    )?;
+                                }
                             }
-                            let transfer_authority = next_account_info(accounts_iter)?;
-                            let token_program_info = next_account_info(accounts_iter)?;
-                            token_transfer(
-                                token_program_info.clone(),
-                                from_info.clone(),
-                                to_info.clone(),
-                                transfer_authority.clone(),
-                                *amount,
-                            )?;
-                        }
+                        },
                         Action::ManageRule(modification) => match modification {
-                            VotingRuleUpdate::CreateRule { rule, bump_seed } => {
+                            VotingRuleUpdate::Create { rule, bump_seed } => {
                                 let payer_info = next_account_info(accounts_iter)?;
                                 let new_rule_info = next_account_info(accounts_iter)?;
                                 let system_account = next_account_info(accounts_iter)?;
                                 check_system_program(system_account.key)?;
-                                let bump_seeds = &[*bump_seed];
+                                let create_rule_bump_seeds = &[*bump_seed];
+                                msg!("CREATE RULE AFTER APPROVAL");
                                 let seeds = create_rule_associated_program_address_seeds(
                                     channel_account_info.key,
                                     &rule.action,
-                                    bump_seeds,
+                                    create_rule_bump_seeds,
                                 );
                                 create_and_serialize_account_signed_verify(
                                     payer_info,
@@ -480,7 +500,7 @@ impl Processor {
                                     &Rent::get()?,
                                 )?;
                             }
-                            VotingRuleUpdate::DeleteRule(rule) => {
+                            VotingRuleUpdate::Delete(rule) => {
                                 let rule_info = next_account_info(accounts_iter)?;
                                 check_account_owner(rule_info, program_id)?;
 

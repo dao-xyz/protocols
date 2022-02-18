@@ -2,7 +2,7 @@
 
 use s2g::{
     stake_pool::find_stake_pool_program_address,
-    tokens::spl_utils::find_utility_mint_program_address,
+    tokens::spl_utils::find_platform_mint_program_address,
 };
 
 use {
@@ -661,7 +661,7 @@ impl StakePoolAccounts {
         let stake_deposit_authority = find_deposit_authority_program_address(&id(), &stake_pool).0;
         let withdraw_authority = find_withdraw_authority_program_address(&id(), &stake_pool).0;
         let reserve_stake = Keypair::new();
-        let pool_mint = find_utility_mint_program_address(&id()).0;
+        let pool_mint = find_platform_mint_program_address(&id()).0;
         let pool_fee_account = Keypair::new();
         let manager = Keypair::new();
         let staker = Keypair::new();

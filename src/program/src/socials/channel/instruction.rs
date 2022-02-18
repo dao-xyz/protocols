@@ -38,7 +38,6 @@ pub enum ChannelInstruction {
         #[allow(dead_code)] // but it's not
         link: Option<ContentSource>,
     },
-    CreateTokenTreasury(Pubkey),
 }
 
 /// Creates a create user transction

@@ -23,7 +23,7 @@ use super::utils::{
 };
 
 #[tokio::test]
-async fn create_event() {
+async fn success() {
     let program = program_test();
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
     let total_supply = 100;
@@ -42,12 +42,8 @@ async fn create_event() {
     let expires_in_sec = 1;
     let expires_at = time_since_epoch() + expires_in_sec;
     let custom_rule_key = Pubkey::new_unique();
-    let (_custom_rule_address, _) = find_create_rule_associated_program_address(
-        &s2g::id(),
-        &ActionType::CustomEvent(custom_rule_key),
-        &socials.channel,
-    );
-    let action_type = ActionType::CustomEvent(custom_rule_key);
+
+    let action_type = ActionType::TransferTreasury;
 
     // Create the rule for the event
     let mut transaction_post = Transaction::new_with_payer(

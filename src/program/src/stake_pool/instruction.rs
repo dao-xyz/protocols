@@ -4,9 +4,8 @@
 use std::io::Result;
 
 use crate::{
-    instruction::STAKE_POOL_INSTRUCTION_INDEX,
-    shared::io_utils::*,
-    tokens::spl_utils::{find_utility_mint_program_address},
+    instruction::STAKE_POOL_INSTRUCTION_INDEX, shared::io_utils::*,
+    tokens::spl_utils::find_platform_mint_program_address,
 };
 
 use super::find_stake_pool_program_address;
@@ -1296,7 +1295,7 @@ pub fn set_funding_authority(
 /// Create and init token and create empty stake pool account
 pub fn setup(program_id: &Pubkey, payer: &Pubkey, stake_pool_size: u64) -> Instruction {
     let (stake_pool, _) = find_stake_pool_program_address(program_id);
-    let (mint_account, _) = find_utility_mint_program_address(program_id);
+    let (mint_account, _) = find_platform_mint_program_address(program_id);
     let (mint_authority_account, _) =
         find_withdraw_authority_program_address(program_id, &stake_pool);
 

@@ -164,17 +164,6 @@ impl Processor {
         Ok(())
     }
 
-    pub fn process_create_treasury(accounts: &[AccountInfo], mint: &Pubkey) -> ProgramResult {
-        let accounts_iter = &mut accounts.iter();
-        let payer_info = next_account_info(accounts_iter)?;
-        let channel_info = next_account_info(accounts_iter)?;
-        let mint_info = next_account_info(accounts_iter)?;
-        invoke(
-            &create_associated_token_account(payer_info.key, channel_info.key, mint_info.key),
-            &[payer_info.clone(), channel_info.clone(), mint_info.clone()],
-        )
-    }
-
     pub fn process(
         program_id: &Pubkey,
         accounts: &[AccountInfo],
@@ -203,9 +192,6 @@ impl Processor {
             }
             ChannelInstruction::UpdateChannel { link } => {
                 Self::process_update_channel(accounts, link)
-            }
-            ChannelInstruction::CreateTokenTreasury(mint) => {
-                Self::process_create_treasury(accounts, &mint)
             }
         }
     }

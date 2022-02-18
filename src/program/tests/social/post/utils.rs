@@ -2,7 +2,7 @@ use solana_program::{hash::Hash, program_pack::Pack, rent::Rent};
 
 use s2g::{
     socials::{
-        channel::find_channel_program_address,
+        channel::{find_channel_program_address, state::deserialize_channel_account},
         find_user_account_program_address,
         post::{
             find_escrow_program_address, find_post_downvote_mint_program_address,
@@ -16,7 +16,7 @@ use s2g::{
         },
     },
     stake_pool::state::Fee,
-    tokens::spl_utils::find_utility_mint_program_address,
+    tokens::spl_utils::find_platform_mint_program_address,
 };
 use solana_program_test::*;
 use solana_sdk::{
@@ -68,6 +68,10 @@ pub async fn ensure_utility_token_balance(
     recent_blockhash: &Hash,
     expected_balance: u64,
 ) {
+    if expected_balance == 0 {
+        return;
+    }
+
     let mut stake_pool_accounts =
         super::super::super::stake_pool::helpers::StakePoolAccounts::new();
     stake_pool_accounts.sol_deposit_fee = Fee {
@@ -140,7 +144,7 @@ pub struct SocialAccounts {
 
 impl SocialAccounts {
     pub fn new(payer: &Pubkey) -> Self {
-        let (utility_mint_address, __bump) = find_utility_mint_program_address(&s2g::id());
+        let (utility_mint_address, __bump) = find_platform_mint_program_address(&s2g::id());
         return SocialAccounts::new_with_org(payer, &utility_mint_address);
     }
     pub fn new_with_org(payer: &Pubkey, governence_mint: &Pubkey) -> Self {
@@ -156,7 +160,7 @@ impl SocialAccounts {
             user: find_user_account_program_address(&s2g::id(), username).0,
             user_token_account: get_associated_token_address(
                 payer,
-                &find_utility_mint_program_address(&s2g::id()).0,
+                &find_platform_mint_program_address(&s2g::id()).0,
             ),
             post,
             hash,
@@ -241,25 +245,35 @@ impl SocialAccounts {
                 .data,
         )
         .unwrap();
-
+        let channel_account = deserialize_channel_account(
+            &*banks_client
+                .get_account(self.channel)
+                .await
+                .unwrap()
+                .unwrap()
+                .data,
+        )
+        .unwrap();
         let mut tx = match vote {
-            Vote::UP => Transaction::new_with_payer(
+            Vote::Up => Transaction::new_with_payer(
                 &[create_post_vote_transaction(
                     &s2g::id(),
                     &payer.pubkey(),
                     &self.post,
+                    &channel_account.governence_mint,
                     amount,
-                    Vote::UP,
+                    Vote::Up,
                 )],
                 Some(&payer.pubkey()),
             ),
-            Vote::DOWN => Transaction::new_with_payer(
+            Vote::Down => Transaction::new_with_payer(
                 &[create_post_vote_transaction(
                     &s2g::id(),
                     &payer.pubkey(),
                     &self.post,
+                    &channel_account.governence_mint,
                     amount,
-                    Vote::DOWN,
+                    Vote::Down,
                 )],
                 Some(&payer.pubkey()),
             ),
@@ -275,24 +289,35 @@ impl SocialAccounts {
         vote: Vote,
         amount: u64,
     ) {
+        let channel_account = deserialize_channel_account(
+            &*banks_client
+                .get_account(self.channel)
+                .await
+                .unwrap()
+                .unwrap()
+                .data,
+        )
+        .unwrap();
         let mut tx = match vote {
-            Vote::UP => Transaction::new_with_payer(
+            Vote::Up => Transaction::new_with_payer(
                 &[create_post_unvote_transaction(
                     &s2g::id(),
                     &payer.pubkey(),
                     &self.post,
+                    &channel_account.governence_mint,
                     amount,
-                    Vote::UP,
+                    Vote::Up,
                 )],
                 Some(&payer.pubkey()),
             ),
-            Vote::DOWN => Transaction::new_with_payer(
+            Vote::Down => Transaction::new_with_payer(
                 &[create_post_unvote_transaction(
                     &s2g::id(),
                     &payer.pubkey(),
                     &self.post,
+                    &channel_account.governence_mint,
                     amount,
-                    Vote::DOWN,
+                    Vote::Down,
                 )],
                 Some(&payer.pubkey()),
             ),
@@ -311,14 +336,5 @@ impl SocialAccounts {
                 .data,
         )
         .unwrap()
-    }
-
-    pub async fn assert_action_status(&self, banks_client: &mut BanksClient, status: ActionStatus) {
-        let account = self.get_post_account(banks_client).await;
-        if let PostType::ActionPost(post) = account.post_type {
-            assert_eq!(post.status, status);
-        } else {
-            panic!("Unexpecvted");
-        }
     }
 }

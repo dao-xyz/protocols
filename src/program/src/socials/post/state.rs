@@ -8,6 +8,8 @@ use crate::{
     socials::{state::AccountType, MaxSize},
 };
 
+use super::find_create_rule_associated_program_address;
+
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum ContentSource {
     External { url: String },
@@ -134,12 +136,6 @@ pub fn deserialize_action_rule_account(data: &[u8]) -> Result<ActionRule> {
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub enum RuleUpdateType {
-    Delete,
-    Create,
-}
-
-#[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
 pub struct CreateRule {
     pub channel: Pubkey,
     pub action: ActionType,
@@ -156,30 +152,57 @@ impl MaxSize for CreateRule {
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
 pub enum VotingRuleUpdate {
-    DeleteRule(Pubkey),
-    CreateRule { rule: CreateRule, bump_seed: u8 },
+    Delete(Pubkey),
+    Create { rule: CreateRule, bump_seed: u8 },
+}
+
+impl VotingRuleUpdate {
+    pub fn create(program_id: &Pubkey, rule: CreateRule, channel: &Pubkey) -> Self {
+        let bump_seed =
+            find_create_rule_associated_program_address(program_id, &rule.action, &channel).1;
+        Self::Create { rule, bump_seed }
+    }
+}
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
+pub enum Action {
+    CustomEvent { event_type: Pubkey, data: Vec<u8> },
+    ManageRule(VotingRuleUpdate),
+    Treasury(TreasuryAction),
+    DeletePost(Pubkey),
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
-pub enum Action {
-    CustomEvent {
-        event_type: Pubkey,
-        data: Vec<u8>,
-    },
-    ManageRule(VotingRuleUpdate),
-    TransferTreasury {
+pub enum TreasuryAction {
+    Transfer {
         from: Pubkey,
         to: Pubkey,
         amount: u64,
     },
-    DeletePost(Pubkey),
+    Create {
+        mint: Pubkey,
+    }, // mint
+}
+
+#[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
+pub enum RuleUpdateType {
+    Delete,
+    Create,
+}
+
+#[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
+pub enum TreasuryActionType {
+    Transfer {
+        from: Option<Pubkey>,
+        to: Option<Pubkey>,
+    },
+    Create,
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum ActionType {
     CustomEvent(Pubkey), // event pubkey
     ManageRule(RuleUpdateType),
-    TransferTreasury,
+    Treasury(TreasuryActionType),
     DeletePost,
 }
 

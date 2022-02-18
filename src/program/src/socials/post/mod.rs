@@ -23,7 +23,7 @@ use crate::tokens::spl_utils::{
     find_mint_authority_program_address, find_mint_escrow_program_address, MINT_SEED,
 };
 
-use self::state::{Action, ActionType, RuleUpdateType, VotingRuleUpdate};
+use self::state::{Action, ActionType, RuleUpdateType, TreasuryActionType, VotingRuleUpdate};
 
 /// Seed for UPVOTE
 const USER: &[u8] = b"user";
@@ -44,8 +44,8 @@ const RULE: &[u8] = b"rule";
 
 #[derive(Copy, Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum Vote {
-    UP = 0,
-    DOWN = 1,
+    Up = 0,
+    Down = 1,
 }
 
 pub fn find_escrow_program_address(program_id: &Pubkey, post: &Pubkey) -> (Pubkey, u8) {
@@ -76,8 +76,8 @@ pub fn create_post_mint_program_account<'a>(
     let decimals = spl_token::native_mint::DECIMALS; // for now
     let mint_bump_seed = &[mint_bump_seed];
     let mint_account_seeds = match vote {
-        Vote::UP => create_post_upvote_mint_program_address_seeds(post, mint_bump_seed),
-        Vote::DOWN => create_post_downvote_mint_program_address_seeds(post, mint_bump_seed),
+        Vote::Up => create_post_upvote_mint_program_address_seeds(post, mint_bump_seed),
+        Vote::Down => create_post_downvote_mint_program_address_seeds(post, mint_bump_seed),
     };
 
     let address = Pubkey::create_program_address(&mint_account_seeds, program_id).unwrap();
@@ -183,10 +183,21 @@ pub fn find_create_rule_associated_program_address(
                 Pubkey::find_program_address(&[RULE, b"rule_delete", channel.as_ref()], program_id)
             }
         },
-        ActionType::TransferTreasury => Pubkey::find_program_address(
-            &[RULE, b"transfer_treasury", channel.as_ref()],
-            program_id,
-        ),
+        ActionType::Treasury(treasury_action) => match treasury_action {
+            TreasuryActionType::Transfer { from, to } => Pubkey::find_program_address(
+                &[
+                    RULE,
+                    from.as_ref().map_or(b"all", |key| key.as_ref()),
+                    to.as_ref().map_or(b"all", |key| key.as_ref()),
+                    channel.as_ref(),
+                ],
+                program_id,
+            ),
+            TreasuryActionType::Create => Pubkey::find_program_address(
+                &[RULE, b"treasury_create", channel.as_ref()],
+                program_id,
+            ),
+        },
     }
 }
 
@@ -203,7 +214,15 @@ pub fn create_rule_associated_program_address_seeds<'a>(
             RuleUpdateType::Create => [RULE, b"rule_create", channel.as_ref(), bump_seed],
             RuleUpdateType::Delete => [RULE, b"rule_delete", channel.as_ref(), bump_seed],
         },
-        ActionType::TransferTreasury => [RULE, b"transfer_treasury", channel.as_ref(), bump_seed],
+        ActionType::Treasury(treasury_action) => match treasury_action {
+            TreasuryActionType::Transfer { from, to } => [
+                RULE,
+                from.as_ref().map_or(b"all", |key| key.as_ref()),
+                to.as_ref().map_or(b"all", |key| key.as_ref()),
+                channel.as_ref(),
+            ],
+            TreasuryActionType::Create => [RULE, b"treasury_create", channel.as_ref(), bump_seed],
+        },
     }
 }
 

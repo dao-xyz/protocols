@@ -1,6 +1,6 @@
 use s2g::{
     stake_pool::find_stake_pool_program_address,
-    tokens::spl_utils::find_utility_mint_program_address,
+    tokens::spl_utils::find_platform_mint_program_address,
 };
 use solana_program::borsh::get_packed_len;
 use solana_program_test::*;
@@ -33,7 +33,7 @@ async fn success() {
 
     let mint = get_account(
         &mut banks_client,
-        &find_utility_mint_program_address(&s2g::id()).0,
+        &find_platform_mint_program_address(&s2g::id()).0,
     )
     .await;
     assert_eq!(mint.owner, spl_token::id());

@@ -3,8 +3,8 @@ use super::{find_stake_pool_program_address, STAKE_POOL};
 use crate::{
     shared::accounts::{check_account_owner, check_system_program},
     tokens::spl_utils::{
-        self, create_program_account_mint_account_with_seed,
-        create_utility_mint_program_address_seeds, find_utility_mint_program_address,
+        self, create_platform_mint_program_address_seeds,
+        create_program_account_mint_account_with_seed, find_platform_mint_program_address,
     },
 };
 
@@ -2688,14 +2688,14 @@ impl Processor {
 
         // Create pool mint, well, it its idp. of the pool actually so we can easier find it
 
-        let (mint_address, mint_address_bump_seed) = find_utility_mint_program_address(program_id);
+        let (mint_address, mint_address_bump_seed) = find_platform_mint_program_address(program_id);
 
         if mint_address != *mint_account_info.key {
             return Err(ProgramError::InvalidAccountData);
         }
         let mint_address_bump_seeds = &[mint_address_bump_seed];
         let mint_account_address_seeds =
-            create_utility_mint_program_address_seeds(mint_address_bump_seeds);
+            create_platform_mint_program_address_seeds(mint_address_bump_seeds);
 
         let (withdraw_authority_key, _) =
             crate::stake_pool::find_withdraw_authority_program_address(

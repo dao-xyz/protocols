@@ -7,7 +7,7 @@ use solana_program::{
 use spl_associated_token_account::get_associated_token_address;
 
 use crate::{
-    socials::instruction::SocialInstruction, tokens::spl_utils::find_utility_mint_program_address,
+    socials::instruction::SocialInstruction, tokens::spl_utils::find_platform_mint_program_address,
 };
 
 use super::{
@@ -16,7 +16,7 @@ use super::{
     find_post_program_address, find_post_upvote_mint_program_address,
     state::{
         AcceptenceCriteria, Action, ActionType, ContentSource, PostAccount, PostType,
-        RuleUpdateType, VotingRuleUpdate,
+        RuleUpdateType, TreasuryAction, VotingRuleUpdate,
     },
     Vote,
 };
@@ -124,21 +124,21 @@ pub fn create_post_vote_transaction(
     program_id: &Pubkey,
     payer: &Pubkey,
     post: &Pubkey,
+    governence_mint: &Pubkey,
     stake: u64,
     vote: Vote,
 ) -> Instruction {
     let (mint_upvote_address, _) = find_post_upvote_mint_program_address(program_id, post);
     let (mint_downvote_address, _) = find_post_downvote_mint_program_address(program_id, post);
 
-    let payer_utility_token_address =
-        get_associated_token_address(payer, &find_utility_mint_program_address(program_id).0);
+    let payer_utility_token_address = get_associated_token_address(payer, &governence_mint);
 
     let (mint_authority_address, mint_authority_bump_seed) =
         find_post_mint_authority_program_address(program_id, post);
 
     let associated_token_address = match vote {
-        Vote::UP => get_associated_token_address(payer, &mint_upvote_address),
-        Vote::DOWN => get_associated_token_address(payer, &mint_downvote_address),
+        Vote::Up => get_associated_token_address(payer, &mint_upvote_address),
+        Vote::Down => get_associated_token_address(payer, &mint_downvote_address),
     };
 
     let mut accounts = vec![
@@ -178,21 +178,21 @@ pub fn create_post_unvote_transaction(
     program_id: &Pubkey,
     payer: &Pubkey,
     post: &Pubkey,
+    governence_mint: &Pubkey,
     stake: u64,
     vote: Vote,
 ) -> Instruction {
     let (mint_upvote_address, _) = find_post_upvote_mint_program_address(program_id, post);
     let (mint_downvote_address, _) = find_post_downvote_mint_program_address(program_id, post);
 
-    let payer_utility_token_address =
-        get_associated_token_address(payer, &find_utility_mint_program_address(program_id).0);
+    let payer_utility_token_address = get_associated_token_address(payer, governence_mint);
 
     let (mint_authority_address, mint_authority_bump_seed) =
         find_post_mint_authority_program_address(program_id, post);
 
     let associated_token_address = match vote {
-        Vote::UP => get_associated_token_address(payer, &mint_upvote_address),
-        Vote::DOWN => get_associated_token_address(payer, &mint_downvote_address),
+        Vote::Up => get_associated_token_address(payer, &mint_upvote_address),
+        Vote::Down => get_associated_token_address(payer, &mint_downvote_address),
     };
 
     let mut accounts = vec![
@@ -229,7 +229,6 @@ pub fn create_post_execution_transaction(
     payer: &Pubkey,
     post: &Pubkey,
     post_account: &PostAccount,
-    action_type: &ActionType,
     governence_mint: &Pubkey,
 ) -> Instruction {
     let (rule_address, _bump) = find_create_rule_associated_program_address(
@@ -254,26 +253,32 @@ pub fn create_post_execution_transaction(
                 accounts.push(AccountMeta::new(*key, false));
             }
             Action::ManageRule(update) => match update {
-                VotingRuleUpdate::CreateRule { rule, .. } => {
-                    let (rule, _) = find_create_rule_associated_program_address(
+                VotingRuleUpdate::Create { rule, .. } => {
+                    let (new_rule, _) = find_create_rule_associated_program_address(
                         program_id,
                         &rule.action,
                         &rule.channel,
                     );
                     accounts.push(AccountMeta::new(*payer, true));
-                    accounts.push(AccountMeta::new(rule, false));
+                    accounts.push(AccountMeta::new(new_rule, false));
                     accounts.push(AccountMeta::new_readonly(system_program::id(), false));
                 }
-                VotingRuleUpdate::DeleteRule(key) => {
+                VotingRuleUpdate::Delete(key) => {
                     accounts.push(AccountMeta::new(*key, false));
                 }
             },
-            Action::TransferTreasury { from, to, .. } => {
-                accounts.push(AccountMeta::new(*from, false));
-                accounts.push(AccountMeta::new(*to, false));
-                //   accounts.push(AccountMeta::new(, false));
-                accounts.push(AccountMeta::new_readonly(spl_token::id(), false));
-            }
+            Action::Treasury(treasury_action) => match treasury_action {
+                TreasuryAction::Create { mint } => {
+                    accounts.push(AccountMeta::new(*mint, false));
+                    accounts.push(AccountMeta::new_readonly(system_program::id(), false));
+                }
+                TreasuryAction::Transfer { from, to, amount } => {
+                    accounts.push(AccountMeta::new(*from, false));
+                    accounts.push(AccountMeta::new(*to, false));
+                    //   accounts.push(AccountMeta::new(, false));
+                    accounts.push(AccountMeta::new_readonly(spl_token::id(), false));
+                }
+            },
         },
         _ => {
             panic!("Unexpected");

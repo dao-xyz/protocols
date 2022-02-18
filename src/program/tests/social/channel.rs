@@ -6,7 +6,7 @@ use s2g::socials::channel::state::deserialize_channel_account;
 
 use s2g::socials::instruction::SocialInstruction;
 use s2g::socials::post::state::ContentSource;
-use s2g::tokens::spl_utils::find_utility_mint_program_address;
+use s2g::tokens::spl_utils::find_platform_mint_program_address;
 use solana_program::hash::Hash;
 use solana_program::instruction::{AccountMeta, Instruction, InstructionError};
 use solana_program_test::*;
@@ -71,7 +71,7 @@ pub async fn success() {
         "profile",
     )
     .await;
-    let (utility_mint_address, __bump) = find_utility_mint_program_address(&s2g::id());
+    let (utility_mint_address, __bump) = find_platform_mint_program_address(&s2g::id());
 
     create_and_verify_channel(
         &mut banks_client,
@@ -99,7 +99,7 @@ async fn success_update() {
     )
     .await;
     let channel_name = "Channel";
-    let (utility_mint_address, __bump) = find_utility_mint_program_address(&s2g::id());
+    let (utility_mint_address, __bump) = find_platform_mint_program_address(&s2g::id());
 
     create_and_verify_channel(
         &mut banks_client,
@@ -168,7 +168,7 @@ async fn fail_already_exist() {
 
     let channel_name = "Channel";
 
-    let (utility_mint_address, __bump) = find_utility_mint_program_address(&s2g::id());
+    let (utility_mint_address, __bump) = find_platform_mint_program_address(&s2g::id());
 
     create_and_verify_channel(
         &mut banks_client,
@@ -183,7 +183,7 @@ async fn fail_already_exist() {
     .unwrap();
     let latest_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    let (utility_mint_address, __bump) = find_utility_mint_program_address(&s2g::id());
+    let (utility_mint_address, __bump) = find_platform_mint_program_address(&s2g::id());
 
     // Same transaction again
     let err = create_and_verify_channel(
@@ -233,7 +233,7 @@ async fn fail_update_wrong_payer() {
     .await;
     let channel_name = "Channel";
 
-    let (utility_mint_address, __bump) = find_utility_mint_program_address(&s2g::id());
+    let (utility_mint_address, __bump) = find_platform_mint_program_address(&s2g::id());
 
     create_and_verify_channel(
         &mut banks_client,

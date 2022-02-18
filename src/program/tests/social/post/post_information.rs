@@ -44,7 +44,7 @@ async fn success_upvote() {
 
     // Stake some
     socials
-        .vote(&mut banks_client, &payer, Vote::UP, stake)
+        .vote(&mut banks_client, &payer, Vote::Up, stake)
         .await;
 
     let escrow_account = banks_client
@@ -67,7 +67,7 @@ async fn success_upvote() {
 
     // Stake more
     socials
-        .vote(&mut banks_client, &payer, Vote::UP, stake)
+        .vote(&mut banks_client, &payer, Vote::Up, stake)
         .await;
 
     assert_token_balance(
@@ -83,7 +83,7 @@ async fn success_upvote() {
 
     // Unstake
     socials
-        .unvote(&mut banks_client, &payer, Vote::UP, stake)
+        .unvote(&mut banks_client, &payer, Vote::Up, stake)
         .await;
 
     assert_token_balance(
@@ -98,7 +98,7 @@ async fn success_upvote() {
 
     // Unstake, same amount (we should now 0 token accounts)
     socials
-        .unvote(&mut banks_client, &payer, Vote::UP, stake)
+        .unvote(&mut banks_client, &payer, Vote::Up, stake)
         .await;
 
     assert_token_balance(
@@ -147,7 +147,7 @@ async fn success_downvote() {
 
     // Stake some
     socials
-        .vote(&mut banks_client, &payer, Vote::DOWN, stake)
+        .vote(&mut banks_client, &payer, Vote::Down, stake)
         .await;
 
     let escrow_account = banks_client
@@ -170,7 +170,7 @@ async fn success_downvote() {
 
     // Stake more
     socials
-        .vote(&mut banks_client, &payer, Vote::DOWN, stake)
+        .vote(&mut banks_client, &payer, Vote::Down, stake)
         .await;
 
     assert_token_balance(
@@ -191,7 +191,7 @@ async fn success_downvote() {
 
     // Unstake
     socials
-        .unvote(&mut banks_client, &payer, Vote::DOWN, stake)
+        .unvote(&mut banks_client, &payer, Vote::Down, stake)
         .await;
 
     assert_token_balance(
@@ -206,7 +206,7 @@ async fn success_downvote() {
 
     // Unstake, same amount (we should now 0 token accounts)
     socials
-        .unvote(&mut banks_client, &payer, Vote::DOWN, stake)
+        .unvote(&mut banks_client, &payer, Vote::Down, stake)
         .await;
 
     assert_token_balance(
