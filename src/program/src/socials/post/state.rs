@@ -6,9 +6,10 @@ use solana_program::{borsh::try_from_slice_unchecked, pubkey::Pubkey};
 use crate::{
     instruction::S2GAccountType,
     socials::{state::AccountType, MaxSize},
+    tokens::spl_utils::find_authority_program_address,
 };
 
-use super::find_create_rule_associated_program_address;
+use super::{find_create_rule_associated_program_address, find_treasury_token_account_address};
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum ContentSource {
@@ -157,9 +158,10 @@ pub enum VotingRuleUpdate {
 }
 
 impl VotingRuleUpdate {
-    pub fn create(program_id: &Pubkey, rule: CreateRule, channel: &Pubkey) -> Self {
+    pub fn create(rule: CreateRule, channel: &Pubkey, program_id: &Pubkey) -> Self {
         let bump_seed =
             find_create_rule_associated_program_address(program_id, &rule.action, &channel).1;
+
         Self::Create { rule, bump_seed }
     }
 }
@@ -177,10 +179,22 @@ pub enum TreasuryAction {
         from: Pubkey,
         to: Pubkey,
         amount: u64,
+        bump_seed: u8,
     },
     Create {
         mint: Pubkey,
     }, // mint
+}
+
+impl TreasuryAction {
+    pub fn transfer(from: &Pubkey, to: &Pubkey, amount: u64, program_id: &Pubkey) -> Self {
+        Self::Transfer {
+            from: *from,
+            to: *to,
+            amount,
+            bump_seed: find_authority_program_address(program_id, from).1,
+        }
+    }
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]

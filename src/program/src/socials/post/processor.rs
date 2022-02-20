@@ -26,17 +26,19 @@ use crate::{
         user::state::deserialize_user_account,
     },
     tokens::spl_utils::{
-        create_program_token_account, get_token_supply, spl_mint_to, token_transfer,
+        create_authority_program_address_seeds, create_program_token_account,
+        find_authority_program_address, get_token_supply, spl_mint_to, token_transfer,
     },
 };
 
 use super::{
     create_escrow_program_address_seeds, create_post_mint_authority_program_address_seeds,
     create_post_mint_program_account, create_rule_associated_program_address_seeds,
+    create_treasury_token_account_address_seeds, find_treasury_token_account_address,
     instruction::{CreatePost, PostInstruction, PostVote},
     state::{
         deserialize_action_rule_account, deserialize_post_account, Action, ActionRule,
-        ActionStatus, PostAccount, PostType, TreasuryAction, VotingRuleUpdate,
+        ActionStatus, ActionType, PostAccount, PostType, TreasuryAction, VotingRuleUpdate,
     },
     Vote,
 };
@@ -388,9 +390,13 @@ impl Processor {
         let mut post = deserialize_post_account(*post_account_info.data.borrow())?;
         let channel_account_info = next_account_info(accounts_iter)?;
         let channel = deserialize_channel_account(*channel_account_info.data.borrow())?;
-        let action_rule_info = next_account_info(accounts_iter)?;
-        let action_rule = deserialize_action_rule_account(*action_rule_info.data.borrow())?;
         let governence_mint_info = next_account_info(accounts_iter)?;
+        let action_rule_info = next_account_info(accounts_iter)?;
+        if action_rule_info.data_is_empty() {
+            return Err(ProgramError::InvalidArgument);
+        }
+        let action_rule = deserialize_action_rule_account(*action_rule_info.data.borrow())?;
+
         let supply = get_token_supply(governence_mint_info)?;
 
         check_account_owner(post_account_info, program_id)?;
@@ -410,9 +416,14 @@ impl Processor {
 
         post.post_type = match post.post_type {
             PostType::ActionPost(mut action) => {
+                // check if already executed
+                if action.status != ActionStatus::Pending {
+                    return Err(ProgramError::Custom(123));
+                }
+
                 // check if vote is settled
                 if action.expires_at <= Clock::get()?.unix_timestamp as u64 {
-                    return Err(ProgramError::Custom(123)); // Not ready yet!
+                    return Err(ProgramError::Custom(124)); // Not ready yet!
                 }
 
                 if action_rule.is_approved(&action, supply).unwrap() {
@@ -430,7 +441,12 @@ impl Processor {
                                 .serialize(&mut *delete_post_account_info.data.borrow_mut())?;
                         }
                         Action::Treasury(treasury_action) => match treasury_action {
-                            TreasuryAction::Transfer { from, to, amount } => {
+                            TreasuryAction::Transfer {
+                                from,
+                                to,
+                                amount,
+                                bump_seed,
+                            } => {
                                 let from_info = next_account_info(accounts_iter)?;
                                 let to_info = next_account_info(accounts_iter)?;
                                 if from != from_info.key {
@@ -441,30 +457,85 @@ impl Processor {
                                 }
                                 let transfer_authority = next_account_info(accounts_iter)?;
                                 let token_program_info = next_account_info(accounts_iter)?;
-                                token_transfer(
-                                    token_program_info.clone(),
-                                    from_info.clone(),
-                                    to_info.clone(),
-                                    transfer_authority.clone(),
-                                    *amount,
+                                let bump_seeds = &[*bump_seed];
+                                let seeds = create_authority_program_address_seeds(
+                                    from_info.key,
+                                    bump_seeds,
+                                );
+                                invoke_signed(
+                                    &spl_token::instruction::transfer(
+                                        token_program_info.key,
+                                        from_info.key,
+                                        to_info.key,
+                                        transfer_authority.key,
+                                        &[],
+                                        *amount,
+                                    )?,
+                                    &[
+                                        from_info.clone(),
+                                        to_info.clone(),
+                                        transfer_authority.clone(),
+                                        token_program_info.clone(),
+                                    ],
+                                    &[&seeds],
                                 )?;
                             }
                             TreasuryAction::Create { mint } => {
                                 let payer_info = next_account_info(accounts_iter)?;
                                 let mint_info = next_account_info(accounts_iter)?;
-                                if mint != mint_info.key {
-                                    invoke(
-                                        &create_associated_token_account(
-                                            payer_info.key,
-                                            channel_account_info.key,
+                                if mint == mint_info.key {
+                                    let token_account_info = next_account_info(accounts_iter)?;
+                                    let token_account_authority_info =
+                                        next_account_info(accounts_iter)?;
+
+                                    let system_program_info = next_account_info(accounts_iter)?;
+                                    let token_program_info = next_account_info(accounts_iter)?;
+                                    let rent_info = next_account_info(accounts_iter)?;
+
+                                    let (treasury_token_address, treasury_token_address_bump_seed) =
+                                        find_treasury_token_account_address(
+                                            &post.channel,
                                             mint_info.key,
-                                        ),
-                                        &[
-                                            payer_info.clone(),
-                                            channel_account_info.clone(),
-                                            mint_info.clone(),
-                                        ],
+                                            token_program_info.key,
+                                            program_id,
+                                        );
+                                    if &treasury_token_address != token_account_info.key {
+                                        return Err(ProgramError::InvalidArgument);
+                                    }
+
+                                    let bump_seeds = &[treasury_token_address_bump_seed];
+                                    let token_account_seeds =
+                                        create_treasury_token_account_address_seeds(
+                                            &post.channel,
+                                            mint_info.key,
+                                            token_program_info.key,
+                                            bump_seeds,
+                                        );
+
+                                    let (token_account_authority, _) =
+                                        find_authority_program_address(
+                                            program_id,
+                                            &treasury_token_address,
+                                        );
+
+                                    if &token_account_authority != token_account_authority_info.key
+                                    {
+                                        return Err(ProgramError::InvalidArgument);
+                                    }
+
+                                    create_program_token_account(
+                                        token_account_info,
+                                        &token_account_seeds,
+                                        mint_info,
+                                        token_account_authority_info,
+                                        payer_info,
+                                        rent_info,
+                                        token_program_info,
+                                        system_program_info,
+                                        program_id,
                                     )?;
+                                } else {
+                                    return Err(ProgramError::InvalidArgument);
                                 }
                             }
                         },
@@ -475,12 +546,12 @@ impl Processor {
                                 let system_account = next_account_info(accounts_iter)?;
                                 check_system_program(system_account.key)?;
                                 let create_rule_bump_seeds = &[*bump_seed];
-                                msg!("CREATE RULE AFTER APPROVAL");
                                 let seeds = create_rule_associated_program_address_seeds(
                                     channel_account_info.key,
                                     &rule.action,
                                     create_rule_bump_seeds,
                                 );
+
                                 create_and_serialize_account_signed_verify(
                                     payer_info,
                                     new_rule_info,
@@ -518,6 +589,18 @@ impl Processor {
                         },
                         Action::CustomEvent { data, event_type } => {
                             // well we dont need to do anything since the data is already on chain and the approved status has/will be set, so integration can be made
+                            // but we have to check that the action event_type matches the rule event type
+                            // since rules for custom events are controlled by their event type
+
+                            if let ActionType::CustomEvent(expected_event_type) = action_rule.action
+                            {
+                                if &expected_event_type != event_type {
+                                    return Err(ProgramError::InvalidArgument);
+                                }
+                            } else {
+                                // This should not happen, since the rul eaction type will also be of type
+                                return Err(ProgramError::InvalidArgument);
+                            }
                         }
                     }
                 } else {

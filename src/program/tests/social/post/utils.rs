@@ -2,11 +2,15 @@ use solana_program::{hash::Hash, program_pack::Pack, rent::Rent};
 
 use s2g::{
     socials::{
-        channel::{find_channel_program_address, state::deserialize_channel_account},
+        channel::{
+            find_channel_program_address,
+            state::{deserialize_channel_account, ChannelAccount},
+        },
         find_user_account_program_address,
         post::{
             find_escrow_program_address, find_post_downvote_mint_program_address,
             find_post_program_address, find_post_upvote_mint_program_address,
+            find_treasury_token_account_address,
             instruction::{
                 create_post_transaction, create_post_unvote_transaction,
                 create_post_vote_transaction, CreatePostType,
@@ -37,13 +41,9 @@ pub async fn get_token_balance(banks_client: &mut BanksClient, token: &Pubkey) -
     account_info.amount
 }
 
-pub fn create_content() -> ([u8; 32], ContentSource) {
-    (
-        Pubkey::new_unique().to_bytes(),
-        ContentSource::External {
-            url: "ipfs:xyz".into(),
-        },
-    )
+pub fn create_post_hash() -> (Pubkey, [u8; 32]) {
+    let hash = Pubkey::new_unique().to_bytes();
+    (Pubkey::find_program_address(&[&hash], &s2g::id()).0, hash)
 }
 
 pub async fn assert_token_balance(banks_client: &mut BanksClient, account: &Pubkey, amount: u64) {
@@ -126,107 +126,63 @@ pub async fn ensure_utility_token_balance(
 
     assert_eq!(expected_balance, balance);
 }
-
-pub struct SocialAccounts {
-    pub username: String,
-    pub user: Pubkey,
-    pub user_token_account: Pubkey,
-    pub post: Pubkey,
-    pub upvote_mint: Pubkey,
+pub struct TestUser {
     pub upvote_token_account: Pubkey,
-    pub downvote_mint: Pubkey,
     pub downvote_token_account: Pubkey,
-    pub channel: Pubkey,
-    pub hash: [u8; 32],
-    pub source: ContentSource,
-    pub governence_mint: Pubkey,
+    pub payer: Pubkey,
 }
 
-impl SocialAccounts {
-    pub fn new(payer: &Pubkey) -> Self {
-        let (utility_mint_address, __bump) = find_platform_mint_program_address(&s2g::id());
-        return SocialAccounts::new_with_org(payer, &utility_mint_address);
-    }
-    pub fn new_with_org(payer: &Pubkey, governence_mint: &Pubkey) -> Self {
-        let username = "name";
-        let (hash, source) = create_content();
-        let post = find_post_program_address(&s2g::id(), &hash).0;
-        let upvote_mint = find_post_upvote_mint_program_address(&s2g::id(), &post).0;
-        let downvote_mint = find_post_downvote_mint_program_address(&s2g::id(), &post).0;
-        let (channel, ___bump) = find_channel_program_address(&s2g::id(), "Channel").unwrap();
-
+impl TestUser {
+    pub fn new(payer: &Pubkey, test_post: &TestPost) -> Self {
         Self {
-            username: username.into(),
-            user: find_user_account_program_address(&s2g::id(), username).0,
-            user_token_account: get_associated_token_address(
-                payer,
-                &find_platform_mint_program_address(&s2g::id()).0,
-            ),
-            post,
-            hash,
-            source,
-            channel,
-            upvote_mint,
-            downvote_mint,
-            upvote_token_account: get_associated_token_address(payer, &upvote_mint),
-            downvote_token_account: get_associated_token_address(payer, &downvote_mint),
-            governence_mint: *governence_mint,
+            payer: *payer,
+            upvote_token_account: get_associated_token_address(&payer, &test_post.upvote_mint),
+            downvote_token_account: get_associated_token_address(&payer, &test_post.downvote_mint),
         }
     }
-    pub async fn initialize(
+
+    pub async fn get_token_account(
         &self,
         banks_client: &mut BanksClient,
-        payer: &Keypair,
-        recent_blockhash: &Hash,
-        utility_token_balance: u64,
-    ) {
-        ensure_utility_token_balance(banks_client, payer, recent_blockhash, utility_token_balance)
-            .await;
-
-        let user = create_and_verify_user(
-            banks_client,
-            payer,
-            recent_blockhash,
-            self.username.as_ref(),
-            "profile",
-        )
-        .await;
-
-        let channel = create_and_verify_channel(
-            banks_client,
-            payer,
-            recent_blockhash,
-            "Channel",
-            &user,
-            &self.governence_mint,
-            None,
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(user, self.user);
-        assert_eq!(channel, self.channel);
-    }
-    pub async fn assert_vote(&self, banks_client: &mut BanksClient, upvotes: u64, downvotes: u64) {
-        let post = deserialize_post_account(
-            &*banks_client
-                .get_account(self.post)
+        mint: &Pubkey,
+    ) -> spl_token::state::Account {
+        spl_token::state::Account::unpack(
+            banks_client
+                .get_account(get_associated_token_address(&self.payer, mint))
                 .await
                 .unwrap()
                 .unwrap()
-                .data,
+                .data
+                .as_slice(),
         )
-        .unwrap();
-        match post.post_type {
-            PostType::InformalPost(s) => {
-                assert_eq!(s.upvotes, upvotes);
-                assert_eq!(s.downvotes, downvotes);
-            }
-            PostType::ActionPost(s) => {
-                assert_eq!(s.upvotes, upvotes);
-                assert_eq!(s.downvotes, downvotes);
-            }
-        };
+        .unwrap()
+    }
+}
+
+pub struct TestPost {
+    pub post: Pubkey,
+    pub channel: Pubkey,
+    pub source: ContentSource,
+    pub hash: [u8; 32],
+    pub upvote_mint: Pubkey,
+    pub downvote_mint: Pubkey,
+}
+
+impl TestPost {
+    pub fn new(channel: &Pubkey) -> Self {
+        let (post, hash) = create_post_hash();
+        let upvote_mint = find_post_upvote_mint_program_address(&s2g::id(), &post).0;
+        let downvote_mint = find_post_downvote_mint_program_address(&s2g::id(), &post).0;
+        Self {
+            post,
+            hash,
+            source: ContentSource::External {
+                url: "whatever".into(),
+            },
+            channel: *channel,
+            upvote_mint,
+            downvote_mint,
+        }
     }
 
     pub async fn vote(
@@ -334,6 +290,126 @@ impl SocialAccounts {
                 .unwrap()
                 .unwrap()
                 .data,
+        )
+        .unwrap()
+    }
+
+    pub async fn assert_vote(&self, banks_client: &mut BanksClient, upvotes: u64, downvotes: u64) {
+        let post = deserialize_post_account(
+            &*banks_client
+                .get_account(self.post)
+                .await
+                .unwrap()
+                .unwrap()
+                .data,
+        )
+        .unwrap();
+        match post.post_type {
+            PostType::InformalPost(s) => {
+                assert_eq!(s.upvotes, upvotes);
+                assert_eq!(s.downvotes, downvotes);
+            }
+            PostType::ActionPost(s) => {
+                assert_eq!(s.upvotes, upvotes);
+                assert_eq!(s.downvotes, downvotes);
+            }
+        };
+    }
+}
+
+pub struct SocialAccounts {
+    pub username: String,
+    pub user: Pubkey,
+    pub user_token_account: Pubkey,
+    pub channel: Pubkey,
+    pub governence_mint: Pubkey,
+}
+
+impl SocialAccounts {
+    pub fn new(payer: &Pubkey) -> Self {
+        let (utility_mint_address, __bump) = find_platform_mint_program_address(&s2g::id());
+        return SocialAccounts::new_with_org(payer, &utility_mint_address);
+    }
+    pub fn new_with_org(payer: &Pubkey, governence_mint: &Pubkey) -> Self {
+        let username = "name";
+        let (post, hash) = create_post_hash();
+        let (channel, ___bump) = find_channel_program_address(&s2g::id(), "Channel").unwrap();
+
+        Self {
+            username: username.into(),
+            user: find_user_account_program_address(&s2g::id(), username).0,
+            user_token_account: get_associated_token_address(
+                payer,
+                &find_platform_mint_program_address(&s2g::id()).0,
+            ),
+            channel,
+            governence_mint: *governence_mint,
+        }
+    }
+    pub async fn initialize(
+        &self,
+        banks_client: &mut BanksClient,
+        payer: &Keypair,
+        recent_blockhash: &Hash,
+        utility_token_balance: u64,
+    ) {
+        ensure_utility_token_balance(banks_client, payer, recent_blockhash, utility_token_balance)
+            .await;
+
+        let user = create_and_verify_user(
+            banks_client,
+            payer,
+            recent_blockhash,
+            self.username.as_ref(),
+            "profile",
+        )
+        .await;
+
+        let channel = create_and_verify_channel(
+            banks_client,
+            payer,
+            recent_blockhash,
+            "Channel",
+            &user,
+            &self.governence_mint,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(user, self.user);
+        assert_eq!(channel, self.channel);
+    }
+
+    pub async fn get_channel_account(&self, banks_client: &mut BanksClient) -> ChannelAccount {
+        deserialize_channel_account(
+            &*banks_client
+                .get_account(self.channel)
+                .await
+                .unwrap()
+                .unwrap()
+                .data,
+        )
+        .unwrap()
+    }
+
+    pub fn get_treasury_address(&self, mint: &Pubkey) -> Pubkey {
+        find_treasury_token_account_address(&self.channel, mint, &spl_token::id(), &s2g::id()).0
+    }
+
+    pub async fn get_treasury_account(
+        &self,
+        banks_client: &mut BanksClient,
+        mint: &Pubkey,
+    ) -> spl_token::state::Account {
+        spl_token::state::Account::unpack(
+            banks_client
+                .get_account(self.get_treasury_address(mint))
+                .await
+                .unwrap()
+                .unwrap()
+                .data
+                .as_slice(),
         )
         .unwrap()
     }

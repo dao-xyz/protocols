@@ -2,21 +2,23 @@ use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_program::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
-    system_program,
+    system_program, sysvar,
 };
 use spl_associated_token_account::get_associated_token_address;
 
 use crate::{
-    socials::instruction::SocialInstruction, tokens::spl_utils::find_platform_mint_program_address,
+    socials::instruction::SocialInstruction,
+    tokens::spl_utils::{find_authority_program_address, find_platform_mint_program_address},
 };
 
 use super::{
     find_create_rule_associated_program_address, find_escrow_program_address,
     find_post_downvote_mint_program_address, find_post_mint_authority_program_address,
     find_post_program_address, find_post_upvote_mint_program_address,
+    find_treasury_token_account_address,
     state::{
         AcceptenceCriteria, Action, ActionType, ContentSource, PostAccount, PostType,
-        RuleUpdateType, TreasuryAction, VotingRuleUpdate,
+        RuleUpdateType, TreasuryAction, TreasuryActionType, VotingRuleUpdate,
     },
     Vote,
 };
@@ -223,7 +225,11 @@ pub fn create_post_unvote_transaction(
     }
 }
 
-// "Unstake" solvei tokens
+/**
+ * Execute post with most stringent rules
+ *  (i.e. if execution treasury transfer, it will assume there exist a rule that defines exactly how that transaction can be performed)
+ *
+ */
 pub fn create_post_execution_transaction(
     program_id: &Pubkey,
     payer: &Pubkey,
@@ -231,50 +237,132 @@ pub fn create_post_execution_transaction(
     post_account: &PostAccount,
     governence_mint: &Pubkey,
 ) -> Instruction {
-    let (rule_address, _bump) = find_create_rule_associated_program_address(
-        program_id,
-        &ActionType::ManageRule(RuleUpdateType::Create),
-        &post_account.channel,
-    );
-
     let mut accounts = vec![
         AccountMeta::new(*post, false),
         AccountMeta::new(post_account.channel, false),
-        AccountMeta::new(rule_address, false),
         AccountMeta::new(*governence_mint, false),
     ];
 
     match &post_account.post_type {
         PostType::ActionPost(action) => match &action.action {
-            Action::CustomEvent { .. } => {
-                // Nothing since custom events approvals are not updating any states, just flagges post as approved
+            Action::CustomEvent { event_type, .. } => {
+                accounts.push(AccountMeta::new(
+                    find_create_rule_associated_program_address(
+                        program_id,
+                        &ActionType::CustomEvent(*event_type),
+                        &post_account.channel,
+                    )
+                    .0,
+                    false,
+                ));
             }
             Action::DeletePost(key) => {
+                accounts.push(AccountMeta::new(
+                    find_create_rule_associated_program_address(
+                        program_id,
+                        &ActionType::DeletePost,
+                        &post_account.channel,
+                    )
+                    .0,
+                    false,
+                ));
                 accounts.push(AccountMeta::new(*key, false));
             }
             Action::ManageRule(update) => match update {
-                VotingRuleUpdate::Create { rule, .. } => {
-                    let (new_rule, _) = find_create_rule_associated_program_address(
-                        program_id,
-                        &rule.action,
-                        &rule.channel,
-                    );
+                VotingRuleUpdate::Create { rule, bump_seed } => {
+                    accounts.push(AccountMeta::new(
+                        find_create_rule_associated_program_address(
+                            program_id,
+                            &ActionType::ManageRule(RuleUpdateType::Create),
+                            &post_account.channel,
+                        )
+                        .0,
+                        false,
+                    ));
+
                     accounts.push(AccountMeta::new(*payer, true));
+                    let (new_rule, new_rule_bump_seed) =
+                        find_create_rule_associated_program_address(
+                            program_id,
+                            &rule.action,
+                            &rule.channel,
+                        );
+
+                    if &new_rule_bump_seed != bump_seed {
+                        panic!("Unexpected");
+                    }
+
                     accounts.push(AccountMeta::new(new_rule, false));
                     accounts.push(AccountMeta::new_readonly(system_program::id(), false));
                 }
                 VotingRuleUpdate::Delete(key) => {
+                    accounts.push(AccountMeta::new(
+                        find_create_rule_associated_program_address(
+                            program_id,
+                            &ActionType::ManageRule(RuleUpdateType::Delete),
+                            &post_account.channel,
+                        )
+                        .0,
+                        false,
+                    ));
                     accounts.push(AccountMeta::new(*key, false));
                 }
             },
             Action::Treasury(treasury_action) => match treasury_action {
                 TreasuryAction::Create { mint } => {
+                    accounts.push(AccountMeta::new(
+                        find_create_rule_associated_program_address(
+                            program_id,
+                            &ActionType::Treasury(TreasuryActionType::Create),
+                            &post_account.channel,
+                        )
+                        .0,
+                        false,
+                    ));
+
+                    accounts.push(AccountMeta::new(*payer, true));
                     accounts.push(AccountMeta::new(*mint, false));
-                    accounts.push(AccountMeta::new_readonly(system_program::id(), false));
+                    let treasury_address = find_treasury_token_account_address(
+                        &post_account.channel,
+                        mint,
+                        &spl_token::id(),
+                        program_id,
+                    )
+                    .0;
+                    accounts.push(AccountMeta::new(treasury_address, false));
+                    accounts.push(AccountMeta::new(
+                        find_authority_program_address(program_id, &treasury_address).0,
+                        false,
+                    ));
+                    accounts.push(AccountMeta::new(system_program::id(), false));
+                    accounts.push(AccountMeta::new_readonly(spl_token::id(), false));
+                    accounts.push(AccountMeta::new_readonly(sysvar::rent::id(), false));
                 }
-                TreasuryAction::Transfer { from, to, amount } => {
+                TreasuryAction::Transfer {
+                    from,
+                    to,
+                    bump_seed,
+                    ..
+                } => {
+                    accounts.push(AccountMeta::new(
+                        find_create_rule_associated_program_address(
+                            program_id,
+                            &ActionType::Treasury(TreasuryActionType::Transfer {
+                                from: Some(*from),
+                                to: Some(*to),
+                            }),
+                            &post_account.channel,
+                        )
+                        .0,
+                        false,
+                    ));
                     accounts.push(AccountMeta::new(*from, false));
                     accounts.push(AccountMeta::new(*to, false));
+                    accounts.push(AccountMeta::new(
+                        find_authority_program_address(program_id, from).0,
+                        false,
+                    ));
+
                     //   accounts.push(AccountMeta::new(, false));
                     accounts.push(AccountMeta::new_readonly(spl_token::id(), false));
                 }

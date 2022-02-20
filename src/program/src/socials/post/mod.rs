@@ -19,8 +19,8 @@ use solana_program::{
 use spl_token::{instruction::initialize_mint, state::Mint};
 
 use crate::tokens::spl_utils::{
-    create_mint_authority_program_address_seeds, create_mint_escrow_program_address_seeds,
-    find_mint_authority_program_address, find_mint_escrow_program_address, MINT_SEED,
+    create_authority_program_address_seeds, create_mint_escrow_program_address_seeds,
+    find_authority_program_address, find_mint_escrow_program_address, MINT_SEED,
 };
 
 use self::state::{Action, ActionType, RuleUpdateType, TreasuryActionType, VotingRuleUpdate};
@@ -41,6 +41,8 @@ const MINT: &[u8] = b"mint";
 const STATS: &[u8] = b"stats";
 
 const RULE: &[u8] = b"rule";
+
+const AUTHORITY: &[u8] = b"authority";
 
 #[derive(Copy, Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum Vote {
@@ -186,9 +188,8 @@ pub fn find_create_rule_associated_program_address(
         ActionType::Treasury(treasury_action) => match treasury_action {
             TreasuryActionType::Transfer { from, to } => Pubkey::find_program_address(
                 &[
-                    RULE,
-                    from.as_ref().map_or(b"all", |key| key.as_ref()),
-                    to.as_ref().map_or(b"all", |key| key.as_ref()),
+                    from.as_ref().map_or(b"treasury_from", |key| key.as_ref()),
+                    to.as_ref().map_or(b"treasury_to", |key| key.as_ref()),
                     channel.as_ref(),
                 ],
                 program_id,
@@ -216,10 +217,10 @@ pub fn create_rule_associated_program_address_seeds<'a>(
         },
         ActionType::Treasury(treasury_action) => match treasury_action {
             TreasuryActionType::Transfer { from, to } => [
-                RULE,
-                from.as_ref().map_or(b"all", |key| key.as_ref()),
-                to.as_ref().map_or(b"all", |key| key.as_ref()),
+                from.as_ref().map_or(b"treasury_from", |key| key.as_ref()),
+                to.as_ref().map_or(b"treasury_to", |key| key.as_ref()),
                 channel.as_ref(),
+                bump_seed,
             ],
             TreasuryActionType::Create => [RULE, b"treasury_create", channel.as_ref(), bump_seed],
         },
@@ -231,7 +232,7 @@ pub fn find_post_mint_authority_program_address(
     program_id: &Pubkey,
     post: &Pubkey,
 ) -> (Pubkey, u8) {
-    find_mint_authority_program_address(program_id, post)
+    find_authority_program_address(program_id, post)
 }
 
 /// Create post mint authority program address
@@ -239,5 +240,37 @@ pub fn create_post_mint_authority_program_address_seeds<'a>(
     post: &'a Pubkey,
     bump_seed: &'a [u8],
 ) -> [&'a [u8]; 3] {
-    create_mint_authority_program_address_seeds(post, bump_seed)
+    create_authority_program_address_seeds(post, bump_seed)
+}
+
+/// Find treasury account address
+
+pub fn find_treasury_token_account_address(
+    channel: &Pubkey,
+    spl_token_mint_address: &Pubkey,
+    token_program_id: &Pubkey,
+    program_id: &Pubkey,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            &channel.to_bytes(),
+            &token_program_id.to_bytes(),
+            &spl_token_mint_address.to_bytes(),
+        ],
+        program_id,
+    )
+}
+
+pub fn create_treasury_token_account_address_seeds<'a>(
+    channel: &'a Pubkey,
+    spl_token_mint_address: &'a Pubkey,
+    token_program_id: &'a Pubkey,
+    bump_seed: &'a [u8],
+) -> [&'a [u8]; 4] {
+    [
+        channel.as_ref(),
+        token_program_id.as_ref(),
+        spl_token_mint_address.as_ref(),
+        bump_seed,
+    ]
 }

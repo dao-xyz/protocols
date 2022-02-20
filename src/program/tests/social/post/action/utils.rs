@@ -2,14 +2,19 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use s2g::socials::post::{
     instruction::create_post_execution_transaction,
-    state::{deserialize_post_account, ActionStatus, PostType},
+    state::{deserialize_post_account, ActionStatus, ActionType, PostType},
 };
 use solana_program::{hash::Hash, pubkey::Pubkey, system_instruction};
 use solana_program_test::BanksClient;
-use solana_sdk::{signature::Keypair, signer::Signer, transaction::Transaction};
+use solana_sdk::{
+    signature::Keypair, signer::Signer, transaction::Transaction, transport::TransportError,
+};
 use spl_associated_token_account::{create_associated_token_account, get_associated_token_address};
 
-use crate::{social::post::utils::SocialAccounts, stake_pool::helpers::create_mint_from_keypair};
+use crate::{
+    social::post::utils::{SocialAccounts, TestPost},
+    stake_pool::helpers::create_mint_from_keypair,
+};
 pub fn time_since_epoch() -> u64 {
     let start = SystemTime::now();
     let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
@@ -76,22 +81,20 @@ pub async fn execute_post(
     payer: &Keypair,
     recent_blockhash: &Hash,
     socials: &SocialAccounts,
-) {
+    post: &TestPost,
+) -> Result<(), TransportError> {
     let mut execute_post = Transaction::new_with_payer(
         &[create_post_execution_transaction(
             &s2g::id(),
             &payer.pubkey(),
-            &socials.post,
-            &socials.get_post_account(banks_client).await,
+            &post.post,
+            &post.get_post_account(banks_client).await,
             &socials.governence_mint,
         )],
         Some(&payer.pubkey()),
     );
     execute_post.sign(&[payer], *recent_blockhash);
-    banks_client
-        .process_transaction(execute_post)
-        .await
-        .unwrap();
+    banks_client.process_transaction(execute_post).await
 }
 
 pub async fn assert_action_status(
@@ -105,6 +108,6 @@ pub async fn assert_action_status(
     if let PostType::ActionPost(post) = account.post_type {
         assert_eq!(&post.status, status);
     } else {
-        panic!("Unexpecvted");
+        panic!("Unexpected");
     }
 }

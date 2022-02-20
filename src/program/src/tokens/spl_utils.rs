@@ -22,7 +22,7 @@ use crate::pack::check_data_len;
 pub const MINT_SEED: &[u8] = b"mint";
 pub const UTILITY_MINT: &[u8] = b"utility";
 
-pub const MINT_AUTHORTY_SEED: &[u8] = b"authority";
+pub const AUTHORTY_SEED: &[u8] = b"authority";
 pub const ESCROW_ACCOUNT_SEED: &[u8] = b"escrow";
 
 /// Find utility mint token address (unique/fixed for program)
@@ -49,16 +49,16 @@ pub fn create_mint_program_address_seeds<'a>(
 }
 
 /// Generate mint authority address
-pub fn find_mint_authority_program_address(program_id: &Pubkey, mint: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[MINT_AUTHORTY_SEED, &mint.to_bytes()], program_id)
+pub fn find_authority_program_address(program_id: &Pubkey, key: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[AUTHORTY_SEED, &key.to_bytes()], program_id)
 }
 
 /// Create mint authority address
-pub fn create_mint_authority_program_address_seeds<'a>(
-    mint: &'a Pubkey,
+pub fn create_authority_program_address_seeds<'a>(
+    key: &'a Pubkey,
     bump_seed: &'a [u8],
 ) -> [&'a [u8]; 3] {
-    [MINT_AUTHORTY_SEED, mint.as_ref(), bump_seed]
+    [AUTHORTY_SEED, key.as_ref(), bump_seed]
 }
 
 /// Generate mint escrow address

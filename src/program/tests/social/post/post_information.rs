@@ -1,4 +1,6 @@
 use super::utils::{assert_token_balance, SocialAccounts};
+use crate::social::post::utils::TestPost;
+use crate::social::post::utils::TestUser;
 use crate::utils::program_test;
 use s2g::socials::post::{
     find_escrow_program_address,
@@ -16,6 +18,9 @@ async fn success_upvote() {
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
     let utility_amount = 100000;
     let socials = SocialAccounts::new(&payer.pubkey());
+    let test_post = TestPost::new(&socials.channel);
+    let test_user = TestUser::new(&payer.pubkey(), &test_post);
+
     socials
         .initialize(&mut banks_client, &payer, &recent_blockhash, utility_amount)
         .await;
@@ -26,9 +31,9 @@ async fn success_upvote() {
             &socials.user,
             &socials.channel,
             &socials.governence_mint,
-            &socials.hash,
+            &test_post.hash,
             &CreatePostType::SimplePost,
-            &socials.source,
+            &test_post.source,
         )],
         Some(&payer.pubkey()),
     );
@@ -38,12 +43,12 @@ async fn success_upvote() {
         .await
         .unwrap();
 
-    let (escrow_account_info, _) = find_escrow_program_address(&s2g::id(), &socials.post);
+    let (escrow_account_info, _) = find_escrow_program_address(&s2g::id(), &test_post.post);
     let rent = Rent::default();
     let stake = 1000;
 
     // Stake some
-    socials
+    test_post
         .vote(&mut banks_client, &payer, Vote::Up, stake)
         .await;
 
@@ -61,12 +66,12 @@ async fn success_upvote() {
         utility_amount - stake,
     )
     .await;
-    assert_token_balance(&mut banks_client, &socials.upvote_token_account, stake).await;
+    assert_token_balance(&mut banks_client, &test_user.upvote_token_account, stake).await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake).await;
-    socials.assert_vote(&mut banks_client, stake, 0).await;
+    test_post.assert_vote(&mut banks_client, stake, 0).await;
 
     // Stake more
-    socials
+    test_post
         .vote(&mut banks_client, &payer, Vote::Up, stake)
         .await;
 
@@ -77,12 +82,17 @@ async fn success_upvote() {
     )
     .await;
 
-    assert_token_balance(&mut banks_client, &socials.upvote_token_account, stake * 2).await;
+    assert_token_balance(
+        &mut banks_client,
+        &test_user.upvote_token_account,
+        stake * 2,
+    )
+    .await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake * 2).await;
-    socials.assert_vote(&mut banks_client, stake * 2, 0).await;
+    test_post.assert_vote(&mut banks_client, stake * 2, 0).await;
 
     // Unstake
-    socials
+    test_post
         .unvote(&mut banks_client, &payer, Vote::Up, stake)
         .await;
 
@@ -92,12 +102,12 @@ async fn success_upvote() {
         utility_amount - stake,
     )
     .await;
-    assert_token_balance(&mut banks_client, &socials.upvote_token_account, stake).await;
+    assert_token_balance(&mut banks_client, &test_user.upvote_token_account, stake).await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake).await;
-    socials.assert_vote(&mut banks_client, stake, 0).await;
+    test_post.assert_vote(&mut banks_client, stake, 0).await;
 
     // Unstake, same amount (we should now 0 token accounts)
-    socials
+    test_post
         .unvote(&mut banks_client, &payer, Vote::Up, stake)
         .await;
 
@@ -107,9 +117,9 @@ async fn success_upvote() {
         utility_amount,
     )
     .await;
-    assert_token_balance(&mut banks_client, &socials.upvote_token_account, 0).await;
+    assert_token_balance(&mut banks_client, &test_user.upvote_token_account, 0).await;
     assert_token_balance(&mut banks_client, &escrow_account_info, 0).await;
-    socials.assert_vote(&mut banks_client, 0, 0).await;
+    test_post.assert_vote(&mut banks_client, 0, 0).await;
 }
 
 #[tokio::test]
@@ -122,6 +132,8 @@ async fn success_downvote() {
     socials
         .initialize(&mut banks_client, &payer, &recent_blockhash, utility_amount)
         .await;
+    let test_post = TestPost::new(&socials.channel);
+    let test_user = TestUser::new(&payer.pubkey(), &test_post);
     let mut transaction_post = Transaction::new_with_payer(
         &[create_post_transaction(
             &s2g::id(),
@@ -129,9 +141,9 @@ async fn success_downvote() {
             &socials.user,
             &socials.channel,
             &socials.governence_mint,
-            &socials.hash,
+            &test_post.hash,
             &CreatePostType::SimplePost,
-            &socials.source,
+            &test_post.source,
         )],
         Some(&payer.pubkey()),
     );
@@ -141,12 +153,12 @@ async fn success_downvote() {
         .await
         .unwrap();
 
-    let (escrow_account_info, _) = find_escrow_program_address(&s2g::id(), &socials.post);
+    let (escrow_account_info, _) = find_escrow_program_address(&s2g::id(), &test_post.post);
     let rent = Rent::default();
     let stake = 1000;
 
     // Stake some
-    socials
+    test_post
         .vote(&mut banks_client, &payer, Vote::Down, stake)
         .await;
 
@@ -164,12 +176,12 @@ async fn success_downvote() {
         utility_amount - stake,
     )
     .await;
-    assert_token_balance(&mut banks_client, &socials.downvote_token_account, stake).await;
+    assert_token_balance(&mut banks_client, &test_user.downvote_token_account, stake).await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake).await;
-    socials.assert_vote(&mut banks_client, 0, stake).await;
+    test_post.assert_vote(&mut banks_client, 0, stake).await;
 
     // Stake more
-    socials
+    test_post
         .vote(&mut banks_client, &payer, Vote::Down, stake)
         .await;
 
@@ -182,15 +194,15 @@ async fn success_downvote() {
 
     assert_token_balance(
         &mut banks_client,
-        &socials.downvote_token_account,
+        &test_user.downvote_token_account,
         stake * 2,
     )
     .await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake * 2).await;
-    socials.assert_vote(&mut banks_client, 0, stake * 2);
+    test_post.assert_vote(&mut banks_client, 0, stake * 2);
 
     // Unstake
-    socials
+    test_post
         .unvote(&mut banks_client, &payer, Vote::Down, stake)
         .await;
 
@@ -200,12 +212,12 @@ async fn success_downvote() {
         utility_amount - stake,
     )
     .await;
-    assert_token_balance(&mut banks_client, &socials.downvote_token_account, stake).await;
+    assert_token_balance(&mut banks_client, &test_user.downvote_token_account, stake).await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake).await;
-    socials.assert_vote(&mut banks_client, 0, stake);
+    test_post.assert_vote(&mut banks_client, 0, stake);
 
     // Unstake, same amount (we should now 0 token accounts)
-    socials
+    test_post
         .unvote(&mut banks_client, &payer, Vote::Down, stake)
         .await;
 
@@ -215,7 +227,7 @@ async fn success_downvote() {
         utility_amount,
     )
     .await;
-    assert_token_balance(&mut banks_client, &socials.downvote_token_account, 0).await;
+    assert_token_balance(&mut banks_client, &test_user.downvote_token_account, 0).await;
     assert_token_balance(&mut banks_client, &escrow_account_info, 0).await;
-    socials.assert_vote(&mut banks_client, 0, 0);
+    test_post.assert_vote(&mut banks_client, 0, 0);
 }

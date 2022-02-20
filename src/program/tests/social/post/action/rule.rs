@@ -1,4 +1,7 @@
-use crate::{social::post::utils::SocialAccounts, utils::program_test};
+use crate::{
+    social::post::utils::{SocialAccounts, TestPost, TestUser},
+    utils::program_test,
+};
 use s2g::socials::post::{
     find_create_rule_associated_program_address,
     instruction::{create_post_execution_transaction, create_post_transaction, CreatePostType},
@@ -32,6 +35,8 @@ async fn rejected_create_rule() {
         .initialize(&mut banks_client, &payer, &recent_blockhash, utility_amount)
         .await;
 
+    let test_post = TestPost::new(&socials.channel);
+
     let expires_in_sec = 1;
     let expires_at = time_since_epoch() + expires_in_sec;
     let custom_rule_key = Pubkey::new_unique();
@@ -40,6 +45,7 @@ async fn rejected_create_rule() {
         &ActionType::CustomEvent(custom_rule_key),
         &socials.channel,
     );
+
     let mut transaction_post = Transaction::new_with_payer(
         &[create_post_transaction(
             &s2g::id(),
@@ -47,21 +53,22 @@ async fn rejected_create_rule() {
             &socials.user,
             &socials.channel,
             &socials.governence_mint,
-            &socials.hash,
+            &test_post.hash,
             &CreatePostType::ActionPost {
                 expires_at,
-                action: Action::ManageRule(VotingRuleUpdate::Create {
-                    rule: CreateRule {
+                action: Action::ManageRule(VotingRuleUpdate::create(
+                    CreateRule {
                         channel: socials.channel,
                         name: Some("Custom event".into()),
                         action: ActionType::CustomEvent(custom_rule_key),
                         criteria: AcceptenceCriteria::default(),
                         info: Some("info".into()),
                     },
-                    bump_seed: 123,
-                }),
+                    &socials.channel,
+                    &s2g::id(),
+                )),
             },
-            &socials.source,
+            &test_post.source,
         )],
         Some(&payer.pubkey()),
     );
@@ -72,14 +79,14 @@ async fn rejected_create_rule() {
         .unwrap();
 
     tokio::time::sleep(Duration::from_millis(expires_in_sec + 10)).await;
-    assert_action_status(&mut banks_client, &socials.post, &ActionStatus::Pending).await;
+    assert_action_status(&mut banks_client, &test_post.post, &ActionStatus::Pending).await;
 
     let mut execute_post = Transaction::new_with_payer(
         &[create_post_execution_transaction(
             &s2g::id(),
             &payer.pubkey(),
-            &socials.post,
-            &socials.get_post_account(&mut banks_client).await,
+            &test_post.post,
+            &test_post.get_post_account(&mut banks_client).await,
             &socials.governence_mint,
         )],
         Some(&payer.pubkey()),
@@ -91,7 +98,7 @@ async fn rejected_create_rule() {
         .unwrap();
 
     // assets post is rejected since no voting
-    assert_action_status(&mut banks_client, &socials.post, &ActionStatus::Rejected).await;
+    assert_action_status(&mut banks_client, &test_post.post, &ActionStatus::Rejected).await;
 }
 
 #[tokio::test]
@@ -111,6 +118,8 @@ async fn approved_create_rule() {
         .initialize(&mut banks_client, &payer, &recent_blockhash, 0)
         .await;
 
+    let test_post = TestPost::new(&socials.channel);
+
     let expires_in_sec = 1;
     let expires_at = time_since_epoch() + expires_in_sec;
     let custom_rule_key = Pubkey::new_unique();
@@ -127,11 +136,10 @@ async fn approved_create_rule() {
             &socials.user,
             &socials.channel,
             &socials.governence_mint,
-            &socials.hash,
+            &test_post.hash,
             &CreatePostType::ActionPost {
                 expires_at,
                 action: Action::ManageRule(VotingRuleUpdate::create(
-                    &s2g::id(),
                     CreateRule {
                         channel: socials.channel,
                         name: Some("Custom event".into()),
@@ -140,9 +148,10 @@ async fn approved_create_rule() {
                         info: Some("info".into()),
                     },
                     &socials.channel,
+                    &s2g::id(),
                 )),
             },
-            &socials.source,
+            &test_post.source,
         )],
         Some(&payer.pubkey()),
     );
@@ -152,17 +161,25 @@ async fn approved_create_rule() {
         .await
         .unwrap();
 
-    socials
+    test_post
         .vote(&mut banks_client, &payer, Vote::Up, total_supply)
         .await;
 
     tokio::time::sleep(Duration::from_millis(expires_in_sec + 10)).await;
-    assert_action_status(&mut banks_client, &socials.post, &ActionStatus::Pending).await;
+    assert_action_status(&mut banks_client, &test_post.post, &ActionStatus::Pending).await;
 
-    execute_post(&mut banks_client, &payer, &recent_blockhash, &socials).await;
+    execute_post(
+        &mut banks_client,
+        &payer,
+        &recent_blockhash,
+        &socials,
+        &test_post,
+    )
+    .await
+    .unwrap();
 
     // assets post is approved
-    assert_action_status(&mut banks_client, &socials.post, &ActionStatus::Approved).await;
+    assert_action_status(&mut banks_client, &test_post.post, &ActionStatus::Approved).await;
 
     deserialize_action_rule_account(
         &*banks_client
