@@ -10,7 +10,7 @@ use crate::{
     tokens::spl_utils::find_authority_program_address,
 };
 
-use super::{find_create_rule_associated_program_address};
+use super::find_create_rule_associated_program_address;
 
 pub const MAX_CONTENT_LEN: usize = 32 // hash pubkey
     + 200; // IPFS link (and some padding)
@@ -23,7 +23,7 @@ pub enum Asset {
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum PostType {
-    InformalPost(InformationPost),
+    InformationPost(InformationPost),
     ActionPost(ActionPost),
 }
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
@@ -38,7 +38,7 @@ pub struct PostAccount {
     pub account_type: AccountType,
     pub creator: Pubkey,
     pub channel: Pubkey,
-    pub utility_mint_address: Pubkey, // either utility mint or goverence mint
+    pub vote_mint: Pubkey, // to be swapped for either upvote or downvote tokens
     pub deleted: bool,
     pub hash: [u8; 32],
     pub post_type: PostType,

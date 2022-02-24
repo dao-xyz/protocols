@@ -14,7 +14,7 @@ use solana_program::{
 
 use luser::{create_and_serialize_account_signed_verify, state::deserialize_user_account};
 
-use crate::shared::names::entity_name_is_valid;
+use crate::{shared::names::entity_name_is_valid, state::AccountType};
 
 use super::{
     create_channel_account_program_address_seeds,
@@ -71,6 +71,7 @@ impl Processor {
             payer_account,
             channel_account_info,
             &ChannelAccount {
+                account_type: AccountType::Channel,
                 creator,
                 governence_mint,
                 link,

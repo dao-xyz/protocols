@@ -42,7 +42,7 @@ async fn success_upvote() {
             &test_channel.channel,
             &test_channel.mint,
             &test_post.hash,
-            &CreatePostType::SimplePost,
+            &CreatePostType::InformationPost,
             &test_post.source,
         )],
         Some(&payer.pubkey()),
@@ -175,7 +175,7 @@ async fn success_downvote() {
             &test_channel.channel,
             &test_channel.mint,
             &test_post.hash,
-            &CreatePostType::SimplePost,
+            &CreatePostType::InformationPost,
             &test_post.source,
         )],
         Some(&payer.pubkey()),
@@ -237,7 +237,7 @@ async fn success_downvote() {
     )
     .await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake * 2).await;
-    test_post.assert_vote(&mut banks_client, 0, stake * 2);
+    test_post.assert_vote(&mut banks_client, 0, stake * 2).await;
 
     // Unstake
     test_post
@@ -257,7 +257,7 @@ async fn success_downvote() {
     )
     .await;
     assert_token_balance(&mut banks_client, &escrow_account_info, stake).await;
-    test_post.assert_vote(&mut banks_client, 0, stake);
+    test_post.assert_vote(&mut banks_client, 0, stake).await;
 
     // Unstake, same amount (we should now 0 token accounts)
     test_post
@@ -277,5 +277,5 @@ async fn success_downvote() {
     )
     .await;
     assert_token_balance(&mut banks_client, &escrow_account_info, 0).await;
-    test_post.assert_vote(&mut banks_client, 0, 0);
+    test_post.assert_vote(&mut banks_client, 0, 0).await;
 }

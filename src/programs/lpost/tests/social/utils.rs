@@ -10,8 +10,8 @@ use lpost::{
     find_post_downvote_mint_program_address, find_post_upvote_mint_program_address,
     find_treasury_token_account_address,
     instruction::{
-        create_create_first_rule_transaction,
-        create_post_unvote_transaction, create_post_vote_transaction,
+        create_create_first_rule_transaction, create_post_unvote_transaction,
+        create_post_vote_transaction,
     },
     state::{deserialize_post_account, PostAccount, PostType},
     Vote,
@@ -22,8 +22,8 @@ use luser::{
 };
 use solana_program_test::*;
 use solana_sdk::{
-    pubkey::Pubkey, signature::Keypair, signer::Signer,
-    transaction::Transaction, transport::TransportError,
+    pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction,
+    transport::TransportError,
 };
 use spl_associated_token_account::{create_associated_token_account, get_associated_token_address};
 
@@ -411,7 +411,7 @@ impl TestPost {
         )
         .unwrap();
         match post.post_type {
-            PostType::InformalPost(s) => {
+            PostType::InformationPost(s) => {
                 assert_eq!(s.upvotes, upvotes);
                 assert_eq!(s.downvotes, downvotes);
             }

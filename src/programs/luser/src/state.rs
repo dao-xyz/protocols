@@ -17,7 +17,13 @@ pub const MAX_USER_LEN: usize = 32 // owner pubkey
     + 200; // some padding
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
+pub enum AccountType {
+    User,
+}
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct UserAccount {
+    pub account_type: AccountType,
     pub owner: Pubkey,
     pub creation_timestamp: u64,
     pub name: String,

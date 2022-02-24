@@ -60,10 +60,12 @@ impl Processor {
         }
 
         let post_account_info = next_account_info(accounts_iter)?;
+        let channel_account_info = next_account_info(accounts_iter)?;
+        let channel = deserialize_channel_account(channel_account_info.data.borrow().as_ref())?;
         let mint_upvote_account_info = next_account_info(accounts_iter)?;
         let mint_downvote_account_info = next_account_info(accounts_iter)?;
         let mint_authority_account_info = next_account_info(accounts_iter)?;
-        let governence_mint_account_info = next_account_info(accounts_iter)?;
+        let vote_mint_account_info = next_account_info(accounts_iter)?;
         let system_account = next_account_info(accounts_iter)?;
         let rent_info = next_account_info(accounts_iter)?;
         let token_program_info = next_account_info(accounts_iter)?;
@@ -115,11 +117,19 @@ impl Processor {
             );
             return Err(ProgramError::InvalidSeeds);
         }
-        msg!("Create escrow account");
+
+        if let CreatePostType::ActionPost { .. } = post.post_type {
+            // check that the vote mint is equal to the goverence mint
+            if vote_mint_account_info.key != &channel.governence_mint {
+                return Err(ProgramError::InvalidArgument);
+            }
+        }
+
+        msg!("Create escrow/realm account");
         create_program_token_account(
             escrow_utility_token_account_info,
             &escrow_account_seeds,
-            governence_mint_account_info,
+            vote_mint_account_info,
             mint_authority_account_info,
             payer_account,
             rent_info,
@@ -136,7 +146,7 @@ impl Processor {
             &PostAccount {
                 account_type: AccountType::Post,
                 post_type: match post.post_type {
-                    CreatePostType::SimplePost => PostType::InformalPost(InformationPost {
+                    CreatePostType::InformationPost => PostType::InformationPost(InformationPost {
                         created_at: timestamp,
                         downvotes: 0,
                         upvotes: 0,
@@ -155,8 +165,8 @@ impl Processor {
                         })
                     }
                 },
-                utility_mint_address: post.utility_mint_address,
-                channel: post.channel,
+                vote_mint: *vote_mint_account_info.key,
+                channel: *channel_account_info.key,
                 hash: post.hash,
                 source: post.source,
                 creator: *user_account_info.key,
@@ -190,6 +200,8 @@ impl Processor {
         let rent_info = next_account_info(accounts_iter)?;
         let token_program_info = next_account_info(accounts_iter)?;
         let spl_associated_token_acount_program_info = next_account_info(accounts_iter)?;
+
+        // TODO: CHECK OWNER OF POST, CHECK MINTS,
 
         let mint_account_info = match stake.vote {
             Vote::Up => mint_upvote_account_info,
@@ -239,6 +251,7 @@ impl Processor {
             return Err(ProgramError::InvalidSeeds);
         }
 
+        msg!("Transfer into realm");
         token_transfer(
             token_program_info.clone(),
             payer_governence_token_account.clone(),
@@ -248,6 +261,7 @@ impl Processor {
         )?;
 
         // for some tokens (Upvotes or downvotes depending on the mint info)
+        msg!("Mint votes");
         spl_mint_to(
             mint_associated_token_account,
             mint_account_info,
@@ -261,12 +275,12 @@ impl Processor {
         )?;
 
         post.post_type = match post.post_type {
-            PostType::InformalPost(mut info) => {
+            PostType::InformationPost(mut info) => {
                 match stake.vote {
                     Vote::Up => info.upvotes += stake.stake,
                     Vote::Down => info.downvotes += stake.stake,
                 };
-                PostType::InformalPost(info)
+                PostType::InformationPost(info)
             }
             PostType::ActionPost(mut info) => {
                 match stake.vote {
@@ -297,6 +311,8 @@ impl Processor {
         let mint_authority_account_info = next_account_info(accounts_iter)?;
         let mint_associated_token_account = next_account_info(accounts_iter)?;
         let token_program_info = next_account_info(accounts_iter)?;
+
+        // TODO: CHECK OWNER OF POST, CHECK MINTS,
 
         let mint_account_info = match stake.vote {
             Vote::Up => mint_upvote_account_info,
@@ -360,12 +376,12 @@ impl Processor {
         )?;
 
         post.post_type = match post.post_type {
-            PostType::InformalPost(mut info) => {
+            PostType::InformationPost(mut info) => {
                 match stake.vote {
                     Vote::Up => info.upvotes -= stake.stake,
                     Vote::Down => info.downvotes -= stake.stake,
                 };
-                PostType::InformalPost(info)
+                PostType::InformationPost(info)
             }
             PostType::ActionPost(mut info) => {
                 match stake.vote {

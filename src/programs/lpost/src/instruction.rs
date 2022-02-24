@@ -22,15 +22,12 @@ use crate::{
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum CreatePostType {
-    SimplePost,
+    InformationPost,
     ActionPost { expires_at: u64, action: Action },
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct CreatePost {
-    pub creator: Pubkey,
-    pub channel: Pubkey,
-    pub utility_mint_address: Pubkey, // either utility mint or goverence mint
     pub hash: [u8; 32],
     pub source: ContentSource,
     pub post_type: CreatePostType,
@@ -42,7 +39,6 @@ pub struct CreatePost {
 }
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct PostVote {
-    pub post: Pubkey,
     pub stake: u64,
     pub vote: Vote,
     pub mint_authority_bump_seed: u8,
@@ -64,12 +60,12 @@ pub fn create_post_transaction(
     payer: &Pubkey,
     user: &Pubkey,
     channel: &Pubkey,
-    utility_mint_address: &Pubkey,
+    vote_mint_address: &Pubkey,
     hash: &[u8; 32],
     post_type: &CreatePostType,
     source: &ContentSource,
 ) -> Instruction {
-    let (post_address, post_bump_seed) = find_post_program_address(program_id, hash);
+    let (post_address, post_bump_seed) = find_post_program_address(program_id, &hash);
     let (mint_upvote_address, mint_upvote_bump_seed) =
         find_post_upvote_mint_program_address(program_id, &post_address);
 
@@ -85,10 +81,11 @@ pub fn create_post_transaction(
         AccountMeta::new(*payer, true),
         AccountMeta::new(*user, false),
         AccountMeta::new(post_address, false),
+        AccountMeta::new(*channel, false),
         AccountMeta::new(mint_upvote_address, false),
         AccountMeta::new(mint_downvote_address, false),
         AccountMeta::new(mint_authority_address, false),
-        AccountMeta::new(*utility_mint_address, false),
+        AccountMeta::new(*vote_mint_address, false),
         AccountMeta::new_readonly(system_program::id(), false),
         AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         AccountMeta::new_readonly(spl_token::id(), false),
@@ -101,9 +98,9 @@ pub fn create_post_transaction(
     Instruction {
         program_id: *program_id,
         data: (PostInstruction::CreatePost(CreatePost {
-            creator: *user,
+            /*        creator: *user,
             channel: *channel,
-            utility_mint_address: *utility_mint_address,
+            vote_mint_address: *vote_mint_address, */
             hash: *hash,
             post_type: post_type.clone(),
             source: source.clone(),
@@ -131,7 +128,7 @@ pub fn create_post_vote_transaction(
     let (mint_upvote_address, _) = find_post_upvote_mint_program_address(program_id, post);
     let (mint_downvote_address, _) = find_post_downvote_mint_program_address(program_id, post);
 
-    let payer_utility_token_address = get_associated_token_address(payer, governence_mint);
+    let payer_utility_token_address = get_associated_token_address(payer, &governence_mint);
 
     let (mint_authority_address, mint_authority_bump_seed) =
         find_post_mint_authority_program_address(program_id, post);
@@ -163,7 +160,6 @@ pub fn create_post_vote_transaction(
         data: (PostInstruction::Vote(PostVote {
             mint_authority_bump_seed,
             stake,
-            post: *post,
             escrow_bump_seed,
             vote,
         }))
@@ -213,7 +209,6 @@ pub fn create_post_unvote_transaction(
         data: (PostInstruction::Unvote(PostVote {
             mint_authority_bump_seed,
             stake,
-            post: *post,
             escrow_bump_seed,
             vote,
         }))
@@ -232,7 +227,7 @@ pub fn create_create_first_rule_transaction(
         find_create_rule_associated_program_address(
             program_id,
             &ActionType::ManageRule(RuleUpdateType::Create),
-            channel,
+            &channel,
         );
     let accounts = vec![
         AccountMeta::new(create_rule_address, false),
@@ -367,7 +362,7 @@ pub fn create_post_execution_transaction(
                 TreasuryAction::Transfer {
                     from,
                     to,
-                    bump_seed: _,
+                    bump_seed,
                     ..
                 } => {
                     accounts.push(AccountMeta::new(

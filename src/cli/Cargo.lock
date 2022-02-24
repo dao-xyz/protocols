@@ -1394,6 +1394,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "lpool"
+version = "0.0.1"
+dependencies = [
+ "arrayref",
+ "bincode",
+ "borsh 0.9.1",
+ "borsh-derive 0.9.1",
+ "num-derive",
+ "num-traits",
+ "solana-program",
+ "spl-associated-token-account",
+ "spl-math",
+ "spl-token",
+ "thiserror",
+]
+
+[[package]]
+name = "lpool-cli"
+version = "0.0.1"
+dependencies = [
+ "bincode",
+ "borsh 0.9.1",
+ "bs58",
+ "clap",
+ "lpool",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "solana-account-decoder",
+ "solana-clap-utils",
+ "solana-cli-config",
+ "solana-cli-output",
+ "solana-client",
+ "solana-logger",
+ "solana-program",
+ "solana-remote-wallet",
+ "solana-sdk",
+ "spl-associated-token-account",
+ "spl-token",
+]
+
+[[package]]
 name = "matches"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2029,48 +2071,6 @@ name = "ryu"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73b4b750c782965c211b42f022f59af1fbceabdd026623714f104152f1ec149f"
-
-[[package]]
-name = "s2g"
-version = "0.0.1"
-dependencies = [
- "arrayref",
- "bincode",
- "borsh 0.9.1",
- "borsh-derive 0.9.1",
- "num-derive",
- "num-traits",
- "solana-program",
- "spl-associated-token-account",
- "spl-math",
- "spl-token",
- "thiserror",
-]
-
-[[package]]
-name = "s2g-cli"
-version = "0.0.1"
-dependencies = [
- "bincode",
- "borsh 0.9.1",
- "bs58",
- "clap",
- "s2g",
- "serde",
- "serde_derive",
- "serde_json",
- "solana-account-decoder",
- "solana-clap-utils",
- "solana-cli-config",
- "solana-cli-output",
- "solana-client",
- "solana-logger",
- "solana-program",
- "solana-remote-wallet",
- "solana-sdk",
- "spl-associated-token-account",
- "spl-token",
-]
 
 [[package]]
 name = "same-file"

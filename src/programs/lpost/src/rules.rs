@@ -31,8 +31,8 @@ impl Default for AcceptenceCriteria {
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
 pub enum RuleUpdateType {
-    Delete,
     Create,
+    Delete,
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
@@ -56,11 +56,11 @@ pub enum ActionType {
 pub struct ActionRule {
     pub account_type: AccountType,
     pub channel: Pubkey,
+    pub deleted: bool,
     pub action: ActionType,
     pub criteria: AcceptenceCriteria,
     pub name: Option<String>,
     pub info: Option<ContentSource>,
-    pub deleted: bool,
 }
 impl MaxSize for ActionRule {
     fn get_max_size(&self) -> Option<usize> {

@@ -14,7 +14,7 @@ use solana_program::{
 
 use crate::{
     create_and_serialize_account_signed_verify, create_user_account_program_address_seeds,
-    shared::names::entity_name_is_valid,
+    shared::names::entity_name_is_valid, state::AccountType,
 };
 
 use super::{
@@ -53,6 +53,7 @@ impl Processor {
         let seed_slice = &seeds.iter().map(|x| &x[..]).collect::<Vec<&[u8]>>()[..];
 
         let user_account = UserAccount {
+            account_type: AccountType::User,
             name,
             profile,
             creation_timestamp: Clock::get()?.unix_timestamp as u64,
