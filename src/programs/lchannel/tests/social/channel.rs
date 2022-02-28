@@ -1,8 +1,10 @@
 use lchannel::find_channel_program_address;
-use lchannel::instruction::{create_channel_transaction, create_update_channel_transacation};
+use lchannel::instruction::{
+    create_channel_transaction, create_update_authority_transacation,
+    create_update_info_transacation,
+};
 use lchannel::state::deserialize_channel_account;
 
-use lchannel::tokens::spl_utils::find_platform_mint_program_address;
 use shared::content::ContentSource;
 use solana_program::hash::Hash;
 use solana_program::instruction::InstructionError;
@@ -21,7 +23,7 @@ pub async fn create_and_verify_channel(
     recent_blockhash: &Hash,
     channel_name: &str,
     channel_owner_user: &Pubkey,
-    utility_mint_address: &Pubkey,
+    parent_and_authority: &Option<(Pubkey, Pubkey)>,
     link: Option<ContentSource>,
 ) -> Result<Pubkey, TransportError> {
     let (channel_address_pda, _bump) =
@@ -32,7 +34,7 @@ pub async fn create_and_verify_channel(
             &lchannel::id(),
             channel_name,
             channel_owner_user,
-            utility_mint_address,
+            parent_and_authority,
             link,
             &payer.pubkey(),
         )],
@@ -67,15 +69,28 @@ pub async fn success() {
         "profile",
     )
     .await;
-    let (utility_mint_address, __bump) = find_platform_mint_program_address(&lchannel::id());
 
-    create_and_verify_channel(
+    // create a channel
+    let channel = create_and_verify_channel(
         &mut banks_client,
         &payer,
         &recent_blockhash,
         "Channel",
         &user,
-        &utility_mint_address,
+        &None,
+        Some("link".into()),
+    )
+    .await
+    .unwrap();
+
+    // create a subchannel
+    create_and_verify_channel(
+        &mut banks_client,
+        &payer,
+        &recent_blockhash,
+        "asd",
+        &user,
+        &Some((channel, payer.pubkey())),
         Some("link".into()),
     )
     .await
@@ -83,7 +98,7 @@ pub async fn success() {
 }
 
 #[tokio::test]
-async fn success_update() {
+async fn success_update_info() {
     let (mut banks_client, payer, recent_blockhash) = program_test().start().await;
     let username = "name";
     let user = create_and_verify_user(
@@ -95,7 +110,6 @@ async fn success_update() {
     )
     .await;
     let channel_name = "Channel";
-    let (utility_mint_address, __bump) = find_platform_mint_program_address(&lchannel::id());
 
     create_and_verify_channel(
         &mut banks_client,
@@ -103,7 +117,61 @@ async fn success_update() {
         &recent_blockhash,
         channel_name,
         &user,
-        &utility_mint_address,
+        &None,
+        Some("link".into()),
+    )
+    .await
+    .unwrap();
+    let new_authority = Pubkey::new_unique();
+    banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[create_update_authority_transacation(
+                &lchannel::id(),
+                channel_name,
+                &new_authority,
+                &payer.pubkey(),
+            )],
+            Some(&payer.pubkey()),
+            &[&payer],
+            recent_blockhash,
+        ))
+        .await
+        .unwrap();
+
+    // Verify channel changed
+    let channel_account_address = find_channel_program_address(&lchannel::id(), channel_name)
+        .unwrap()
+        .0;
+    let channel_account_info = banks_client
+        .get_account(channel_account_address)
+        .await
+        .expect("get_channel")
+        .expect("user not found");
+    let user = deserialize_channel_account(&channel_account_info.data).unwrap();
+    assert_eq!(user.authority, new_authority);
+}
+
+#[tokio::test]
+async fn success_update_authority() {
+    let (mut banks_client, payer, recent_blockhash) = program_test().start().await;
+    let username = "name";
+    let user = create_and_verify_user(
+        &mut banks_client,
+        &payer,
+        &recent_blockhash,
+        username,
+        "ipfs://kkk",
+    )
+    .await;
+    let channel_name = "Channel";
+
+    create_and_verify_channel(
+        &mut banks_client,
+        &payer,
+        &recent_blockhash,
+        channel_name,
+        &user,
+        &None,
         Some("link".into()),
     )
     .await
@@ -113,10 +181,9 @@ async fn success_update() {
         "ipfs://kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk";
     banks_client
         .process_transaction(Transaction::new_signed_with_payer(
-            &[create_update_channel_transacation(
+            &[create_update_info_transacation(
                 &lchannel::id(),
                 channel_name,
-                &user,
                 Some(new_link.into()),
                 &payer.pubkey(),
             )],
@@ -164,22 +231,18 @@ async fn fail_already_exist() {
 
     let channel_name = "Channel";
 
-    let (utility_mint_address, __bump) = find_platform_mint_program_address(&lchannel::id());
-
     create_and_verify_channel(
         &mut banks_client,
         &payer,
         &recent_blockhash,
         channel_name,
         &user,
-        &utility_mint_address,
+        &None,
         Some("link".into()),
     )
     .await
     .unwrap();
     let latest_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    let (utility_mint_address, __bump) = find_platform_mint_program_address(&lchannel::id());
 
     // Same transaction again
     let err = create_and_verify_channel(
@@ -188,7 +251,7 @@ async fn fail_already_exist() {
         &latest_blockhash,
         channel_name,
         &user,
-        &utility_mint_address,
+        &None,
         Some("link".into()),
     )
     .await
@@ -207,11 +270,11 @@ async fn fail_already_exist() {
 }
 
 #[tokio::test]
-async fn fail_update_wrong_payer() {
+async fn fail_update_info_wrong_authority() {
     let mut program = program_test();
-    let wrong_payer = Keypair::new();
+    let wrong_authority = Keypair::new();
     program.add_account(
-        wrong_payer.pubkey(),
+        wrong_authority.pubkey(),
         Account {
             lamports: 1000000,
             ..Account::default()
@@ -229,15 +292,13 @@ async fn fail_update_wrong_payer() {
     .await;
     let channel_name = "Channel";
 
-    let (utility_mint_address, __bump) = find_platform_mint_program_address(&lchannel::id());
-
     create_and_verify_channel(
         &mut banks_client,
         &payer,
         &recent_blockhash,
         channel_name,
         &user,
-        &utility_mint_address,
+        &None,
         Some("link".into()),
     )
     .await
@@ -245,17 +306,17 @@ async fn fail_update_wrong_payer() {
 
     let new_link =
         "ipfs://kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk";
+
     let err = banks_client
         .process_transaction(Transaction::new_signed_with_payer(
-            &[create_update_channel_transacation(
+            &[create_update_info_transacation(
                 &lchannel::id(),
                 channel_name,
-                &user,
                 Some(new_link.into()),
-                &wrong_payer.pubkey(),
+                &wrong_authority.pubkey(),
             )],
             Some(&payer.pubkey()),
-            &[&payer, &wrong_payer],
+            &[&payer, &wrong_authority],
             recent_blockhash,
         ))
         .await
@@ -263,7 +324,7 @@ async fn fail_update_wrong_payer() {
     match err {
         TransportError::TransactionError(transaction_error) => match transaction_error {
             TransactionError::InstructionError(_, instruction_error) => match instruction_error {
-                InstructionError::IllegalOwner => {}
+                InstructionError::InvalidAccountData => {}
                 _ => panic!("Wrong error type"),
             },
             _ => panic!("Wrong error type"),
@@ -271,6 +332,68 @@ async fn fail_update_wrong_payer() {
         _ => panic!("Wrong error type"),
     };
 }
+
+#[tokio::test]
+async fn fail_update_authority_wrong_authority() {
+    let mut program = program_test();
+    let wrong_authority = Keypair::new();
+    program.add_account(
+        wrong_authority.pubkey(),
+        Account {
+            lamports: 1000000,
+            ..Account::default()
+        },
+    );
+    let (mut banks_client, payer, recent_blockhash) = program.start().await;
+    let username = "name";
+    let user = create_and_verify_user(
+        &mut banks_client,
+        &payer,
+        &recent_blockhash,
+        username,
+        "profile",
+    )
+    .await;
+    let channel_name = "Channel";
+
+    create_and_verify_channel(
+        &mut banks_client,
+        &payer,
+        &recent_blockhash,
+        channel_name,
+        &user,
+        &None,
+        Some("link".into()),
+    )
+    .await
+    .unwrap();
+
+    let err = banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[create_update_authority_transacation(
+                &lchannel::id(),
+                channel_name,
+                &Pubkey::new_unique(),
+                &wrong_authority.pubkey(),
+            )],
+            Some(&payer.pubkey()),
+            &[&payer, &wrong_authority],
+            recent_blockhash,
+        ))
+        .await
+        .unwrap_err();
+    match err {
+        TransportError::TransactionError(transaction_error) => match transaction_error {
+            TransactionError::InstructionError(_, instruction_error) => match instruction_error {
+                InstructionError::InvalidAccountData => {}
+                _ => panic!("Wrong error type"),
+            },
+            _ => panic!("Wrong error type"),
+        },
+        _ => panic!("Wrong error type"),
+    };
+}
+
 /*
 #[tokio::test]
 async fn fail_update_not_signer() {

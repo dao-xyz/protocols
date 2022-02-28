@@ -1,5 +1,5 @@
 use arrayref::array_ref;
-use shared::pack::check_data_len;
+use shared::account::check_data_len;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -23,16 +23,6 @@ pub const UTILITY_MINT: &[u8] = b"utility";
 
 pub const AUTHORTY_SEED: &[u8] = b"authority";
 pub const ESCROW_ACCOUNT_SEED: &[u8] = b"escrow";
-
-/// Find utility mint token address (unique/fixed for program)
-pub fn find_platform_mint_program_address(program_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[MINT_SEED, UTILITY_MINT], program_id)
-}
-
-/// Create mint address (unique/fixed for program)
-pub fn create_platform_mint_program_address_seeds(bump_seed: &[u8]) -> [&[u8]; 3] {
-    [MINT_SEED, UTILITY_MINT, bump_seed]
-}
 
 /// Find mint address
 pub fn find_mint_program_address(program_id: &Pubkey, some_account: &Pubkey) -> (Pubkey, u8) {

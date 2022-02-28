@@ -6,17 +6,12 @@ pub mod state;
 pub mod tokens;
 
 solana_program::declare_id!("758spmW8vgAsBX6LdpDVemeEUzwRtoCbJYbPbyf7iFtn");
-
-
-
+pub mod lpost {
+    solana_program::declare_id!("758spmW8vgAsBX6LdpDVemeEUzwRtoCbJYbPbyf7iFtn");
+}
 use luser::generate_seeds_from_string;
 
-
-
-
 use solana_program::pubkey::{Pubkey, PubkeyError};
-
-
 
 /// Findchannel address from name
 pub fn find_channel_program_address(

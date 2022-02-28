@@ -15,7 +15,7 @@ pub enum ChannelInstruction {
         #[allow(dead_code)] // but it's not
         creator: Pubkey,
         #[allow(dead_code)] // but it's not
-        governence_mint: Pubkey,
+        parent: Option<Pubkey>,
         #[allow(dead_code)] // but it's not
         name: String,
         #[allow(dead_code)] // but it's not
@@ -26,11 +26,14 @@ pub enum ChannelInstruction {
         create_rule_address_bump_seed: u8, */
     },
 
-    // Update channel (the tail message)
-    UpdateChannel {
+    // Update channel
+    UpdateInfo {
         #[allow(dead_code)] // but it's not
         link: Option<ContentSource>,
     },
+
+    // Update authority
+    UpdateAuthority(Pubkey),
 }
 
 /// Creates a create channel transction
@@ -38,7 +41,7 @@ pub fn create_channel_transaction(
     program_id: &Pubkey,
     channel_name: &str,
     creator: &Pubkey,
-    governence_mint: &Pubkey,
+    parent_and_authority: &Option<(Pubkey, Pubkey)>,
     link: Option<ContentSource>,
     payer: &Pubkey,
 ) -> Instruction {
@@ -54,46 +57,72 @@ pub fn create_channel_transaction(
                &channel,
            );
     */
+    let mut accounts = vec![
+        AccountMeta::new(*payer, true),
+        AccountMeta::new(*creator, false),
+        AccountMeta::new(channel, false),
+        /*    AccountMeta::new(create_rule_address, false), */
+        AccountMeta::new(system_program::id(), false),
+    ];
+    let mut parent_address: Option<Pubkey> = None;
+    if parent_and_authority.is_some() {
+        let (parent, parent_authority) = parent_and_authority.unwrap();
+        parent_address = Some(parent);
+        accounts.push(AccountMeta::new_readonly(parent, false));
+        accounts.push(AccountMeta::new_readonly(parent_authority, true));
+    }
     Instruction {
         program_id: *program_id,
         data: (ChannelInstruction::CreateChannel {
             name: channel_name.into(),
             link,
-            governence_mint: *governence_mint,
+            parent: parent_address,
             creator: *creator,
             channel_account_bump_seed, /* ,
                                        create_rule_address_bump_seed, */
         })
         .try_to_vec()
         .unwrap(),
-        accounts: vec![
-            AccountMeta::new(*payer, true),
-            AccountMeta::new(*creator, false),
-            AccountMeta::new(channel, false),
-            /*    AccountMeta::new(create_rule_address, false), */
-            AccountMeta::new(system_program::id(), false),
-        ],
+        accounts,
     }
 }
 
-/// Creates a create channel transction
-pub fn create_update_channel_transacation(
+/// Creates a update info transaction
+pub fn create_update_info_transacation(
     program_id: &Pubkey,
     channel_name: &str,
-    creator: &Pubkey,
     link: Option<ContentSource>,
-    payer: &Pubkey,
+    authority: &Pubkey,
 ) -> Instruction {
     let (channel, _) = find_channel_program_address(program_id, channel_name).unwrap();
     Instruction {
         program_id: *program_id,
-        data: (ChannelInstruction::UpdateChannel { link })
+        data: (ChannelInstruction::UpdateInfo { link })
             .try_to_vec()
             .unwrap(),
         accounts: vec![
-            AccountMeta::new(*payer, true),
-            AccountMeta::new(*creator, false),
             AccountMeta::new(channel, false),
+            AccountMeta::new(*authority, true),
+        ],
+    }
+}
+
+/// Creates a update info transaction
+pub fn create_update_authority_transacation(
+    program_id: &Pubkey,
+    channel_name: &str,
+    new_authority: &Pubkey,
+    authority: &Pubkey,
+) -> Instruction {
+    let (channel, _) = find_channel_program_address(program_id, channel_name).unwrap();
+    Instruction {
+        program_id: *program_id,
+        data: (ChannelInstruction::UpdateAuthority(*new_authority))
+            .try_to_vec()
+            .unwrap(),
+        accounts: vec![
+            AccountMeta::new(channel, false),
+            AccountMeta::new(*authority, true),
         ],
     }
 }
