@@ -5,8 +5,8 @@ use crate::{
 use lpost::{
     find_create_rule_associated_program_address,
     instruction::{create_post_transaction, CreatePostType},
-    rules::{deserialize_action_rule_account, AcceptenceCriteria, ActionType},
-    state::{Action, ActionStatus, CreateRule, VotingRuleUpdate},
+    state::post::{Action, ActionStatus, CreateRule, VotingRuleUpdate},
+    state::rules::{deserialize_action_rule_account, AcceptenceCriteria, ActionType},
     Vote,
 };
 use solana_program::{instruction::InstructionError, pubkey::Pubkey};
@@ -17,7 +17,6 @@ use solana_sdk::{
     transport::TransportError,
 };
 use std::time::Duration;
-
 
 use super::utils::{assert_action_status, execute_post, time_since_epoch};
 

@@ -3,10 +3,8 @@ use crate::{
     utils::program_test,
 };
 use lpost::{
-    find_create_rule_associated_program_address,
-    instruction::{create_post_execution_transaction, create_post_transaction, CreatePostType},
-    rules::{deserialize_action_rule_account, AcceptenceCriteria, ActionType},
-    state::{Action, ActionStatus, CreateRule, VotingRuleUpdate},
+    instruction::{create_post_execution_transaction, CreatePostType},
+    state::post::{CreateRule, VotingRuleUpdate},
     Vote,
 };
 use solana_program::pubkey::Pubkey;
@@ -15,14 +13,12 @@ use solana_sdk::{signer::Signer, transaction::Transaction};
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::utils::{assert_action_status, execute_post};
-
 fn time_since_epoch() -> u64 {
     let start = SystemTime::now();
     let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
     since_the_epoch.as_secs()
 }
-
+/*
 #[tokio::test]
 async fn rejected_create_rule() {
     let program = program_test();
@@ -105,6 +101,7 @@ async fn rejected_create_rule() {
     // assets post is rejected since no voting
     assert_action_status(&mut banks_client, &test_post.post, &ActionStatus::Rejected).await;
 }
+
 
 #[tokio::test]
 async fn approved_create_rule() {
@@ -203,3 +200,4 @@ async fn approved_create_rule() {
     )
     .unwrap();
 }
+*/

@@ -1,18 +1,16 @@
 pub mod accounts;
 pub mod entrypoint;
+pub mod error;
 pub mod instruction;
 pub mod pack;
 pub mod processor;
-pub mod rules;
 pub mod shared;
 pub mod state;
 pub mod tokens;
-solana_program::declare_id!("A55r8UJDa2jTWVzDBhpzTcBPqSx2zcdZeh7Qxxqp8Sbb");
-
-use rules::{ActionType, RuleUpdateType, TreasuryActionType};
-use solana_program::pubkey::Pubkey;
+solana_program::declare_id!(lchannel::lpost::ID);
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use solana_program::pubkey::Pubkey;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -25,6 +23,7 @@ use solana_program::{
     sysvar::Sysvar,
 };
 use spl_token::{instruction::initialize_mint, state::Mint};
+use state::vote_record::Vote;
 
 use crate::tokens::spl_utils::{
     create_authority_program_address_seeds, create_mint_escrow_program_address_seeds,
@@ -50,11 +49,15 @@ const RULE: &[u8] = b"rule";
 
 const AUTHORITY: &[u8] = b"authority";
 
+const PROGRAM_AUTHORITY_SEED: &[u8] = b"p_authority";
+
+const DELEGATEE_SEED: &[u8] = b"delegatee";
+/*
 #[derive(Copy, Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum Vote {
     Up = 0,
     Down = 1,
-}
+} */
 
 pub fn find_escrow_program_address(program_id: &Pubkey, post: &Pubkey) -> (Pubkey, u8) {
     find_mint_escrow_program_address(program_id, post)
@@ -66,7 +69,7 @@ pub fn create_escrow_program_address_seeds<'a>(
 ) -> [&'a [u8]; 3] {
     create_mint_escrow_program_address_seeds(post, bump_seed)
 }
-
+/*
 pub fn create_post_mint_program_account<'a>(
     post: &Pubkey,
     vote: Vote,
@@ -82,6 +85,7 @@ pub fn create_post_mint_program_account<'a>(
     let rent = Rent::get()?;
     let mint_rent = rent.minimum_balance(Mint::LEN);
     let decimals = spl_token::native_mint::DECIMALS; // for now
+
     let mint_bump_seed = &[mint_bump_seed];
     let mint_account_seeds = match vote {
         Vote::Up => create_post_upvote_mint_program_address_seeds(post, mint_bump_seed),
@@ -126,7 +130,7 @@ pub fn create_post_mint_program_account<'a>(
     )?;
     Ok(())
 }
-
+ */
 pub fn find_post_program_address(program_id: &Pubkey, hash: &[u8; 32]) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[hash], program_id)
 }
@@ -170,6 +174,7 @@ pub fn create_post_downvote_mint_program_address_seeds<'a>(
     [MINT_SEED, DOWNVOTE, post.as_ref(), bump_seed]
 }
 
+/*
 /// Find rule account address
 pub fn find_create_rule_associated_program_address(
     program_id: &Pubkey,
@@ -231,7 +236,7 @@ pub fn create_rule_associated_program_address_seeds<'a>(
             TreasuryActionType::Create => [RULE, b"treasury_create", channel.as_ref(), bump_seed],
         },
     }
-}
+} */
 
 /// Find address for the token mint authority for the post account
 pub fn find_post_mint_authority_program_address(

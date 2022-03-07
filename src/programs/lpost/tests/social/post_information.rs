@@ -2,11 +2,8 @@ use super::utils::{assert_token_balance, TestChannel};
 use crate::social::utils::TestPost;
 use crate::social::utils::TestUser;
 use crate::utils::program_test;
-use lpost::{
-    find_escrow_program_address,
-    instruction::{create_post_transaction, CreatePostType},
-    Vote,
-};
+use lpost::instruction::create_post_proposal_transaction;
+use lpost::{find_escrow_program_address, instruction::CreatePostType};
 use solana_program::rent::Rent;
 use solana_program_test::*;
 use solana_sdk::{signer::Signer, transaction::Transaction};
@@ -35,7 +32,7 @@ async fn success_upvote() {
     .initialize(&mut banks_client, &payer, &recent_blockhash, utility_amount)
     .await; */
     let mut transaction_post = Transaction::new_with_payer(
-        &[create_post_transaction(
+        &[create_post_proposal_transaction(
             &lpost::id(),
             &payer.pubkey(),
             &test_user.user,

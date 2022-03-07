@@ -1,20 +1,26 @@
+use std::future::Future;
+
 use shared::content::ContentSource;
-use solana_program::{hash::Hash, program_pack::Pack};
+use solana_program::{
+    borsh::try_from_slice_unchecked, hash::Hash, program_pack::Pack, system_instruction,
+};
 
 use lchannel::{
-    find_channel_program_address,
-    instruction::create_channel_transaction,
-    state::{deserialize_channel_account, ChannelAccount},
+    find_channel_program_address, instruction::create_channel_transaction, state::ChannelAccount,
 };
 use lpost::{
     find_post_downvote_mint_program_address, find_post_upvote_mint_program_address,
     find_treasury_token_account_address,
     instruction::{
-        create_create_first_rule_transaction, create_post_unvote_transaction,
+        create_create_rule_transaction, create_post_unvote_transaction,
         create_post_vote_transaction,
     },
-    state::{deserialize_post_account, PostAccount, PostType},
-    Vote,
+    state::{
+        post::{deserialize_post_account, PostAccount, PostType},
+        proposal::proposal_transaction::ProposalTransactionV2,
+        rules::rule::{AcceptenceCriteria, RuleTimeConfig, RuleVoteConfig},
+        vote_record::Vote,
+    },
 };
 use luser::{
     find_user_account_program_address, instruction::create_user_transaction,
@@ -26,8 +32,10 @@ use solana_sdk::{
     transport::TransportError,
 };
 use spl_associated_token_account::{create_associated_token_account, get_associated_token_address};
-
-use super::action::utils::create_mint_from_keypair;
+pub fn deserialize_channel_account(data: &[u8]) -> std::io::Result<ChannelAccount> {
+    let account: ChannelAccount = try_from_slice_unchecked(data)?;
+    Ok(account)
+}
 
 pub async fn get_token_balance(banks_client: &mut BanksClient, token: &Pubkey) -> u64 {
     let token_account = banks_client.get_account(*token).await.unwrap().unwrap();
@@ -39,6 +47,64 @@ pub async fn get_token_balance(banks_client: &mut BanksClient, token: &Pubkey) -
 pub fn create_post_hash() -> (Pubkey, [u8; 32]) {
     let hash = Pubkey::new_unique().to_bytes();
     (Pubkey::find_program_address(&[&hash], &lpost::id()).0, hash)
+}
+
+pub async fn create_mint_from_keypair(
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: &Hash,
+    pool_mint: &Keypair,
+    pool_mint_authority: &Pubkey,
+) -> Result<(), TransportError> {
+    let rent = banks_client.get_rent().await.unwrap();
+    let mint_rent = rent.minimum_balance(spl_token::state::Mint::LEN);
+
+    let mut transaction = Transaction::new_with_payer(
+        &[
+            system_instruction::create_account(
+                &payer.pubkey(),
+                &pool_mint.pubkey(),
+                mint_rent,
+                spl_token::state::Mint::LEN as u64,
+                &spl_token::id(),
+            ),
+            spl_token::instruction::initialize_mint(
+                &spl_token::id(),
+                &pool_mint.pubkey(),
+                pool_mint_authority,
+                None,
+                0,
+            )
+            .unwrap(),
+        ],
+        Some(&payer.pubkey()),
+    );
+    transaction.sign(&[payer, pool_mint], *recent_blockhash);
+    #[allow(clippy::useless_conversion)] // Remove during upgrade to 1.10
+    banks_client
+        .process_transaction(transaction)
+        .await
+        .map_err(|e| e.into())
+}
+
+pub async fn create_mint_with_payer_authority(
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: &Hash,
+    _amount: u64,
+) -> Keypair {
+    let mint = Keypair::new();
+    let _mint_pubkey = mint.pubkey();
+    create_mint_from_keypair(
+        banks_client,
+        payer,
+        recent_blockhash,
+        &mint,
+        &payer.pubkey(),
+    )
+    .await
+    .unwrap();
+    mint
 }
 
 pub async fn assert_token_balance(banks_client: &mut BanksClient, account: &Pubkey, amount: u64) {
@@ -111,14 +177,25 @@ pub async fn create_and_verify_channel(
                 &lchannel::id(),
                 channel_name,
                 channel_creator_user,
-                utility_mint_address,
+                None,
                 link,
                 &payer.pubkey(),
             ),
-            create_create_first_rule_transaction(
+            create_create_rule_transaction(
                 &lpost::id(),
                 &payer.pubkey(),
-                &channel_address_pda,
+                &RuleVoteConfig {
+                    criteria: AcceptenceCriteria::default(),
+                    rule_condition: None,
+                    info: None,
+                    name: None,
+                    vote_tipping: lpost::state::enums::VoteTipping::Disabled,
+                },
+                &RuleTimeConfig {
+                    max_voting_time: 100000,
+                    min_transaction_hold_up_time: 0,
+                    proposal_cool_off_time: 0,
+                },
             ),
         ],
         Some(&payer.pubkey()),
@@ -263,8 +340,7 @@ pub struct TestPost {
     pub channel: Pubkey,
     pub source: ContentSource,
     pub hash: [u8; 32],
-    pub upvote_mint: Pubkey,
-    pub downvote_mint: Pubkey,
+    pub proposal_transactions: Vec<Pubkey>,
 }
 
 impl TestPost {
@@ -280,19 +356,44 @@ impl TestPost {
                 url: "whatever".into(),
             },
             channel: *channel,
-            upvote_mint,
-            downvote_mint,
+            proposal_transactions: Vec::new(),
         }
     }
 
-    pub async fn vote(
+    pub async fn get_proposal_transactions(
         &self,
         banks_client: &mut BanksClient,
-        user_payer: &Keypair,
-        vote: Vote,
-        amount: u64,
-    ) {
-        let _post_account = deserialize_post_account(
+    ) -> Vec<Box<dyn Future<Output = std::io::Result<ProposalTransactionV2>>>> {
+        let result = self
+            .proposal_transactions
+            .iter()
+            .map(|id| async {
+                let transaction: ProposalTransactionV2 = try_from_slice_unchecked(
+                    &banks_client.get_account(*id).await.unwrap().unwrap().data,
+                )
+                .unwrap();
+                return transaction;
+            })
+            .collect::<Vec<_>>();
+        return result;
+    }
+    pub async fn get_proposal_used_rules(&self, banks_client: &mut BanksClient) {
+        let x = self.proposal_transactions.iter().map(|id| async {
+            let transaction: ProposalTransactionV2 = try_from_slice_unchecked(
+                &banks_client.get_account(*id).await.unwrap().unwrap().data,
+            )
+            .unwrap();
+            return transaction.get_used_rules();
+        });
+
+        if let PostType::Proposal(proposal) = post.post_type {
+            banks_client.get_account(address)
+        }
+        return None;
+    }
+
+    pub async fn vote(&self, banks_client: &mut BanksClient, owner_payer: &Keypair, vote: Vote) {
+        /*  let _post_account = deserialize_post_account(
             &*banks_client
                 .get_account(self.post)
                 .await
@@ -333,9 +434,19 @@ impl TestPost {
                 )],
                 Some(&user_payer.pubkey()),
             ),
-        };
+        }; */
+        // let rules =
+        let mut tx = Transaction::new_with_payer(
+            &[create_post_vote_transaction(
+                &lpost::id(),
+                &owner_payer.pubkey(),
+                &self.post,
+                vote,
+            )],
+            Some(&owner_payer.pubkey()),
+        );
         tx.sign(
-            &[user_payer],
+            &[owner_payer],
             banks_client.get_latest_blockhash().await.unwrap(),
         );
         banks_client.process_transaction(tx).await.unwrap();

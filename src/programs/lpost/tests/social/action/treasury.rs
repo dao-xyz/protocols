@@ -5,19 +5,17 @@ use crate::{
 use lpost::{
     find_create_rule_associated_program_address,
     instruction::{create_post_transaction, CreatePostType},
-    rules::{deserialize_action_rule_account, AcceptenceCriteria, ActionType, TreasuryActionType},
-    state::{Action, ActionStatus, CreateRule, TreasuryAction, VotingRuleUpdate},
+    state::post::{Action, ActionStatus, CreateRule, TreasuryAction, VotingRuleUpdate},
+    state::rules::{
+        deserialize_action_rule_account, AcceptenceCriteria, ActionType, TreasuryActionType,
+    },
     Vote,
 };
 
 use solana_program_test::*;
-use solana_sdk::{
-    signer::Signer,
-    transaction::{Transaction},
-};
+use solana_sdk::{signer::Signer, transaction::Transaction};
 use spl_associated_token_account::get_associated_token_address;
 use std::time::Duration;
-
 
 use super::utils::{assert_action_status, execute_post, time_since_epoch};
 

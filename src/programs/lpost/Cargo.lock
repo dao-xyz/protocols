@@ -1354,6 +1354,7 @@ name = "lpost"
 version = "0.0.1"
 dependencies = [
  "arrayref",
+ "base64 0.13.0",
  "bincode",
  "borsh 0.9.3",
  "borsh-derive 0.9.3",

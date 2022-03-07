@@ -1,34 +1,28 @@
 use std::io::Result;
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use shared::{content::ContentSource, pack::MaxSize};
+use shared::{account::MaxSize, content::ContentSource};
+use solana_program::clock::UnixTimestamp;
+use solana_program::program_pack::IsInitialized;
 use solana_program::{borsh::try_from_slice_unchecked, pubkey::Pubkey};
 
-use crate::{
-    accounts::AccountType,
-    rules::{AcceptenceCriteria, ActionType},
-    tokens::spl_utils::find_authority_program_address,
-};
+use super::proposal::ProposalV2;
+use super::rules::rule::{find_create_rule_associated_program_address, AcceptenceCriteria};
+use super::{enums::Asset, rules::rule::InstructionConditional};
 
-use super::find_create_rule_associated_program_address;
+use crate::{accounts::AccountType, tokens::spl_utils::find_authority_program_address};
 
 pub const MAX_CONTENT_LEN: usize = 32 // hash pubkey
     + 200; // IPFS link (and some padding)
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
-pub enum Asset {
-    NonAsset, // Not for sale, just a regular "post" (no one would want to buy this)
-              // Add more markets here, like auction, then this would describe the owner token etc
-}
-
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum PostType {
     InformationPost(InformationPost),
-    ActionPost(ActionPost),
+    Proposal(ProposalV2),
 }
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub struct InformationPost {
-    pub created_at: u64,
+    pub created_at: UnixTimestamp,
     pub upvotes: u64,
     pub downvotes: u64,
 }
@@ -38,18 +32,26 @@ pub struct PostAccount {
     pub account_type: AccountType,
     pub creator: Pubkey,
     pub channel: Pubkey,
-    pub vote_mint: Pubkey, // to be swapped for either upvote or downvote tokens
     pub deleted: bool,
     pub hash: [u8; 32],
     pub post_type: PostType,
     pub source: ContentSource,
-    pub asset: Asset,
+}
+
+impl IsInitialized for PostAccount {
+    fn is_initialized(&self) -> bool {
+        self.account_type == AccountType::Post
+    }
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
 pub struct CreateRule {
+    pub id: Pubkey,
     pub channel: Pubkey,
-    pub action: ActionType,
+    pub vote_mint: Pubkey,
+    /*     pub action: ActionType, */
+    pub instruction_program_id: Pubkey,
+    pub instruction_condition: InstructionConditional,
     pub criteria: AcceptenceCriteria,
     pub name: Option<String>,
     pub info: Option<ContentSource>,
@@ -68,13 +70,12 @@ pub enum VotingRuleUpdate {
 }
 
 impl VotingRuleUpdate {
-    pub fn create(rule: CreateRule, channel: &Pubkey, program_id: &Pubkey) -> Self {
-        let bump_seed =
-            find_create_rule_associated_program_address(program_id, &rule.action, channel).1;
-
+    pub fn create(rule: CreateRule, program_id: &Pubkey) -> Self {
+        let bump_seed = find_create_rule_associated_program_address(program_id, &rule.id).1;
         Self::Create { rule, bump_seed }
     }
 }
+/*
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum Action {
     CustomEvent { event_type: Pubkey, data: Vec<u8> },
@@ -122,7 +123,7 @@ pub struct ActionPost {
     pub expires_at: u64,
     pub status: ActionStatus,
     pub action: Action,
-}
+}*/
 
 pub const MAX_URI_LENGTH: usize = 200;
 pub const MAX_NAME_LENGTH: usize = 100;
