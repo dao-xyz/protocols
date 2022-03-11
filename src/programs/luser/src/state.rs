@@ -1,10 +1,8 @@
 use std::io::Result;
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use shared::content::ContentSource;
+use shared::{account::MaxSize, content::ContentSource};
 use solana_program::{borsh::try_from_slice_unchecked, pubkey::Pubkey};
-
-use crate::MaxSize;
 
 pub const MAX_URI_LENGTH: usize = 200;
 pub const MAX_NAME_LENGTH: usize = 100;

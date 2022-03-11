@@ -1,9 +1,4 @@
-
-
-
-
 use solana_program_test::*;
-
 
 pub fn program_test() -> ProgramTest {
     let mut program = ProgramTest::new(
@@ -16,11 +11,16 @@ pub fn program_test() -> ProgramTest {
         lchannel::id(),
         processor!(lchannel::processor::Processor::process),
     );
-
     program.add_program(
+        "ltag",
+        ltag::id(),
+        processor!(lchannel::processor::Processor::process),
+    );
+
+    /*  program.add_program(
         "luser",
         luser::id(),
         processor!(luser::processor::Processor::process),
-    );
+    ); */
     program
 }

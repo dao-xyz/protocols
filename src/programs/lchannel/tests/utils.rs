@@ -1,7 +1,3 @@
-use luser::{
-    find_user_account_program_address, instruction::create_user_transaction,
-    state::deserialize_user_account,
-};
 use solana_program::pubkey::Pubkey;
 use solana_program_test::*;
 
@@ -11,14 +7,14 @@ use solana_sdk::{signature::Keypair, signer::Signer, transaction::Transaction};
 
 pub fn program_test() -> ProgramTest {
     let mut program = ProgramTest::new("lchannel", lchannel::id(), processor!(Processor::process));
-    program.add_program(
+    /*   program.add_program(
         "luser",
         luser::id(),
         processor!(luser::processor::Processor::process),
-    );
+    ); */
     program
 }
-
+/*
 pub async fn create_and_verify_user(
     banks_client: &mut BanksClient,
     payer: &Keypair,
@@ -53,3 +49,4 @@ pub async fn create_and_verify_user(
     assert_eq!(user.name, username);
     user_account_address
 }
+ */

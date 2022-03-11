@@ -1256,7 +1256,7 @@ dependencies = [
  "bincode",
  "borsh 0.9.3",
  "borsh-derive 0.9.3",
- "luser",
+ "ltag",
  "num-derive",
  "num-traits",
  "shared",
@@ -1354,11 +1354,11 @@ name = "lpost"
 version = "0.0.1"
 dependencies = [
  "arrayref",
- "base64 0.13.0",
  "bincode",
  "borsh 0.9.3",
  "borsh-derive 0.9.3",
  "lchannel",
+ "ltag",
  "luser",
  "num-derive",
  "num-traits",
@@ -1367,9 +1367,24 @@ dependencies = [
  "solana-program",
  "solana-program-test",
  "solana-sdk",
- "solana-vote-program",
  "spl-associated-token-account",
  "spl-math",
+ "spl-token",
+ "thiserror",
+]
+
+[[package]]
+name = "ltag"
+version = "0.0.1"
+dependencies = [
+ "arrayref",
+ "bincode",
+ "borsh 0.9.3",
+ "borsh-derive 0.9.3",
+ "num-derive",
+ "num-traits",
+ "shared",
+ "solana-program",
  "spl-token",
  "thiserror",
 ]

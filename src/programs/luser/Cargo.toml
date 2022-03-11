@@ -14,6 +14,7 @@ test-bpf = []
 
 [dependencies]
 shared = { version = "0.0.1", path = "../shared" }
+
 spl-token = { version = "3.2",  features = [ "no-entrypoint" ]  }
 spl-math = { version = "0.1", features = [ "no-entrypoint" ] }
 spl-associated-token-account = { version = "1.0.3", features = [ "no-entrypoint" ] }

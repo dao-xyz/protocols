@@ -6,14 +6,12 @@ use solana_program::{
     system_program,
 };
 
-use crate::find_channel_program_address;
+use crate::state::{find_channel_program_address, ChannelAuthority};
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum ChannelInstruction {
     // Create channel
     CreateChannel {
-        #[allow(dead_code)] // but it's not
-        creator: Pubkey,
         #[allow(dead_code)] // but it's not
         parent: Option<Pubkey>,
         #[allow(dead_code)] // but it's not
@@ -22,8 +20,10 @@ pub enum ChannelInstruction {
         link: Option<ContentSource>,
         #[allow(dead_code)] // but it's not
         channel_account_bump_seed: u8,
-        /*         #[allow(dead_code)] // but it's not
-        create_rule_address_bump_seed: u8, */
+
+        // Tag that lets users create posts
+        #[allow(dead_code)] // but it's not
+        channel_authority_config: ChannelAuthority,
     },
 
     // Update channel
@@ -37,12 +37,13 @@ pub enum ChannelInstruction {
 }
 
 /// Creates a create channel transction
-pub fn create_channel_transaction(
+pub fn create_channel(
     program_id: &Pubkey,
     channel_name: &str,
     creator: &Pubkey,
-    parent_and_authority: &Option<(Pubkey, Pubkey)>,
+    parent_and_authority: Option<(Pubkey, Pubkey)>,
     link: Option<ContentSource>,
+    channel_authority_config: ChannelAuthority,
     payer: &Pubkey,
 ) -> Instruction {
     let (channel, channel_account_bump_seed) =
@@ -58,9 +59,9 @@ pub fn create_channel_transaction(
            );
     */
     let mut accounts = vec![
-        AccountMeta::new(*payer, true),
-        AccountMeta::new(*creator, false),
         AccountMeta::new(channel, false),
+        AccountMeta::new_readonly(*creator, true),
+        AccountMeta::new(*payer, true),
         /*    AccountMeta::new(create_rule_address, false), */
         AccountMeta::new(system_program::id(), false),
     ];
@@ -77,9 +78,8 @@ pub fn create_channel_transaction(
             name: channel_name.into(),
             link,
             parent: parent_address,
-            creator: *creator,
-            channel_account_bump_seed, /* ,
-                                       create_rule_address_bump_seed, */
+            channel_account_bump_seed,
+            channel_authority_config,
         })
         .try_to_vec()
         .unwrap(),

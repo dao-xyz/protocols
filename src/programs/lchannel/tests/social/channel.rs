@@ -1,11 +1,10 @@
-use lchannel::find_channel_program_address;
 use lchannel::instruction::{
-    create_channel_transaction, create_update_authority_transacation,
-    create_update_info_transacation,
+    create_channel, create_update_authority_transacation, create_update_info_transacation,
 };
-use lchannel::state::deserialize_channel_account;
 
+use lchannel::state::{find_channel_program_address, ChannelAccount, ChannelAuthority};
 use shared::content::ContentSource;
+use solana_program::borsh::try_from_slice_unchecked;
 use solana_program::hash::Hash;
 use solana_program::instruction::InstructionError;
 use solana_program_test::*;
@@ -15,32 +14,39 @@ use solana_sdk::transaction::TransactionError;
 use solana_sdk::transport::TransportError;
 use solana_sdk::{pubkey::Pubkey, signer::Signer, transaction::Transaction};
 
-use crate::utils::{create_and_verify_user, program_test};
+use crate::utils::program_test;
+
+pub fn deserialize_channel_account(data: &[u8]) -> std::io::Result<ChannelAccount> {
+    let account: ChannelAccount = try_from_slice_unchecked(data)?;
+    Ok(account)
+}
 
 pub async fn create_and_verify_channel(
     banks_client: &mut BanksClient,
     payer: &Keypair,
     recent_blockhash: &Hash,
     channel_name: &str,
-    channel_owner_user: &Pubkey,
+    channel_owner_user: &Keypair,
     parent_and_authority: &Option<(Pubkey, Pubkey)>,
+    channel_authority_config: &ChannelAuthority,
     link: Option<ContentSource>,
 ) -> Result<Pubkey, TransportError> {
     let (channel_address_pda, _bump) =
         find_channel_program_address(&lchannel::id(), channel_name).unwrap();
 
     let mut transaction_create = Transaction::new_with_payer(
-        &[create_channel_transaction(
+        &[create_channel(
             &lchannel::id(),
             channel_name,
-            channel_owner_user,
-            parent_and_authority,
+            &channel_owner_user.pubkey(),
+            *parent_and_authority,
             link,
+            channel_authority_config.clone(),
             &payer.pubkey(),
         )],
         Some(&payer.pubkey()),
     );
-    transaction_create.sign(&[payer], *recent_blockhash);
+    transaction_create.sign(&[payer, channel_owner_user], *recent_blockhash);
     banks_client.process_transaction(transaction_create).await?;
 
     // Verify channel name
@@ -60,24 +66,18 @@ pub async fn success() {
     let program = program_test();
 
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
-
-    let user = create_and_verify_user(
-        &mut banks_client,
-        &payer,
-        &recent_blockhash,
-        "name",
-        "profile",
-    )
-    .await;
-
     // create a channel
     let channel = create_and_verify_channel(
         &mut banks_client,
         &payer,
         &recent_blockhash,
         "Channel",
-        &user,
+        &payer,
         &None,
+        &ChannelAuthority::AuthorityByTag {
+            tag: Pubkey::new_unique(),
+            authority: Pubkey::new_unique(),
+        },
         Some("link".into()),
     )
     .await
@@ -89,8 +89,12 @@ pub async fn success() {
         &payer,
         &recent_blockhash,
         "asd",
-        &user,
+        &payer,
         &Some((channel, payer.pubkey())),
+        &ChannelAuthority::AuthorityByTag {
+            tag: Pubkey::new_unique(),
+            authority: Pubkey::new_unique(),
+        },
         Some("link".into()),
     )
     .await
@@ -100,15 +104,7 @@ pub async fn success() {
 #[tokio::test]
 async fn success_update_info() {
     let (mut banks_client, payer, recent_blockhash) = program_test().start().await;
-    let username = "name";
-    let user = create_and_verify_user(
-        &mut banks_client,
-        &payer,
-        &recent_blockhash,
-        username,
-        "ipfs://kkk",
-    )
-    .await;
+
     let channel_name = "Channel";
 
     create_and_verify_channel(
@@ -116,8 +112,12 @@ async fn success_update_info() {
         &payer,
         &recent_blockhash,
         channel_name,
-        &user,
+        &payer,
         &None,
+        &ChannelAuthority::AuthorityByTag {
+            tag: Pubkey::new_unique(),
+            authority: Pubkey::new_unique(),
+        },
         Some("link".into()),
     )
     .await
@@ -154,15 +154,7 @@ async fn success_update_info() {
 #[tokio::test]
 async fn success_update_authority() {
     let (mut banks_client, payer, recent_blockhash) = program_test().start().await;
-    let username = "name";
-    let user = create_and_verify_user(
-        &mut banks_client,
-        &payer,
-        &recent_blockhash,
-        username,
-        "ipfs://kkk",
-    )
-    .await;
+
     let channel_name = "Channel";
 
     create_and_verify_channel(
@@ -170,8 +162,12 @@ async fn success_update_authority() {
         &payer,
         &recent_blockhash,
         channel_name,
-        &user,
+        &payer,
         &None,
+        &ChannelAuthority::AuthorityByTag {
+            tag: Pubkey::new_unique(),
+            authority: Pubkey::new_unique(),
+        },
         Some("link".into()),
     )
     .await
@@ -219,15 +215,6 @@ async fn fail_already_exist() {
         },
     );
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
-    let username = "name";
-    let user = create_and_verify_user(
-        &mut banks_client,
-        &payer,
-        &recent_blockhash,
-        username,
-        "profile",
-    )
-    .await;
 
     let channel_name = "Channel";
 
@@ -236,8 +223,12 @@ async fn fail_already_exist() {
         &payer,
         &recent_blockhash,
         channel_name,
-        &user,
+        &payer,
         &None,
+        &ChannelAuthority::AuthorityByTag {
+            tag: Pubkey::new_unique(),
+            authority: Pubkey::new_unique(),
+        },
         Some("link".into()),
     )
     .await
@@ -250,8 +241,12 @@ async fn fail_already_exist() {
         &payer,
         &latest_blockhash,
         channel_name,
-        &user,
+        &payer,
         &None,
+        &ChannelAuthority::AuthorityByTag {
+            tag: Pubkey::new_unique(),
+            authority: Pubkey::new_unique(),
+        },
         Some("link".into()),
     )
     .await
@@ -281,15 +276,7 @@ async fn fail_update_info_wrong_authority() {
         },
     );
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
-    let username = "name";
-    let user = create_and_verify_user(
-        &mut banks_client,
-        &payer,
-        &recent_blockhash,
-        username,
-        "profile",
-    )
-    .await;
+
     let channel_name = "Channel";
 
     create_and_verify_channel(
@@ -297,8 +284,12 @@ async fn fail_update_info_wrong_authority() {
         &payer,
         &recent_blockhash,
         channel_name,
-        &user,
+        &payer,
         &None,
+        &ChannelAuthority::AuthorityByTag {
+            tag: Pubkey::new_unique(),
+            authority: Pubkey::new_unique(),
+        },
         Some("link".into()),
     )
     .await
@@ -345,15 +336,7 @@ async fn fail_update_authority_wrong_authority() {
         },
     );
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
-    let username = "name";
-    let user = create_and_verify_user(
-        &mut banks_client,
-        &payer,
-        &recent_blockhash,
-        username,
-        "profile",
-    )
-    .await;
+
     let channel_name = "Channel";
 
     create_and_verify_channel(
@@ -361,8 +344,12 @@ async fn fail_update_authority_wrong_authority() {
         &payer,
         &recent_blockhash,
         channel_name,
-        &user,
+        &payer,
         &None,
+        &ChannelAuthority::AuthorityByTag {
+            tag: Pubkey::new_unique(),
+            authority: Pubkey::new_unique(),
+        },
         Some("link".into()),
     )
     .await

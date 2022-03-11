@@ -1,5 +1,5 @@
 use arrayref::array_ref;
-use shared::pack::check_data_len;
+use shared::account::check_data_len;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,

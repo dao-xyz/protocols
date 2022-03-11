@@ -17,6 +17,8 @@ spl-token = { version = "3.2",  features = [ "no-entrypoint" ]  }
 spl-math = { version = "0.1", features = [ "no-entrypoint" ] }
 spl-associated-token-account = { version = "1.0.3", features = [ "no-entrypoint" ] }
 luser = { version = "0.0.1", path="../luser", features = [ "no-entrypoint" ] }
+ltag = { version = "0.0.1", path="../ltag", features = [ "no-entrypoint" ] }
+
 shared = { version = "0.0.1", path = "../shared" }
 lchannel = { version = "0.0.1", path="../lchannel", features = [ "no-entrypoint" ] }
 
@@ -33,9 +35,8 @@ num-traits = "0.2"
 [dev-dependencies]
 solana-program-test = "1.9.4"
 solana-sdk = "1.9.4"
-solana-vote-program = "1.9.4"
 proptest = "1.0"
-base64 = "0.13"
+
 
 [lib]
 name = "lpost"

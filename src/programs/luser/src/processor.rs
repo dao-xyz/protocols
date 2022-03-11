@@ -13,14 +13,15 @@ use solana_program::{
 };
 
 use crate::{
-    create_and_serialize_account_signed_verify, create_user_account_program_address_seeds,
-    shared::names::entity_name_is_valid, state::AccountType,
+    create_user_account_program_address_seeds, shared::names::entity_name_is_valid,
+    state::AccountType,
 };
 
 use super::{
     instruction::UserInstruction,
     state::{deserialize_user_account, UserAccount},
 };
+use shared::account::create_and_serialize_account_verify_with_bump;
 
 pub struct Processor {}
 impl Processor {
@@ -60,7 +61,7 @@ impl Processor {
             owner: *payer_account.key, // payer becomes owner
         };
 
-        create_and_serialize_account_signed_verify(
+        create_and_serialize_account_verify_with_bump(
             payer_account,
             user_acount_info,
             &user_account,

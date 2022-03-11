@@ -1,4 +1,4 @@
-use arrayref::array_ref;
+
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -16,8 +16,6 @@ use spl_token::{
     instruction::{initialize_account, initialize_mint, mint_to},
     state::Mint,
 };
-
-use crate::{error::PostError, pack::check_data_len};
 
 pub const MINT_SEED: &[u8] = b"mint";
 pub const UTILITY_MINT: &[u8] = b"utility";
@@ -437,7 +435,7 @@ pub fn transfer_spl_tokens_signed<'a>(
 
     Ok(())
 }
-
+/*
 /// Asserts the given account_info represents a valid SPL Token account which is initialized and belongs to spl_token program
 pub fn assert_is_valid_spl_token_account(account_info: &AccountInfo) -> Result<(), ProgramError> {
     if account_info.data_is_empty() {
@@ -530,3 +528,4 @@ pub fn get_token_balance(token_account: &AccountInfo) -> Result<u64, ProgramErro
 
     Ok(u64::from_le_bytes(*amount))
 }
+ */

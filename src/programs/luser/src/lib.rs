@@ -7,17 +7,8 @@ pub mod state;
 pub mod tokens;
 
 solana_program::declare_id!("FeHc2yfKLCSxdwyvKaY8rZsA4da3kyJNpjJtQe8ioh87");
-use std::iter::FromIterator;
-
-use ::shared::pack::MaxSize;
-use borsh::BorshSerialize;
-use solana_program::account_info::AccountInfo;
-use solana_program::program::invoke_signed;
-use solana_program::program_error::ProgramError;
-
 use solana_program::pubkey::{Pubkey, PubkeyError, MAX_SEEDS, MAX_SEED_LEN};
-use solana_program::rent::Rent;
-use solana_program::{msg, system_instruction};
+use std::iter::FromIterator;
 
 /// Find user account program owned address from username
 pub fn find_user_account_program_address(program_id: &Pubkey, username: &str) -> (Pubkey, u8) {
@@ -55,86 +46,6 @@ pub fn generate_seeds_from_string(str: &str) -> Result<Vec<Vec<u8>>, PubkeyError
         return Err(PubkeyError::MaxSeedLengthExceeded);
     }
     Ok(seeds)
-}
-
-/// Creates a new account and serializes data into it using the provided seeds to invoke signed CPI call
-/// Note: This functions also checks the provided account PDA matches the supplied seeds
-pub fn create_and_serialize_account_signed_verify<'a, T: BorshSerialize + MaxSize>(
-    payer_info: &AccountInfo<'a>,
-    account_info: &AccountInfo<'a>,
-    account_data: &T,
-    seeds: &[&[u8]],
-    program_id: &Pubkey,
-    system_info: &AccountInfo<'a>,
-    rent: &Rent,
-) -> Result<(), ProgramError> {
-    let account_address_pda = Pubkey::create_program_address(seeds, program_id)?;
-    if account_info.key != &account_address_pda {
-        msg!(
-            "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
-            account_address_pda,
-            account_info.key
-        );
-        return Err(ProgramError::InvalidSeeds);
-    }
-    create_and_serialize_account_signed_from_pda(
-        payer_info,
-        account_info,
-        account_data,
-        seeds,
-        program_id,
-        system_info,
-        rent,
-    )
-}
-
-/// Creates a new account and serializes data into it using the provided seeds to invoke signed CPI call
-/// Note: This functions also checks the provided account PDA matches the supplied seeds
-fn create_and_serialize_account_signed_from_pda<'a, T: BorshSerialize + MaxSize>(
-    payer_info: &AccountInfo<'a>,
-    account_info: &AccountInfo<'a>,
-    account_data: &T,
-    seeds: &[&[u8]],
-    program_id: &Pubkey,
-    system_info: &AccountInfo<'a>,
-    rent: &Rent,
-) -> Result<(), ProgramError> {
-    let (serialized_data, account_size) = if let Some(max_size) = account_data.get_max_size() {
-        (None, max_size)
-    } else {
-        let serialized_data = account_data.try_to_vec()?;
-        let account_size = serialized_data.len();
-        (Some(serialized_data), account_size)
-    };
-
-    let create_account_instruction = system_instruction::create_account(
-        payer_info.key,
-        account_info.key,
-        rent.minimum_balance(account_size),
-        account_size as u64,
-        program_id,
-    );
-    invoke_signed(
-        &create_account_instruction,
-        &[
-            payer_info.clone(),
-            account_info.clone(),
-            system_info.clone(),
-        ],
-        &[seeds],
-    )?;
-
-    if let Some(serialized_data) = serialized_data {
-        account_info
-            .data
-            .borrow_mut()
-            .copy_from_slice(&serialized_data);
-    } else {
-        account_data.serialize(&mut *account_info.data.borrow_mut())?;
-        // account_info.data will be empty after this even though some value has been serialized
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]

@@ -1,278 +1,127 @@
-use super::utils::{assert_token_balance, TestChannel};
-use crate::social::utils::TestPost;
-use crate::social::utils::TestUser;
-use crate::utils::program_test;
-use lpost::instruction::create_post_proposal_transaction;
-use lpost::{find_escrow_program_address, instruction::CreatePostType};
-use solana_program::rent::Rent;
+use super::{
+    super::utils::program_test,
+    utils::{create_tag, create_tag_record, TestPost},
+};
+use crate::social::utils::TestChannel;
+use lchannel::state::ChannelAuthority;
+use lpost::{
+    error::PostError,
+    state::{post::PostContent, vote_record::Vote},
+};
+use shared::content::ContentSource;
+use solana_program::instruction::InstructionError;
 use solana_program_test::*;
-use solana_sdk::{signer::Signer, transaction::Transaction};
+use solana_sdk::{signature::Keypair, signer::Signer, transaction::TransactionError};
 
 #[tokio::test]
-async fn success_upvote() {
+async fn success_round_trip() {
     let program = program_test();
-
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
-    let utility_amount = 100000;
-    let test_user = TestUser::new(&mut banks_client, &payer, &recent_blockhash).await;
-    let test_channel =
-        TestChannel::new(&test_user, &mut banks_client, &payer, &recent_blockhash).await;
-    let test_post = TestPost::new(&test_channel.channel).await;
-    test_channel
-        .mint_to(
-            utility_amount,
-            &payer.pubkey(),
+    let authority = Keypair::new(); // Context for creating tag records
+    let authority_tag = create_tag(&mut banks_client, &payer, &recent_blockhash, "tag").await;
+    let test_channel = TestChannel::new(
+        &ChannelAuthority::AuthorityByTag {
+            tag: authority_tag,
+            authority: authority.pubkey(),
+        },
+        &mut banks_client,
+        &payer,
+        &recent_blockhash,
+    )
+    .await;
+
+    // Create a record so we have authority to vote and create posts
+    create_tag_record(
+        &mut banks_client,
+        &payer,
+        &recent_blockhash,
+        &authority_tag,
+        &payer,
+        &authority,
+    )
+    .await;
+
+    let test_post = TestPost::new(
+        &test_channel,
+        &PostContent::Info {
+            content: ContentSource::String("Hello".into()),
+        },
+        &payer,
+        &payer,
+        &mut banks_client,
+        &recent_blockhash,
+    )
+    .await;
+
+    test_post
+        .vote(
+            Vote::Up,
+            &payer,
             &mut banks_client,
             &payer,
             &recent_blockhash,
         )
-        .await;
+        .await
+        .unwrap();
 
-    /*  socials
-    .initialize(&mut banks_client, &payer, &recent_blockhash, utility_amount)
-    .await; */
-    let mut transaction_post = Transaction::new_with_payer(
-        &[create_post_proposal_transaction(
-            &lpost::id(),
-            &payer.pubkey(),
-            &test_user.user,
-            &test_channel.channel,
-            &test_channel.mint,
-            &test_post.hash,
-            &CreatePostType::InformationPost,
-            &test_post.source,
-        )],
-        Some(&payer.pubkey()),
+    test_post.assert_votes(&mut banks_client, 1, 0).await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Test failing revotes
+    assert_eq!(
+        test_post
+            .vote(
+                Vote::Up,
+                &payer,
+                &mut banks_client,
+                &payer,
+                &recent_blockhash
+            )
+            .await
+            .unwrap_err()
+            .unwrap(),
+        TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(PostError::VoteAlreadyExist as u32)
+        )
     );
-    transaction_post.sign(&[&payer], recent_blockhash);
-    banks_client
-        .process_transaction(transaction_post)
+    assert_eq!(
+        test_post
+            .vote(
+                Vote::Down,
+                &payer,
+                &mut banks_client,
+                &payer,
+                &recent_blockhash
+            )
+            .await
+            .unwrap_err()
+            .unwrap(),
+        TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(PostError::VoteAlreadyExist as u32)
+        )
+    );
+
+    // unvote
+    test_post
+        .unvote(&payer, &mut banks_client, &payer, &recent_blockhash)
         .await
         .unwrap();
 
-    let (escrow_account_info, _) = find_escrow_program_address(&lpost::id(), &test_post.post);
-    let rent = Rent::default();
-    let stake = 1000;
+    test_post.assert_votes(&mut banks_client, 0, 0).await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    // Stake some
+    // test revote again, but this time downvote
     test_post
-        .vote(&mut banks_client, &payer, Vote::Up, stake)
-        .await;
-
-    let escrow_account = banks_client
-        .get_account(escrow_account_info)
-        .await
-        .unwrap()
-        .unwrap();
-
-    assert!(rent.is_exempt(escrow_account.lamports, escrow_account.data.len()));
-
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.token_account(&test_channel),
-        utility_amount - stake,
-    )
-    .await;
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.upvote_token_account(&test_post),
-        stake,
-    )
-    .await;
-    assert_token_balance(&mut banks_client, &escrow_account_info, stake).await;
-    test_post.assert_vote(&mut banks_client, stake, 0).await;
-
-    // Stake more
-    test_post
-        .vote(&mut banks_client, &payer, Vote::Up, stake)
-        .await;
-
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.token_account(&test_channel),
-        utility_amount - stake * 2,
-    )
-    .await;
-
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.upvote_token_account(&test_post),
-        stake * 2,
-    )
-    .await;
-    assert_token_balance(&mut banks_client, &escrow_account_info, stake * 2).await;
-    test_post.assert_vote(&mut banks_client, stake * 2, 0).await;
-
-    // Unstake
-    test_post
-        .unvote(&mut banks_client, &payer, Vote::Up, stake)
-        .await;
-
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.token_account(&test_channel),
-        utility_amount - stake,
-    )
-    .await;
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.upvote_token_account(&test_post),
-        stake,
-    )
-    .await;
-    assert_token_balance(&mut banks_client, &escrow_account_info, stake).await;
-    test_post.assert_vote(&mut banks_client, stake, 0).await;
-
-    // Unstake, same amount (we should now 0 token accounts)
-    test_post
-        .unvote(&mut banks_client, &payer, Vote::Up, stake)
-        .await;
-
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.token_account(&test_channel),
-        utility_amount,
-    )
-    .await;
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.upvote_token_account(&test_post),
-        0,
-    )
-    .await;
-    assert_token_balance(&mut banks_client, &escrow_account_info, 0).await;
-    test_post.assert_vote(&mut banks_client, 0, 0).await;
-}
-
-#[tokio::test]
-async fn success_downvote() {
-    let program = program_test();
-
-    let (mut banks_client, payer, recent_blockhash) = program.start().await;
-    let utility_amount = 100000;
-    let test_user = TestUser::new(&mut banks_client, &payer, &recent_blockhash).await;
-    let test_channel =
-        TestChannel::new(&test_user, &mut banks_client, &payer, &recent_blockhash).await;
-    let test_post = TestPost::new(&test_channel.channel).await;
-    test_channel
-        .mint_to(
-            utility_amount,
-            &payer.pubkey(),
+        .vote(
+            Vote::Down,
+            &payer,
             &mut banks_client,
             &payer,
             &recent_blockhash,
         )
-        .await;
-
-    let mut transaction_post = Transaction::new_with_payer(
-        &[create_post_transaction(
-            &lpost::id(),
-            &payer.pubkey(),
-            &test_user.user,
-            &test_channel.channel,
-            &test_channel.mint,
-            &test_post.hash,
-            &CreatePostType::InformationPost,
-            &test_post.source,
-        )],
-        Some(&payer.pubkey()),
-    );
-    transaction_post.sign(&[&payer], recent_blockhash);
-    banks_client
-        .process_transaction(transaction_post)
         .await
         .unwrap();
-
-    let (escrow_account_info, _) = find_escrow_program_address(&lpost::id(), &test_post.post);
-    let rent = Rent::default();
-    let stake = 1000;
-
-    // Stake some
-    test_post
-        .vote(&mut banks_client, &payer, Vote::Down, stake)
-        .await;
-
-    let escrow_account = banks_client
-        .get_account(escrow_account_info)
-        .await
-        .unwrap()
-        .unwrap();
-
-    assert!(rent.is_exempt(escrow_account.lamports, escrow_account.data.len()));
-
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.token_account(&test_channel),
-        utility_amount - stake,
-    )
-    .await;
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.downvote_token_account(&test_post),
-        stake,
-    )
-    .await;
-    assert_token_balance(&mut banks_client, &escrow_account_info, stake).await;
-    test_post.assert_vote(&mut banks_client, 0, stake).await;
-
-    // Stake more
-    test_post
-        .vote(&mut banks_client, &payer, Vote::Down, stake)
-        .await;
-
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.token_account(&test_channel),
-        utility_amount - stake * 2,
-    )
-    .await;
-
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.downvote_token_account(&test_post),
-        stake * 2,
-    )
-    .await;
-    assert_token_balance(&mut banks_client, &escrow_account_info, stake * 2).await;
-    test_post.assert_vote(&mut banks_client, 0, stake * 2).await;
-
-    // Unstake
-    test_post
-        .unvote(&mut banks_client, &payer, Vote::Down, stake)
-        .await;
-
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.token_account(&test_channel),
-        utility_amount - stake,
-    )
-    .await;
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.downvote_token_account(&test_post),
-        stake,
-    )
-    .await;
-    assert_token_balance(&mut banks_client, &escrow_account_info, stake).await;
-    test_post.assert_vote(&mut banks_client, 0, stake).await;
-
-    // Unstake, same amount (we should now 0 token accounts)
-    test_post
-        .unvote(&mut banks_client, &payer, Vote::Down, stake)
-        .await;
-
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.token_account(&test_channel),
-        utility_amount,
-    )
-    .await;
-    assert_token_balance(
-        &mut banks_client,
-        &test_user.downvote_token_account(&test_post),
-        0,
-    )
-    .await;
-    assert_token_balance(&mut banks_client, &escrow_account_info, 0).await;
-    test_post.assert_vote(&mut banks_client, 0, 0).await;
+    test_post.assert_votes(&mut banks_client, 0, 1).await;
 }

@@ -1,7 +1,5 @@
-use borsh::{BorshDeserialize,BorshSerialize,BorshSchema};
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_program::pubkey::Pubkey;
-
-
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum ContentSource {
