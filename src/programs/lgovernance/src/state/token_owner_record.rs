@@ -1,15 +1,19 @@
 //! Token Owner Record Account
 
 use borsh::maybestd::io::Write;
-use shared::account::{get_account_data, MaxSize};
+use shared::account::{create_and_serialize_account_verify_with_bump, get_account_data, MaxSize};
 
-use crate::{accounts::AccountType, error::PostError, DELEGATEE_SEED, PROGRAM_AUTHORITY_SEED};
+use crate::{
+    accounts::AccountType, error::GovernanceError, DELEGATEE_SEED, PROGRAM_AUTHORITY_SEED,
+};
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, program_pack::IsInitialized,
-    pubkey::Pubkey,
+    account_info::AccountInfo, msg, program_error::ProgramError, program_pack::IsInitialized,
+    pubkey::Pubkey, rent::Rent,
 };
+
+use super::delegation::rule_delegation_record_account::RuleDelegationRecordAccount;
 
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
@@ -28,10 +32,6 @@ pub struct TokenOwnerRecordV2 {
     /// This amount is the voter weight used when voting on proposals
     pub governing_token_deposit_amount: u64,
 
-    /// The amount of governing tokens deposited into the Realm by others
-    /// and is associated with this token owner record
-    pub delegated_governing_token_deposit_amount: u64,
-
     /// The number of votes cast by TokenOwner but not relinquished yet
     /// Every time a vote is cast this number is increased and it's always decreased when relinquishing a vote regardless of the vote state
     pub unrelinquished_votes_count: u32,
@@ -49,11 +49,14 @@ pub struct TokenOwnerRecordV2 {
     /// Delegated by a rule, i.e. this token owner account can't be used for voting except on transactions
     /// that adhere to this rule
     pub delegated_by_rule: Option<Pubkey>,
+
+    /// Latest vote using the token owner record
+    pub latest_vote: Option<Pubkey>,
 }
 
 impl MaxSize for TokenOwnerRecordV2 {
     fn get_max_size(&self) -> Option<usize> {
-        None
+        Some(1 + 32 + 32 + 8 + 8 + 4 + 4 + 1 + 1 + 32 + 1 + 32)
     }
 }
 
@@ -64,16 +67,173 @@ impl IsInitialized for TokenOwnerRecordV2 {
 }
 
 impl TokenOwnerRecordV2 {
+    pub fn create<'a>(
+        program_id: &Pubkey,
+        amount: u64,
+        rent: &Rent,
+        token_owner_record_info: &AccountInfo<'a>,
+        token_owner_record_bump_seed: u8,
+        governing_token_owner: &Pubkey,
+        governing_token_owner_info: &AccountInfo<'a>,
+        governing_token_mint: &Pubkey,
+        payer_info: &AccountInfo<'a>,
+        system_info: &AccountInfo<'a>,
+    ) -> Result<(), ProgramError> {
+        let bump_seeds = [token_owner_record_bump_seed];
+        let token_owner_record_address_seeds = get_token_owner_record_address_seeds(
+            governing_token_mint,
+            &governing_token_owner_info.key,
+            &bump_seeds,
+        );
+
+        if token_owner_record_info.data_is_empty() {
+            if !(governing_token_owner == governing_token_owner_info.key
+                && governing_token_owner_info.is_signer)
+            {
+                return Err(GovernanceError::GoverningTokenOwnerMustSign.into());
+            }
+
+            let token_owner_record_data = TokenOwnerRecordV2 {
+                account_type: AccountType::TokenOwnerRecordV2,
+                governing_token_owner: *governing_token_owner_info.key,
+                governing_token_deposit_amount: amount,
+                governing_token_mint: *governing_token_mint,
+                unrelinquished_votes_count: 0,
+                total_votes_count: 0,
+                outstanding_proposal_count: 0,
+                delegated_by_rule: None, // this is not a delegation
+                latest_vote: None,
+            };
+
+            create_and_serialize_account_verify_with_bump(
+                payer_info,
+                token_owner_record_info,
+                &token_owner_record_data,
+                &token_owner_record_address_seeds,
+                program_id,
+                system_info,
+                &rent,
+            )?;
+        } else {
+            return Err(GovernanceError::TokenOwnerRecordAlreadyExists.into());
+        }
+        Ok(())
+    }
+
+    pub fn create_empty_delegate<'a>(
+        program_id: &Pubkey,
+        delegated_by_rule: &Pubkey,
+        rent: &Rent,
+        token_owner_record_info: &AccountInfo<'a>,
+        token_owner_record_bump_seed: u8,
+        governing_token_owner_info: &AccountInfo<'a>,
+        governing_token_mint: &Pubkey,
+        payer_info: &AccountInfo<'a>,
+        system_info: &AccountInfo<'a>,
+    ) -> Result<(), ProgramError> {
+        let bump_seeds = [token_owner_record_bump_seed];
+        let token_owner_record_address_seeds = get_token_owner_delegatee_record_address_seeds(
+            governing_token_mint,
+            &governing_token_owner_info.key,
+            delegated_by_rule,
+            &bump_seeds,
+        );
+
+        if token_owner_record_info.data_is_empty() {
+            if !(governing_token_owner_info.is_signer) {
+                return Err(GovernanceError::GoverningTokenOwnerMustSign.into());
+            }
+
+            msg!("CREATE DELEGATE WITH ID: {}", token_owner_record_info.key);
+            let token_owner_record_data = TokenOwnerRecordV2 {
+                account_type: AccountType::TokenOwnerRecordV2,
+                governing_token_owner: *governing_token_owner_info.key,
+                governing_token_deposit_amount: 0,
+                governing_token_mint: *governing_token_mint,
+                unrelinquished_votes_count: 0,
+                total_votes_count: 0,
+                outstanding_proposal_count: 0,
+                delegated_by_rule: Some(*delegated_by_rule), // this is not a delegation
+                latest_vote: None,
+            };
+
+            create_and_serialize_account_verify_with_bump(
+                payer_info,
+                token_owner_record_info,
+                &token_owner_record_data,
+                &token_owner_record_address_seeds,
+                program_id,
+                system_info,
+                &rent,
+            )?;
+        } else {
+            return Err(GovernanceError::TokenOwnerRecordAlreadyExists.into());
+        }
+        Ok(())
+    }
+    /*
+    pub fn add_amount<'a>(
+        program_id: &Pubkey,
+        token_owner_record_info: &AccountInfo<'a>,
+        governing_token_owner: &Pubkey,
+        governing_token_mint: &Pubkey,
+        delegated_by_rule: Option<&Pubkey>,
+        add_amount: u64,
+    ) -> Result<(), ProgramError> {
+        let mut token_owner_record_data = get_token_owner_record_data_for_delegation_activity(
+            program_id,
+            token_owner_record_info,
+            governing_token_owner,
+            governing_token_mint,
+            delegated_by_rule,
+        )?;
+
+        token_owner_record_data.governing_token_deposit_amount = token_owner_record_data
+            .governing_token_deposit_amount
+            .checked_add(add_amount)
+            .unwrap();
+
+        token_owner_record_data.serialize(&mut *token_owner_record_info.data.borrow_mut())?;
+        Ok(())
+    }
+
+    pub fn subtract_amount<'a>(
+        program_id: &Pubkey,
+        token_owner_record_info: &AccountInfo<'a>,
+        governing_token_owner: &Pubkey,
+        governing_token_mint: &Pubkey,
+        delegated_by_rule: Option<&Pubkey>,
+        add_amount: u64,
+    ) -> Result<(), ProgramError> {
+        let mut token_owner_record_data = get_token_owner_record_data_for_delegation_activity(
+            program_id,
+            token_owner_record_info,
+            governing_token_owner,
+            governing_token_mint,
+            delegated_by_rule,
+        )?;
+
+        token_owner_record_data.governing_token_deposit_amount = token_owner_record_data
+            .governing_token_deposit_amount
+            .checked_sub(add_amount)
+            .unwrap();
+
+        token_owner_record_data.serialize(&mut *token_owner_record_info.data.borrow_mut())?;
+        Ok(())
+    } */
+
     /// Checks whether the provided Governance Authority signed transaction
     pub fn assert_token_owner_or_delegate_is_signer(
         &self,
         governance_authority_info: &AccountInfo,
     ) -> Result<(), ProgramError> {
-        if governance_authority_info.is_signer && &self.governing_token_owner == governance_authority_info.key {
+        if governance_authority_info.is_signer
+            && &self.governing_token_owner == governance_authority_info.key
+        {
             return Ok(());
         }
 
-        Err(PostError::GoverningTokenOwnerOrDelegateMustSign.into())
+        Err(GovernanceError::GoverningTokenOwnerOrDelegateMustSign.into())
     }
 
     /// Asserts TokenOwner has enough tokens to be allowed to create proposal and doesn't have any outstanding proposals
@@ -131,11 +291,15 @@ impl TokenOwnerRecordV2 {
     /// Asserts TokenOwner can withdraw tokens from Realm
     pub fn assert_can_withdraw_governing_tokens(&self) -> Result<(), ProgramError> {
         if self.unrelinquished_votes_count > 0 {
-            return Err(PostError::AllVotesMustBeRelinquishedToWithdrawGoverningTokens.into());
+            return Err(
+                GovernanceError::AllVotesMustBeRelinquishedToWithdrawGoverningTokens.into(),
+            );
         }
 
         if self.outstanding_proposal_count > 0 {
-            return Err(PostError::AllProposalsMustBeFinalisedToWithdrawGoverningTokens.into());
+            return Err(
+                GovernanceError::AllProposalsMustBeFinalisedToWithdrawGoverningTokens.into(),
+            );
         }
 
         Ok(())
@@ -169,23 +333,28 @@ pub fn get_token_owner_record_address(
     program_id: &Pubkey,
     governing_token_mint: &Pubkey,
     governing_token_owner: &Pubkey,
-) -> Pubkey {
+) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &get_token_owner_record_address_seeds(governing_token_mint, governing_token_owner),
+        &[
+            PROGRAM_AUTHORITY_SEED,
+            governing_token_mint.as_ref(),
+            governing_token_owner.as_ref(),
+        ],
         program_id,
     )
-    .0
 }
 
 /// Returns TokenOwnerRecord PDA seeds
 pub fn get_token_owner_record_address_seeds<'a>(
     governing_token_mint: &'a Pubkey,
     governing_token_owner: &'a Pubkey,
-) -> [&'a [u8]; 3] {
+    bump_seed: &'a [u8],
+) -> [&'a [u8]; 4] {
     [
         PROGRAM_AUTHORITY_SEED,
         governing_token_mint.as_ref(),
         governing_token_owner.as_ref(),
+        bump_seed,
     ]
 }
 
@@ -194,26 +363,32 @@ pub fn get_token_owner_delegatee_record_address(
     program_id: &Pubkey,
     governing_token_mint: &Pubkey,
     governing_token_owner: &Pubkey,
-) -> Pubkey {
+    rule: &Pubkey,
+) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &get_token_owner_delegatee_record_address_seeds(
-            governing_token_mint,
-            governing_token_owner,
-        ),
+        &[
+            DELEGATEE_SEED,
+            governing_token_mint.as_ref(),
+            rule.as_ref(),
+            governing_token_owner.as_ref(),
+        ],
         program_id,
     )
-    .0
 }
 
 /// Returns TokenOwnerRecord PDA seeds
 pub fn get_token_owner_delegatee_record_address_seeds<'a>(
     governing_token_mint: &'a Pubkey,
     governing_token_owner: &'a Pubkey,
-) -> [&'a [u8]; 3] {
+    rule: &'a Pubkey,
+    bump_seed: &'a [u8],
+) -> [&'a [u8]; 5] {
     [
         DELEGATEE_SEED,
         governing_token_mint.as_ref(),
+        rule.as_ref(),
         governing_token_owner.as_ref(),
+        bump_seed,
     ]
 }
 
@@ -225,6 +400,65 @@ pub fn get_token_owner_record_data(
     get_account_data::<TokenOwnerRecordV2>(program_id, token_owner_record_info)
 }
 
+pub fn get_token_owner_record_data_for_delegation_activity(
+    program_id: &Pubkey,
+    token_owner_record_info: &AccountInfo,
+    governing_token_owner: &Pubkey,
+    governing_token_mint: &Pubkey,
+    delegated_by_rule: Option<&Pubkey>,
+) -> Result<TokenOwnerRecordV2, ProgramError> {
+    let token_owner_record_data = get_token_owner_record_data(program_id, token_owner_record_info)?;
+    if &token_owner_record_data.governing_token_mint != governing_token_mint {
+        return Err(GovernanceError::InvalidGoverningMintForTokenOwnerRecord.into());
+    }
+    if &token_owner_record_data.governing_token_owner != governing_token_owner {
+        return Err(GovernanceError::InvalidGoverningTokenOwnerForVoteRecord.into());
+    }
+    if match (
+        &token_owner_record_data.delegated_by_rule,
+        delegated_by_rule,
+    ) {
+        (Some(a), Some(b)) => a != b,
+        (None, None) => true,
+        _ => false,
+    } {
+        return Err(GovernanceError::InvalidRuleVoteRecord.into());
+    }
+    Ok(token_owner_record_data)
+}
+/*
+pub fn get_token_owner_record_data_for_delegation(
+    program_id: &Pubkey,
+    delegatee_token_owner_record_info: &AccountInfo,
+    rule_delegation_record: &RuleDelegationRecordAccount,
+    delegator_governing_token_owner: &AccountInfo,
+) -> Result<TokenOwnerRecordV2, ProgramError> {
+    if !delegator_governing_token_owner.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    let token_owner_record_data =
+        get_token_owner_record_data(program_id, delegatee_token_owner_record_info)?;
+
+    if &token_owner_record_data.governing_token_mint != governing_token_mint {
+        return Err(GovernanceError::InvalidGoverningMintForTokenOwnerRecord.into());
+    }
+    if &token_owner_record_data.governing_token_owner != governing_token_owner {
+        return Err(GovernanceError::InvalidGoverningTokenOwnerForVoteRecord.into());
+    }
+    if match (
+        &token_owner_record_data.delegated_by_rule,
+        delegated_by_rule,
+    ) {
+        (Some(a), Some(b)) => a != b,
+        (None, None) => true,
+        _ => false,
+    } {
+        return Err(GovernanceError::InvalidRuleVoteRecord.into());
+    }
+    Ok(token_owner_record_data)
+} */
+
 /// Deserializes TokenOwnerRecord account and checks its PDA against the provided seeds
 pub fn get_token_owner_record_data_for_seeds(
     program_id: &Pubkey,
@@ -235,27 +469,29 @@ pub fn get_token_owner_record_data_for_seeds(
         Pubkey::find_program_address(token_owner_record_seeds, program_id);
 
     if token_owner_record_address != *token_owner_record_info.key {
-        return Err(PostError::InvalidTokenOwnerRecordAccountAddress.into());
+        return Err(GovernanceError::InvalidTokenOwnerRecordAccountAddress.into());
     }
 
     get_token_owner_record_data(program_id, token_owner_record_info)
 }
 
-/// Deserializes TokenOwnerRecord account and asserts it belongs to the given realm
+/// Deserializes TokenOwnerRecord account and asserts it belongs to the given governing token owner
 pub fn get_token_owner_record_data_for_owner(
     program_id: &Pubkey,
     token_owner_record_info: &AccountInfo,
     governing_token_owner_info: &AccountInfo,
 ) -> Result<TokenOwnerRecordV2, ProgramError> {
-    if governing_token_owner_info.is_signer {
-        return Err(PostError::GoverningTokenOwnerMustSign.into());
+    if !governing_token_owner_info.is_signer {
+        return Err(GovernanceError::GoverningTokenOwnerMustSign.into());
     }
+
     let token_owner_record_data = get_token_owner_record_data(program_id, token_owner_record_info)?;
     if &token_owner_record_data.governing_token_owner != governing_token_owner_info.key {
-        return Err(PostError::GoverningTokenOwnerMustSign.into());
+        return Err(GovernanceError::InvalidTokenOwner.into());
     }
     Ok(token_owner_record_data)
 }
+
 /*
 /// Deserializes TokenOwnerRecord account and  asserts it belongs to the given realm and is for the given governing mint
 pub fn get_token_owner_record_data_for_realm_and_governing_mint(
@@ -281,7 +517,7 @@ pub fn get_token_owner_record_data_for_proposal_owner(
     proposal_owner: &Pubkey,
 ) -> Result<TokenOwnerRecordV2, ProgramError> {
     if token_owner_record_info.key != proposal_owner {
-        return Err(PostError::InvalidProposalOwnerAccount.into());
+        return Err(GovernanceError::InvalidProposalOwnerAccount.into());
     }
 
     get_token_owner_record_data(program_id, token_owner_record_info)
@@ -300,11 +536,11 @@ mod test {
             governing_token_mint: Pubkey::new_unique(),
             governing_token_owner: Pubkey::new_unique(),
             governing_token_deposit_amount: 10,
-            delegated_governing_token_deposit_amount: 5,
             unrelinquished_votes_count: 1,
             total_votes_count: 1,
             outstanding_proposal_count: 1,
             delegated_by_rule: Some(Pubkey::new_unique()),
+            latest_vote: None,
         };
 
         let size = get_packed_len::<TokenOwnerRecordV2>();

@@ -1,5 +1,3 @@
-
-
 /* use crate::state::{
     enums::{ProposalState, TransactionExecutionStatus},
     governance::get_governance_data,
@@ -8,9 +6,23 @@
     proposal_transaction::get_proposal_transaction_data_for_proposal,
 }; */
 use crate::processor::{
+    delegation::{
+        process_create_delegatee::process_create_delegatee, process_delegate::process_delegate,
+        process_delegate_history::process_delegate_history, process_undelegate::process_undelegate,
+        process_undelegate_history::process_undelegate_history,
+    },
+    process_count_votes::{process_count_max_vote_weights, process_count_votes},
+    process_create_governance::process_create_governance,
+    process_create_native_treasury::process_create_native_treasury,
+    process_create_proposal::process_create_proposal,
     process_create_proposal_option::process_create_proposal_option,
-    process_execute_transaction::process_execute_transaction, process_post::process_create_post,
-    process_rules::process_create_rule, process_vote::process_create_post_vote,
+    process_create_token_owner_budget_record::process_create_token_owner_budget_record,
+    process_execute_transaction::process_execute_transaction,
+    process_finalize_draft::process_finalize_draft,
+    process_insert_rule::process_insert_rule,
+    process_rules::process_create_rule,
+    process_unvote::process_uncast_vote,
+    process_vote::process_cast_vote,
 };
 use solana_program::{
     account_info::AccountInfo, borsh::try_from_slice_unchecked, entrypoint::ProgramResult, msg,
@@ -18,24 +30,30 @@ use solana_program::{
 };
 
 use self::{
+    process_create_realm::process_create_realm,
     process_deposit_governing_tokens::process_deposit_governing_tokens,
     process_insert_transaction::process_insert_transaction,
 };
 
-use super::{
-    instruction::PostInstruction,
-};
+use super::instruction::PostInstruction;
 
+pub mod delegation;
 pub mod process_count_votes;
+pub mod process_create_governance;
 pub mod process_create_native_treasury;
+pub mod process_create_proposal;
 pub mod process_create_proposal_option;
-pub mod process_delegate;
+pub mod process_create_realm;
+pub mod process_create_token_owner_budget_record;
 pub mod process_deposit_governing_tokens;
 pub mod process_execute_transaction;
+pub mod process_finalize_draft;
+pub mod process_insert_rule;
 pub mod process_insert_transaction;
-pub mod process_post;
 pub mod process_rules;
+pub mod process_unvote;
 pub mod process_vote;
+
 pub struct Processor {}
 impl Processor {
     // Create post
@@ -394,68 +412,169 @@ impl Processor {
     ) -> ProgramResult {
         let instruction = try_from_slice_unchecked::<PostInstruction>(instruction_data)?;
         match instruction {
-            PostInstruction::CreatePost(post) => {
-                msg!("Create post");
-                process_create_post(program_id, accounts, post)
+            PostInstruction::CreateProposal {
+                bump_seed,
+                rules_count,
+                source,
+                vote_type,
+            } => {
+                msg!("Instruction: Create proposal");
+                process_create_proposal(
+                    program_id,
+                    accounts,
+                    vote_type,
+                    rules_count,
+                    source,
+                    bump_seed,
+                )
+            }
+            PostInstruction::CreateRealm { bump_seed } => {
+                msg!("Instruction: Create realm");
+                process_create_realm(program_id, accounts, bump_seed)
+            }
+            PostInstruction::InsertRule => {
+                msg!("Instruction: Insert rule");
+                process_insert_rule(program_id, accounts)
             }
 
             /* ChatInstruction::CreatePostContent(content) => {
                 msg!("Create post content");
                 Self::process_create_post_content(program_id, accounts, content)
             } */
-            PostInstruction::Vote(_vote) => {
-                //let token_account_info = next_account_info(accounts_iter)?;
-                msg!("Create vote");
-                process_create_post_vote(program_id, accounts)
+            PostInstruction::Vote {
+                vote_record_bump_seed,
+            } => {
+                msg!("Instruction: Vote");
+                process_cast_vote(program_id, accounts, vote_record_bump_seed)
             }
 
-            PostInstruction::Unvote(_stake) => {
-                //let token_account_info = next_account_info(accounts_iter)?;
-                msg!("Create unvote");
-                Ok(())
-                //process_create_post_unvote(program_id, accounts, stake)
+            PostInstruction::Unvote => {
+                msg!("Instruction: Unvote");
+                process_uncast_vote(program_id, accounts)
             }
-            PostInstruction::ExecutePost => {
+
+            PostInstruction::ExecuteProposal {
+                governance_bump_seed,
+            } => {
                 //let token_account_info = next_account_info(accounts_iter)?;
-                msg!("Create post execution");
-                process_execute_transaction(program_id, accounts)
+                msg!("Instruction: Execute proposal");
+                process_execute_transaction(program_id, accounts, governance_bump_seed)
             }
 
             PostInstruction::CreateRule {
-                rule_bump_seed,
-                rule_id,
-                time_config,
-                vote_config,
+                id,
+                bump_seed,
+                config,
             } => {
-                msg!("Create first rule");
-                process_create_rule(
-                    program_id,
-                    accounts,
-                    &rule_id,
-                    vote_config,
-                    time_config,
-                    rule_bump_seed,
-                )
+                msg!("Instruction: Create rule");
+                process_create_rule(program_id, accounts, &id, config, bump_seed)
             }
-            PostInstruction::CreateProposalOption(option) => {
-                msg!("Create post");
-                process_create_proposal_option(program_id, accounts, option)
+            PostInstruction::CreateProposalOption {
+                option_type,
+                bump_seed,
+            } => {
+                msg!("Instruction: Create proposal option");
+                process_create_proposal_option(program_id, accounts, option_type, bump_seed)
             }
             PostInstruction::InsertTransaction {
                 hold_up_time,
                 instruction_index,
                 instructions,
                 option_index,
-            } => process_insert_transaction(
-                program_id,
-                accounts,
-                option_index,
-                instruction_index,
-                hold_up_time,
-                instructions,
-            ),
-            PostInstruction::DepositGoverningTokens { amount } => {
-                process_deposit_governing_tokens(program_id, accounts, amount)
+            } => {
+                msg!("Instruction: Insert transaction");
+                process_insert_transaction(
+                    program_id,
+                    accounts,
+                    option_index,
+                    instruction_index,
+                    hold_up_time,
+                    instructions,
+                )
+            }
+            PostInstruction::DepositGoverningTokens {
+                amount,
+                token_owner_record_bump_seed,
+            } => {
+                msg!("Instruction: Deposit governing tokens");
+                process_deposit_governing_tokens(
+                    program_id,
+                    accounts,
+                    amount,
+                    token_owner_record_bump_seed,
+                )
+            }
+
+            PostInstruction::CreateGovernance { bump_seed } => {
+                msg!("Instruction: Create governance");
+                process_create_governance(program_id, accounts, bump_seed)
+            }
+
+            PostInstruction::FinalizeDraft => {
+                msg!("Instruction: Finalize draft");
+                process_finalize_draft(program_id, accounts)
+            }
+
+            PostInstruction::CountMaxVoteWeights => {
+                msg!("Instruction: Count max vote weights");
+                process_count_max_vote_weights(program_id, accounts)
+            }
+
+            PostInstruction::CountVotes => {
+                msg!("Instruction: Count votes");
+                process_count_votes(program_id, accounts)
+            }
+            PostInstruction::CreateNativeTreasury => {
+                msg!("Instruction: Create native treasury");
+                process_create_native_treasury(program_id, accounts)
+            }
+            PostInstruction::Delegate {
+                amount,
+                delegation_record_bump_seed,
+            } => {
+                msg!("Instruction: Delegate");
+                process_delegate(program_id, accounts, amount, delegation_record_bump_seed)
+            }
+
+            PostInstruction::Undelegate { amount } => {
+                msg!("Instruction: Undelegate");
+                process_undelegate(program_id, accounts, amount)
+            }
+
+            PostInstruction::CreateDelegatee {
+                token_owner_record_bump_seed,
+                governing_token_mint,
+                rule,
+            } => {
+                msg!("Instruction: Create delegate");
+                process_create_delegatee(
+                    program_id,
+                    accounts,
+                    rule,
+                    governing_token_mint,
+                    token_owner_record_bump_seed,
+                )
+            }
+            PostInstruction::CreateTokenOwnerBudgetRecord {
+                rule,
+                token_owner_budget_record_bump_seed,
+            } => {
+                msg!("Instruction: Create token owner budget record");
+                process_create_token_owner_budget_record(
+                    program_id,
+                    accounts,
+                    rule,
+                    token_owner_budget_record_bump_seed,
+                )
+            }
+            PostInstruction::DelegateHistory => {
+                msg!("Instruction: Delegate history");
+                process_delegate_history(program_id, accounts)
+            }
+
+            PostInstruction::UndelegateHistory => {
+                msg!("Instruction: Undelegate history");
+                process_undelegate_history(program_id, accounts)
             }
         }
     }

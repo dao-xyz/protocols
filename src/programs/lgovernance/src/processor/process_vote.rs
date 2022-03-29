@@ -1,299 +1,178 @@
 use crate::{
     accounts::AccountType,
-    error::PostError,
-    state::post::{
-        deserialize_post_account, PostType,
-    },
+    error::GovernanceError,
     state::{
-        proposal::{
-            proposal_option::get_proposal_option_data,
+        proposal::get_proposal_data,
+        rules::rule::get_rule_data_for_governance,
+        token_owner_budget_record::{
+            get_token_owner_budget_record_data_for_token_record, TokenOwnerBudgetRecord,
         },
-        rules::rule::{get_rule_data},
-        token_owner_record::{
-            get_token_owner_record_data_for_owner,
+        token_owner_record::get_token_owner_record_data_for_owner,
+        vote_record::{
+            get_vote_record_address_seeds, get_vote_record_data,
+            get_vote_record_data_for_proposal_and_token_owner, VoteRecordV2,
         },
-        vote_record::{get_vote_record_address_seeds, VoteRecordV2},
     },
 };
-use borsh::BorshSerialize;
 
-use shared::account::{create_and_serialize_account_signed};
+use shared::account::create_and_serialize_account_verify_with_bump;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
     rent::Rent,
     sysvar::Sysvar,
 };
 
-
-
-
-pub fn process_create_post_vote(
+pub fn process_cast_vote(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    /*  amount: u64, */
-    //proposal_vote_weight_bump_seed: u8,
+    vote_record_bump_seed: u8,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
-    let post_account_info = next_account_info(accounts_iter)?;
-    let mut post = deserialize_post_account(&post_account_info.data.borrow())?;
-
+    let proposal_account_info = next_account_info(accounts_iter)?;
     let vote_record_info = next_account_info(accounts_iter)?;
-    /*     let proposal_vote_weight_info = next_account_info(accounts_iter)?; */
     let token_owner_record_info = next_account_info(accounts_iter)?;
-    let voter_token_owner_record_info = next_account_info(accounts_iter)?;
+    let governing_token_owner_info = next_account_info(accounts_iter)?;
+    let rule_info = next_account_info(accounts_iter)?;
     let payer_info = next_account_info(accounts_iter)?;
     let system_info = next_account_info(accounts_iter)?;
-    /*   let spl_token_info = next_account_info(accounts_iter)?;
-    let rent_sysvar_info = next_account_info(accounts_iter)?; */
     let rent = Rent::get()?;
 
-    /*    let payer_account = next_account_info(accounts_iter)?;
-    let payer_governence_token_account = next_account_info(accounts_iter)?;
+    // TODO: More granular check proposal data?
+    let proposal = get_proposal_data(program_id, proposal_account_info)?;
+    let rule = get_rule_data_for_governance(program_id, rule_info, &proposal.governance)?;
 
-    let system_account = next_account_info(accounts_iter)?;
-    let rent_info = next_account_info(accounts_iter)?;
-    let token_program_info = next_account_info(accounts_iter)?;
-    let spl_associated_token_acount_program_info = next_account_info(accounts_iter)?; */
+    msg!("X");
+    let mut token_owner_record_data = get_token_owner_record_data_for_owner(
+        program_id,
+        token_owner_record_info,
+        governing_token_owner_info,
+    )?;
+    msg!("XX");
 
-    // TODO: CHECK OWNER OF POST, CHECK MINTS,
-    post.post_type = match post.post_type {
-        PostType::InformationPost(info) => {
-            /*  match vote.vote {
-                Vote::Up => info.upvotes += stake.stake,
-                Vote::Down => info.downvotes += stake.stake,
-            }; */
-            PostType::InformationPost(info)
+    let vote_weight = match token_owner_record_data.delegated_by_rule {
+        Some(_rule) => {
+            /*     let rule_delegation_record_info = next_account_info(accounts_iter)?;
+                       let mut rule_delegation_record_data =
+                           get_delegation_record_data_for_delegator_and_delegatee(
+                               program_id,
+                               rule_delegation_record_info,
+                               delegator_token_owner_record_info.key,
+                               &delegatee_token_owner_record,
+                           )?;
+            */
+            token_owner_record_data.governing_token_deposit_amount
         }
-        PostType::Proposal(proposal) => {
-            if !vote_record_info.data_is_empty() {
-                return Err(PostError::VoteAlreadyExists.into());
-            }
-            let rule_info = next_account_info(accounts_iter)?;
-            let rule = get_rule_data(program_id, rule_info, &post.channel)?;
-
-            let token_owner_record_data = get_token_owner_record_data_for_owner(
-                program_id,
-                token_owner_record_info,
-                voter_token_owner_record_info,
-            )?;
-
-            // While we have rule we want to vote on, continue
-            /*  let rule_vote_weight_info = next_account_info(accounts_iter); */
-            let vote = Vec::new();
-            let mut option_info_next = next_account_info(accounts_iter);
-            while let Ok(option_info) = option_info_next {
-                // Vote with rule weight
-                /*              let rule_weight_info = next_account_info(accounts_iter)?;
-                let rule_weight =
-                    get_rule_vote_weight_data(program_id, rule_weight_info, rule_info_ok.key)?; */
-
-                // Check create vote record
-                if !vote_record_info.data_is_empty() {
-                    return Err(PostError::VoteAlreadyExists.into());
-                }
-
-                let mut option_data =
-                    get_proposal_option_data(program_id, option_info, post_account_info.key)?;
-
-                option_data.add_weight(
-                    token_owner_record_data.governing_token_deposit_amount,
-                    &token_owner_record_data.governing_token_mint,
-                    rule_info.key,
-                    &rule,
+        None => {
+            let token_owner_budget_record_info = next_account_info(accounts_iter)?;
+            let token_owner_budget_record_data =
+                get_token_owner_budget_record_data_for_token_record(
+                    program_id,
+                    token_owner_budget_record_info,
+                    &token_owner_record_data,
+                    token_owner_record_info,
+                    governing_token_owner_info,
                 )?;
-                option_data.serialize(&mut *option_info.data.borrow_mut())?;
-                option_info_next = next_account_info(accounts_iter);
-                // Vote
-                /* let proposal_vote_weight_info = next_account_info(accounts_iter)?;
-                if proposal_vote_weight_info.data_is_empty() {
-                    // Create weight
-                    let proposal_vote_weight_data = ProposalVoteWeight {
-                        account_type: AccountType::ProposalVoteWeight,
-                        proposal: *post_account_info.key,
-                        rule: *rule_info_ok.key,
-                        weight: 0,
-                        option_index: *option_index,
-                    };
-
-                    proposal_vote_weight_data.add_weight(
-                        voter_weight,
-                        &token_owner_record_data.governing_token_mint,
-                        &rule_weight,
-                    );
-
-                    create_and_serialize_account_signed::<ProposalVoteWeight>(
-                        payer_info,
-                        proposal_vote_weight_info,
-                        &proposal_vote_weight_data,
-                        &create_proposal_vote_weight_program_address_seeds(
-                            post_account_info.key,
-                            voter_token_owner_record_info.key,
-                            &option_index.to_le_bytes(),
-                            &[proposal_vote_weight_bump_seed],
-                        ),
-                        program_id,
-                        system_info,
-                        &rent,
-                    )?;
-                } else {
-                    // Update weight
-                    let mut proposal_vote_weight_data = get_proposal_vote_weight_data(
-                        program_id,
-                        proposal_vote_weight_info,
-                        post_account_info.key,
-                        rule_info_ok.key,
-                        option_index,
-                    )?;
-                    proposal_vote_weight_data.add_weight(
-                        voter_weight,
-                        &token_owner_record_data.governing_token_mint,
-                        &rule_weight,
-                    );
-                    proposal_vote_weight_data
-                        .serialize(&mut *proposal_vote_weight_info.data.borrow_mut());
-                } */
-            }
-
-            proposal.assert_valid_vote(&vote)?;
-
-            // Add vote record so we can not vote again through the same rule
-            let vote_record_data = VoteRecordV2 {
-                account_type: AccountType::VoteRecordV2,
-                post: *post_account_info.key,
-                governing_token_owner: *voter_token_owner_record_info.key,
-                vote,
-                rule: *rule_info.key,
-                is_relinquished: false,
-            };
-
-            create_and_serialize_account_signed::<VoteRecordV2>(
-                payer_info,
-                vote_record_info,
-                &vote_record_data,
-                &get_vote_record_address_seeds(
-                    post_account_info.key,
-                    voter_token_owner_record_info.key,
-                    rule_info.key,
-                ),
-                program_id,
-                system_info,
-                &rent,
-            )?;
-
-            // Update propsal
-
-            PostType::Proposal(proposal)
+            token_owner_budget_record_data.amount
         }
     };
 
-    post.serialize(&mut *post_account_info.data.borrow_mut())?;
-
-    Ok(())
-}
-
-/* pub fn process_proposal_vote(proposal: &ProposalV2) {
-    proposal.assert_can_cast_vote(config, current_unix_timestamp)
-} */
-/*
-pub fn process_create_post_unvote(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    stake: PostVote,
-) -> ProgramResult {
-    let accounts_iter = &mut accounts.iter();
-    let payer_account = next_account_info(accounts_iter)?;
-    let payer_governence_token_account = next_account_info(accounts_iter)?;
-    let post_account_info = next_account_info(accounts_iter)?;
-    let mut post = deserialize_post_account(&post_account_info.data.borrow())?;
-    let mint_upvote_account_info = next_account_info(accounts_iter)?;
-    let mint_downvote_account_info = next_account_info(accounts_iter)?;
-    let mint_authority_account_info = next_account_info(accounts_iter)?;
-    let mint_associated_token_account = next_account_info(accounts_iter)?;
-    let token_program_info = next_account_info(accounts_iter)?;
+    msg!("XXX");
 
     // TODO: CHECK OWNER OF POST, CHECK MINTS,
+    if !vote_record_info.data_is_empty() {
+        return Err(GovernanceError::VoteAlreadyExists.into());
+    } else {
+        // Update last vote record to link to this new vote
+        let last_vote_record_key = if let Some(vote) = token_owner_record_data.latest_vote {
+            let last_vote_record_info = next_account_info(accounts_iter)?;
+            msg!(
+                "LAST VOTE RECORD: {}",
+                last_vote_record_info.data_is_empty()
+            );
+            if &vote != last_vote_record_info.key {
+                return Err(GovernanceError::InvalidVoteRecord.into());
+            }
 
-    let mint_account_info = match stake.vote {
-        Vote::Up => mint_upvote_account_info,
-        Vote::Down => mint_downvote_account_info,
-    };
+            let mut last_vote_data = get_vote_record_data_for_proposal_and_token_owner(
+                program_id,
+                last_vote_record_info,
+                proposal_account_info.key,
+                governing_token_owner_info,
+            )?;
+            msg!("??");
+            if last_vote_data.next_vote.is_some() {
+                // Expecting head
+                return Err(GovernanceError::InvalidVoteRecord.into());
+            }
+            last_vote_data.next_vote = Some(*vote_record_info.key);
+            last_vote_data.serialize(&mut *last_vote_record_info.data.borrow_mut())?;
+            Some(*last_vote_record_info.key)
+        } else {
+            None
+        };
+        msg!("XXX!");
 
-    let escrow_token_account_info = next_account_info(accounts_iter)?;
-    let escrow_bump_seeds = &[stake.escrow_bump_seed];
-    let escrow_account_seeds =
-        create_escrow_program_address_seeds(post_account_info.key, escrow_bump_seeds);
+        let vote = proposal.perform_voting(
+            program_id,
+            vote_weight,
+            true,
+            &token_owner_record_data.governing_token_mint,
+            rule_info.key,
+            &rule,
+            proposal_account_info.key,
+            accounts_iter,
+        )?;
 
-    let expected_escrow_address =
-        Pubkey::create_program_address(&escrow_account_seeds, program_id).unwrap();
+        // Update last vote record to point to the new one
 
-    if escrow_token_account_info.key != &expected_escrow_address {
-        msg!(
-            "Create account with PDA: {:?} was requested while PDA: {:?} was expected",
-            escrow_token_account_info.key,
-            expected_escrow_address
-        );
-        return Err(ProgramError::InvalidSeeds);
+        // Add vote record so we can not vote again through the same rule
+        let vote_record_data = VoteRecordV2 {
+            account_type: AccountType::VoteRecordV2,
+            proposal: *proposal_account_info.key,
+            governing_token_owner: *governing_token_owner_info.key,
+            vote,
+            rule: *rule_info.key,
+            is_relinquished: false,
+            previous_vote: last_vote_record_key, // move vote in top of the "stack"
+            next_vote: None,
+        };
+        msg!("SAVE!");
+        create_and_serialize_account_verify_with_bump::<VoteRecordV2>(
+            payer_info,
+            vote_record_info,
+            &vote_record_data,
+            &get_vote_record_address_seeds(
+                proposal_account_info.key,
+                token_owner_record_info.key,
+                rule_info.key,
+                &[vote_record_bump_seed],
+            ),
+            program_id,
+            system_info,
+            &rent,
+        )?;
+        msg!("SAVE DONE!");
     }
 
-    let bump_seeds = &[stake.mint_authority_bump_seed];
-    let seeds = create_post_mint_authority_program_address_seeds(post_account_info.key, bump_seeds);
+    // Update TokenOwnerRecord vote counts
+    token_owner_record_data.unrelinquished_votes_count = token_owner_record_data
+        .unrelinquished_votes_count
+        .checked_add(1)
+        .unwrap();
 
-    invoke_signed(
-        &spl_token::instruction::transfer(
-            token_program_info.key,
-            escrow_token_account_info.key,
-            payer_governence_token_account.key,
-            mint_authority_account_info.key,
-            &[],
-            stake.stake,
-        )?,
-        &[
-            escrow_token_account_info.clone(),
-            payer_governence_token_account.clone(),
-            mint_authority_account_info.clone(),
-            token_program_info.clone(),
-        ],
-        &[&seeds],
-    )?;
+    token_owner_record_data.total_votes_count = token_owner_record_data
+        .total_votes_count
+        .checked_add(1)
+        .unwrap();
 
-    invoke(
-        &burn(
-            token_program_info.key,
-            mint_associated_token_account.key,
-            mint_account_info.key,
-            payer_account.key,
-            &[],
-            stake.stake,
-        )?,
-        &[
-            mint_associated_token_account.clone(),
-            mint_account_info.clone(),
-            payer_account.clone(),
-            token_program_info.clone(),
-        ],
-    )?;
+    token_owner_record_data.latest_vote = Some(*vote_record_info.key);
 
-    post.post_type = match post.post_type {
-        PostType::InformationPost(mut info) => {
-            match stake.vote {
-                Vote::Up => info.upvotes -= stake.stake,
-                Vote::Down => info.downvotes -= stake.stake,
-            };
-            PostType::InformationPost(info)
-        }
-        PostType::ActionPost(mut info) => {
-            match stake.vote {
-                Vote::Up => info.upvotes -= stake.stake,
-                Vote::Down => info.downvotes -= stake.stake,
-            };
-            PostType::ActionPost(info)
-        }
-    };
-
-    post.serialize(&mut *post_account_info.data.borrow_mut())?;
+    // Update propsal
+    proposal.serialize(&mut *proposal_account_info.data.borrow_mut())?;
+    token_owner_record_data.serialize(&mut *token_owner_record_info.data.borrow_mut())?;
 
     Ok(())
 }
- */

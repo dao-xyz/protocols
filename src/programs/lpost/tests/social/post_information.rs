@@ -3,7 +3,7 @@ use super::{
     utils::{create_tag, create_tag_record, TestPost},
 };
 use crate::social::utils::TestChannel;
-use lchannel::state::ChannelAuthority;
+use lchannel::state::ActivityAuthority;
 use lpost::{
     error::PostError,
     state::{post::PostContent, vote_record::Vote},
@@ -20,7 +20,7 @@ async fn success_round_trip() {
     let authority = Keypair::new(); // Context for creating tag records
     let authority_tag = create_tag(&mut banks_client, &payer, &recent_blockhash, "tag").await;
     let test_channel = TestChannel::new(
-        &ChannelAuthority::AuthorityByTag {
+        &ActivityAuthority::AuthorityByTag {
             tag: authority_tag,
             authority: authority.pubkey(),
         },

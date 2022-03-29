@@ -1,11 +1,4 @@
-
-
-
-
-
-use solana_program::{
-    pubkey::{Pubkey},
-};
+use solana_program::pubkey::Pubkey;
 /*
 use crate::accounts::AccountType;
 
@@ -31,17 +24,27 @@ pub fn find_realm_program_address(
 }
  */
 const REALM_SEED: &[u8] = b"realm";
+const REALM_AUTHORITY_SEED: &[u8] = b"realm_authority";
 
-pub fn create_realm_mint_program_address_seeds<'a>(
-    owner: &'a Pubkey,
+pub fn get_realm_mint_program_address_seeds<'a>(
     mint: &'a Pubkey,
+    bump_seed: &'a [u8],
 ) -> [&'a [u8]; 3] {
-    [REALM_SEED, owner.as_ref(), mint.as_ref()]
+    [REALM_SEED, mint.as_ref(), bump_seed]
 }
-pub fn find_realm_mint_program_address(
+pub fn get_realm_mint_program_address(program_id: &Pubkey, mint: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[REALM_SEED, mint.as_ref()], program_id)
+}
+
+pub fn get_realm_mint_authority_program_address_seeds<'a>(
+    mint: &'a Pubkey,
+    bump_seed: &'a [u8],
+) -> [&'a [u8]; 3] {
+    [REALM_SEED, mint.as_ref(), bump_seed]
+}
+pub fn get_realm_mint_authority_program_address(
     program_id: &Pubkey,
-    owner: &Pubkey,
     mint: &Pubkey,
 ) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[REALM_SEED, owner.as_ref(), mint.as_ref()], program_id)
+    Pubkey::find_program_address(&[REALM_AUTHORITY_SEED, mint.as_ref()], program_id)
 }

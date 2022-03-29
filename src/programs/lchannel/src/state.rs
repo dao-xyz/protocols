@@ -1,11 +1,8 @@
-use std::slice::Iter;
-
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use shared::seeds::generate_seeds_from_string;
-use shared::{account::MaxSize, content::ContentSource, error::UtilsError};
+use shared::{account::MaxSize, content::ContentSource};
 use solana_program::{
-    account_info::{next_account_info, AccountInfo},
-    borsh::try_from_slice_unchecked,
+    account_info::AccountInfo,
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::{Pubkey, PubkeyError},
@@ -27,7 +24,8 @@ pub enum AccountType {
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub enum ChannelAuthority {
+pub enum ActivityAuthority {
+    None,
     AuthorityByTag { tag: Pubkey, authority: Pubkey },
 }
 
@@ -39,16 +37,14 @@ pub struct ChannelAccount {
     pub parent: Option<Pubkey>,
     pub name: String,
     pub link: Option<ContentSource>, // The link to to info data
-    /*
+
     // A key controlling its governance of something,
-    pub governance: Pubkey,
-     */
     // Should be set to itself make it self governed through proposals
     // as it can only sign itself through the program (program functions)
     pub authority: Pubkey,
 
-    // Tag that lets users create posts
-    pub channel_authority_config: ChannelAuthority,
+    // Tag that lets users create posts, votes, commments etc
+    pub activity_authority: ActivityAuthority,
 }
 
 impl MaxSize for ChannelAccount {
@@ -59,7 +55,7 @@ impl MaxSize for ChannelAccount {
 
 impl IsInitialized for ChannelAccount {
     fn is_initialized(&self) -> bool {
-        return self.account_type == AccountType::Channel;
+        self.account_type == AccountType::Channel
     }
 }
 

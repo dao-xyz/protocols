@@ -10,10 +10,10 @@ use thiserror::Error;
 
 /// Errors that may be returned by the Governance program
 #[derive(Clone, Debug, Eq, Error, FromPrimitive, PartialEq)]
-pub enum PostError {
+pub enum GovernanceError {
     /// Invalid instruction passed to program
     #[error("Invalid instruction passed to program")]
-    InvalidInstruction = 500, // Start Governance custom errors from 500 to avoid conflicts with programs invoked via CPI
+    InvalidInstruction = 600, // Start Governance custom errors from 500 to avoid conflicts with programs invoked via CPI
 
     /// Realm with the given name and governing mints already exists
     #[error("Realm with the given name and governing mints already exists")]
@@ -87,6 +87,10 @@ pub enum PostError {
     #[error("Invalid GoverningTokenOwner for VoteRecord")]
     InvalidGoverningTokenOwnerForVoteRecord,
 
+    /// Invalid Rule for VoteRecord
+    #[error("Invalid Rule for VoteRecord")]
+    InvalidRuleVoteRecord,
+
     /// Invalid Governance config: Vote threshold percentage out of range"
     #[error("Invalid Governance config: Vote threshold percentage out of range")]
     InvalidVoteThresholdPercentage,
@@ -99,6 +103,10 @@ pub enum PostError {
     #[error("Token Owner already voted on the Proposal")]
     VoteAlreadyExists,
 
+    /// Vote is missing
+    #[error("Vote is missing")]
+    VoteMissing,
+
     /// Votes already counted for option
     #[error("Votes already counted for option")]
     VotesAlreadyCounted,
@@ -110,6 +118,18 @@ pub enum PostError {
     /// Invalid State: Can't edit Signatories
     #[error("Invalid State: Can't edit Signatories")]
     InvalidStateCannotEditSignatories,
+
+    /// Invalid state cannot edit rules
+    #[error("Invalid state cannot edit rules")]
+    InvalidStateCannotEditRules,
+
+    /// Invalid state cannot edit options
+    #[error("Invalid state cannot edit option")]
+    InvalidStateCannotEditOptions,
+
+    /// Invalid state cannot finalize draft
+    #[error("Invalid state cannot finalize draft")]
+    InvalidStateCannotFinalizeDraft,
 
     /// Invalid Proposal state
     #[error("Invalid Proposal state")]
@@ -177,6 +197,10 @@ pub enum PostError {
     /// Proposal does not belong to the given Governance
     #[error("Proposal does not belong to the given Governance")]
     InvalidGovernanceForProposal,
+
+    /// Proposal does not belong to the given Rule
+    #[error("Proposal does not belong to the given Rule")]
+    InvalidGovernanceForRule,
 
     /// Proposal does not belong to given Governing Mint"
     #[error("Proposal does not belong to given Governing Mint")]
@@ -346,6 +370,18 @@ pub enum PostError {
     #[error("TokenOwnerRecord already exists")]
     TokenOwnerRecordAlreadyExists,
 
+    /// TokenOwnerRecord missing
+    #[error("TokenOwnerRecord missing")]
+    TokenOwnerRecordMissing,
+
+    /// TokenOwnerBudgetRecord missing
+    #[error("TokenOwnerBudgetRecord missing")]
+    TokenOwnerBudgetRecordMissing,
+
+    /// TokenOnwerBudgetRecord already exist
+    #[error("TokenOnwerBudgetRecord already exist")]
+    TokenOwnerBudgetRecordAlreadyExist,
+
     /// Governing token deposits not allowed
     #[error("Governing token deposits not allowed")]
     GoverningTokenDepositsNotAllowed,
@@ -437,21 +473,84 @@ pub enum PostError {
     /// Max vote weights has not been calculated
     #[error("Max vote weights has not been calculated")]
     MaxWeightsNotCalculated,
-}
 
-impl PrintProgramError for PostError {
+    /// Invalid authority for channel
+    #[error("Invalid authority for channel")]
+    InvalidAuthorityForChannel,
+
+    /// Invalid creator for proposal
+    #[error("Invalid creator for proposal")]
+    InvalidCreatorForProposal,
+
+    /// Missing rules for proposal
+    #[error("Missing rules for propasal")]
+    MissingRulesForProposal,
+
+    /// Invalid tag record
+    #[error("Invalid tag record")]
+    InvalidTagRecord,
+
+    /// Invalid token balance
+    #[error("Invalid token balance")]
+    InvalidTokenBalance,
+
+    /// Token holder account already exist
+    #[error("Token holder account already exist")]
+    TokenHolderAccountAlreadyExist,
+
+    /// Invalid deny option for proposal
+    #[error("Invalid deny option for proposal")]
+    InvalidDenyOptionForProposal,
+
+    /// Option equal to deny option
+    #[error("Option equal to deny option")]
+    OptionEqualToDenyOption,
+
+    /// Invalid delegation state for updates
+    #[error("Invalid delegation state for updates")]
+    InvalidDelegationStateForUpdates,
+
+    /// Invalid vote record
+    #[error("Invalid vote record")]
+    InvalidVoteRecord,
+
+    /// Invalid owner for delegation record
+    #[error("Invalid owner for delegation record")]
+    InvalidOwnerForDelegationRecord,
+
+    /// Invalid previous vote for vote record
+    #[error("Invalid previous vote for vote record")]
+    InvalidPreviousVoteForVoteRecord,
+
+    /// Invalid delegation state for undelegation
+    #[error("Invalid delegation state for undelegation")]
+    InvalidDelegatioStateForUndelegation,
+
+    /// DelegationRecord missing
+    #[error("DelegationRecord missing")]
+    DelegationRecordMissing,
+
+    /// DelegatingDelegateNotAllowed not allowed
+    #[error("DelegatingDelegateNotAllowed not allowed")]
+    DelegatingDelegateNotAllowed,
+
+    /// InvalidSyncDirection
+    #[error("InvalidSyncDirection")]
+    InvalidSyncDirection,
+}
+impl PrintProgramError for GovernanceError {
     fn print<E>(&self) {
         msg!("GOVERNANCE-ERROR: {}", &self.to_string());
     }
 }
 
-impl From<PostError> for ProgramError {
-    fn from(e: PostError) -> Self {
+impl From<GovernanceError> for ProgramError {
+    fn from(e: GovernanceError) -> Self {
         ProgramError::Custom(e as u32)
     }
 }
 
-impl<T> DecodeError<T> for PostError {
+impl<T> DecodeError<T> for GovernanceError {
     fn type_of() -> &'static str {
         "Governance Error"
     }

@@ -9,10 +9,12 @@ use solana_program::{
 
 use lchannel::{
     instruction::create_channel,
-    state::{find_channel_program_address, ChannelAccount, ChannelAuthority},
+    state::{find_channel_program_address, ActivityAuthority, ChannelAccount},
 };
 use lpost::{
-    instruction::{cast_vote, create_post, uncast_vote, CreateVoteConfig, SigningChannelAuthority},
+    instruction::{
+        cast_vote, create_post, uncast_vote, CreateVoteConfig, SigningActivityAuthority,
+    },
     state::{
         post::{PostAccount, PostContent},
         vote_record::Vote,
@@ -229,28 +231,30 @@ pub async fn create_tag_record(
 
 pub async fn create_and_verify_channel(
     channel_name: &str,
-    channel_governance_config: &ChannelAuthority,
+    activity_authority: &ActivityAuthority,
     link: Option<ContentSource>,
     banks_client: &mut BanksClient,
     payer: &Keypair,
     recent_blockhash: &Hash,
-) -> Result<Pubkey, TransportError> {
+) -> Result<(Pubkey, Keypair), TransportError> {
     let (channel_address_pda, _bump) =
         find_channel_program_address(&lchannel::id(), channel_name).unwrap();
 
+    let authority = Keypair::new();
     let mut transaction_create = Transaction::new_with_payer(
         &[create_channel(
             &lchannel::id(),
             channel_name,
             &payer.pubkey(),
+            &authority.pubkey(),
             None,
+            activity_authority,
             link,
-            channel_governance_config.clone(),
             &payer.pubkey(),
         )],
         Some(&payer.pubkey()),
     );
-    transaction_create.sign(&[payer, payer], *recent_blockhash);
+    transaction_create.sign(&[payer, &authority], *recent_blockhash);
     banks_client.process_transaction(transaction_create).await?;
 
     // Verify channel name
@@ -262,7 +266,7 @@ pub async fn create_and_verify_channel(
     let channel_account = deserialize_channel_account(&channel_account_info.data).unwrap();
 
     assert_eq!(channel_account.name.as_str(), channel_name);
-    Ok(channel_address_pda)
+    Ok((channel_address_pda, authority))
 }
 
 /* pub async fn ensure_utility_token_balance(
@@ -633,7 +637,7 @@ pub struct TestChannel {
 
 impl TestChannel {
     pub async fn new(
-        channel_authority: &ChannelAuthority,
+        channel_authority: &ActivityAuthority,
         banks_client: &mut BanksClient,
         authority_payer: &Keypair,
         recent_blockhash: &Hash,
@@ -648,7 +652,8 @@ impl TestChannel {
             recent_blockhash,
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
 
         Self { channel }
     }
@@ -704,16 +709,17 @@ impl TestChannel {
         &self,
         banks_client: &mut BanksClient,
         owner: &Pubkey,
-    ) -> SigningChannelAuthority {
+    ) -> SigningActivityAuthority {
         let account = self.get_channel_account(banks_client).await;
-        match account.channel_authority_config {
-            ChannelAuthority::AuthorityByTag { authority, tag } => {
-                SigningChannelAuthority::AuthorityByTag {
+        match account.activity_authority {
+            ActivityAuthority::AuthorityByTag { authority, tag } => {
+                SigningActivityAuthority::AuthorityByTag {
                     authority,
                     owner: *owner,
                     tag,
                 }
             }
+            ActivityAuthority::None => SigningActivityAuthority::None,
         }
     }
 }

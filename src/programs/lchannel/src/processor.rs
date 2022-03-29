@@ -1,7 +1,7 @@
 use borsh::BorshSerialize;
 use shared::{
     account::{
-        check_account_owner, create_and_serialize_account_verify_with_bump, get_account_data,
+        create_and_serialize_account_verify_with_bump, get_account_data,
     },
     content::ContentSource,
 };
@@ -19,7 +19,7 @@ use solana_program::{
 
 use crate::{
     shared::names::entity_name_is_valid,
-    state::{create_channel_account_program_address_seeds, AccountType, ChannelAuthority},
+    state::{create_channel_account_program_address_seeds, AccountType, ActivityAuthority},
 };
 
 use super::{instruction::ChannelInstruction, state::ChannelAccount};
@@ -34,19 +34,25 @@ impl Processor {
         parent: Option<Pubkey>,
         name: String,
         link: Option<ContentSource>,
-        channel_authority_config: ChannelAuthority,
+        activity_config: ActivityAuthority,
         channel_account_bump_seed: u8, /*
                                        create_rule_address_bump_seed: u8, */
     ) -> ProgramResult {
         let accounts_iter = &mut accounts.iter();
         let channel_account_info = next_account_info(accounts_iter)?;
         let creator = next_account_info(accounts_iter)?;
+        let authority = next_account_info(accounts_iter)?;
         let payer_account = next_account_info(accounts_iter)?;
 
         if !creator.is_signer {
             // Do not let someone create an channel for someone else without their signature
             return Err(ProgramError::MissingRequiredSignature);
         }
+        if !authority.is_signer {
+            // Make sure creator can sign authority
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
         if !entity_name_is_valid(name.as_ref()) {
             return Err(ProgramError::InvalidArgument);
         }
@@ -63,7 +69,6 @@ impl Processor {
             let parent_channel =
                 get_account_data::<ChannelAccount>(program_id, parent_channel_account_info)?;
             let parent_channel_authority_info = next_account_info(accounts_iter)?;
-
             if &parent_channel.authority != parent_channel_authority_info.key {
                 return Err(ProgramError::InvalidAccountData);
             }
@@ -73,6 +78,7 @@ impl Processor {
                 return Err(ProgramError::MissingRequiredSignature); // Is signed, means the program has signed it, since its a PDA
             }
         }
+
         let rent = Rent::get()?;
         /*
            Channel and user names must be unique, as we generate the seeds in the same way for both
@@ -91,8 +97,8 @@ impl Processor {
                 link,
                 name,
                 creation_timestamp: Clock::get()?.unix_timestamp as u64,
-                authority: *payer_account.key,
-                channel_authority_config,
+                authority: *authority.key,
+                activity_authority: activity_config,
             },
             seed_slice,
             program_id,
@@ -156,7 +162,7 @@ impl Processor {
             ChannelInstruction::CreateChannel {
                 parent,
                 name,
-                link,
+                info,
                 channel_account_bump_seed,
                 channel_authority_config,
                 /* ,
@@ -168,7 +174,7 @@ impl Processor {
                     accounts,
                     parent,
                     name,
-                    link,
+                    info,
                     channel_authority_config,
                     channel_account_bump_seed, /*
                                                create_rule_address_bump_seed, */

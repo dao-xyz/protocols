@@ -1,18 +1,18 @@
-use solana_program::pubkey::Pubkey;
+
 use solana_program_test::*;
 
 use lchannel::processor::Processor;
-use solana_program::hash::Hash;
-use solana_sdk::{signature::Keypair, signer::Signer, transaction::Transaction};
+
+
 
 pub fn program_test() -> ProgramTest {
-    let mut program = ProgramTest::new("lchannel", lchannel::id(), processor!(Processor::process));
+    
     /*   program.add_program(
         "luser",
         luser::id(),
         processor!(luser::processor::Processor::process),
     ); */
-    program
+    ProgramTest::new("lchannel", lchannel::id(), processor!(Processor::process))
 }
 /*
 pub async fn create_and_verify_user(

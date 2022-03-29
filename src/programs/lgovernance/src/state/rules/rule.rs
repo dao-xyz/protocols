@@ -1,19 +1,27 @@
 use std::slice::Iter;
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use ltag::state::get_tag_record_data_with_authority_and_signed_owner;
 use shared::{
     account::{get_account_data, MaxSize},
     content::ContentSource,
 };
 use solana_program::{
-    account_info::{next_account_info, AccountInfo},
+    account_info::{next_account_info, next_account_infos, AccountInfo},
+    msg,
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::Pubkey,
 };
 
 use crate::{
-    accounts::AccountType, error::PostError, tokens::spl_utils::get_spl_token_mint_supply,
+    accounts::AccountType,
+    error::GovernanceError,
+    state::{
+        proposal::{proposal_transaction::InstructionData, ProposalV2},
+        token_owner_record::get_token_owner_record_data_for_owner,
+    },
+    tokens::spl_utils::{get_spl_token_mint_supply, get_token_balance},
 };
 
 use super::super::enums::VoteTipping;
@@ -90,7 +98,29 @@ pub struct RuleTimeConfig {
     /// Note: This field is not implemented in the current version
     pub proposal_cool_off_time: u32,
 }
+impl RuleTimeConfig {
+    pub fn get_strictest(&self, other: &Self) -> Self {
+        Self {
+            max_voting_time: self.max_voting_time.max(other.max_voting_time),
+            min_transaction_hold_up_time: self
+                .min_transaction_hold_up_time
+                .max(other.min_transaction_hold_up_time),
+            proposal_cool_off_time: self
+                .proposal_cool_off_time
+                .max(other.proposal_cool_off_time),
+        }
+    }
+}
 
+impl Default for RuleTimeConfig {
+    fn default() -> Self {
+        Self {
+            min_transaction_hold_up_time: 0,
+            max_voting_time: 604800,
+            proposal_cool_off_time: 0,
+        }
+    }
+}
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
 pub struct MintWeight {
     pub mint: Pubkey,
@@ -110,24 +140,157 @@ pub struct RuleVoteConfig {
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
+pub struct RuleProposalConfig {
+    pub create_proposal_criteria: CreateProposalCriteria,
+}
+
+impl RuleProposalConfig {
+    pub fn assert_can_create_proposal(
+        &self,
+        program_id: &Pubkey,
+        proposal: &ProposalV2,
+        accounts: &mut Iter<AccountInfo>,
+    ) -> Result<(), ProgramError> {
+        match &self.create_proposal_criteria {
+            CreateProposalCriteria::AuthorityTag { authority, tag } => {
+                let tag_record_info = next_account_info(accounts)?;
+                let tag_record_owner = next_account_info(accounts)?;
+                let tag_record_data = get_tag_record_data_with_authority_and_signed_owner(
+                    &ltag::id(),
+                    tag_record_info,
+                    authority,
+                    tag_record_owner,
+                )?;
+                if &tag_record_data.tag != tag {
+                    return Err(GovernanceError::InvalidTagRecord.into());
+                }
+                Ok(())
+            }
+            CreateProposalCriteria::TokenOwner { amount, mint } => {
+                let token_owner_record = next_account_info(accounts)?;
+                let governing_token_owner_info = next_account_info(accounts)?;
+
+                let token_owner_record_data = get_token_owner_record_data_for_owner(
+                    program_id,
+                    token_owner_record,
+                    governing_token_owner_info,
+                )?;
+
+                if &token_owner_record_data.governing_token_mint != mint {
+                    return Err(GovernanceError::InvalidGoverningMintForProposal.into());
+                }
+
+                if amount < &token_owner_record_data.governing_token_deposit_amount {
+                    return Err(GovernanceError::InvalidTokenBalance.into());
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
+pub struct RuleConfig {
+    pub vote_config: RuleVoteConfig,
+    pub time_config: RuleTimeConfig,
+    pub proposal_config: RuleProposalConfig,
+}
+
+impl RuleConfig {
+    pub fn get_single_mint_config(
+        governance_mint: &Pubkey,
+        rule_condition: &Option<RuleCondition>,
+        name: &Option<String>,
+        info: &Option<ContentSource>,
+    ) -> Self {
+        Self {
+            proposal_config: RuleProposalConfig {
+                create_proposal_criteria: CreateProposalCriteria::TokenOwner {
+                    amount: 1,
+                    mint: *governance_mint,
+                },
+            },
+            time_config: RuleTimeConfig::default(),
+            vote_config: RuleVoteConfig {
+                criteria: AcceptenceCriteria::default(),
+                info: info.clone(),
+                mint_weights: vec![MintWeight {
+                    mint: *governance_mint,
+                    weight: 100,
+                }],
+                name: name.clone(),
+                rule_condition: rule_condition.clone(),
+                vote_tipping: VoteTipping::Strict,
+            },
+        }
+    }
+}
+#[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
+pub enum CreateProposalCriteria {
+    AuthorityTag { tag: Pubkey, authority: Pubkey },
+    TokenOwner { mint: Pubkey, amount: u64 },
+}
+
+#[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
 pub struct Rule {
     pub account_type: AccountType,
+
     // config
     // id is basically a seed (has to be unique)
     pub id: Pubkey,
-    pub channel: Pubkey,
+    pub governance: Pubkey,
     pub deleted: bool,
 
     // config
-    pub vote_config: RuleVoteConfig,
-    pub time_config: RuleTimeConfig,
+    pub config: RuleConfig,
 
     // stats
+    pub proposal_count: u64,
     pub voting_proposal_count: u64,
 }
 impl MaxSize for Rule {
     fn get_max_size(&self) -> Option<usize> {
         None
+    }
+}
+
+impl Rule {
+    pub fn rule_applicable(&self, instruction_data: &InstructionData) -> Result<(), ProgramError> {
+        if let Some(config) = &self.config.vote_config.rule_condition {
+            match config {
+                RuleCondition::None => return Ok(()),
+                RuleCondition::ProgramId(program_id) => {
+                    if program_id != &instruction_data.program_id {
+                        return Err(GovernanceError::RuleNotApplicableForInstruction.into());
+                    }
+                    return Ok(());
+                }
+                RuleCondition::Granular {
+                    program_id,
+                    instruction_condition,
+                } => {
+                    if program_id != &instruction_data.program_id {
+                        return Err(GovernanceError::RuleNotApplicableForInstruction.into());
+                    }
+
+                    // Check instruction data
+                    for chunk in &instruction_condition.chunks {
+                        for (i, chunk_data) in chunk.data.iter().enumerate() {
+                            if instruction_data
+                                .data
+                                .get(chunk.offset as usize + i)
+                                .unwrap()
+                                != chunk_data
+                            {
+                                return Err(GovernanceError::RuleNotApplicableForInstruction.into());
+                            }
+                        }
+                    }
+                    return Ok(());
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -137,16 +300,22 @@ impl IsInitialized for Rule {
     }
 }
 
-/// Deserializes Rule account and checks channel and owner program
-pub fn get_rule_data(
+/// Deserializes Rule account and governance key
+pub fn get_rule_data_for_governance(
     program_id: &Pubkey,
     rule_info: &AccountInfo,
-    channel: &Pubkey,
+    governance: &Pubkey,
 ) -> Result<Rule, ProgramError> {
     let data = get_account_data::<Rule>(program_id, rule_info)?;
-    if &data.channel == channel {
-        return Err(PostError::InvalidChannel.into());
+    if &data.governance != governance {
+        return Err(GovernanceError::InvalidGovernanceForRule.into());
     }
+    Ok(data)
+}
+
+/// Deserializes Rule account
+pub fn get_rule_data(program_id: &Pubkey, rule_info: &AccountInfo) -> Result<Rule, ProgramError> {
+    let data = get_account_data::<Rule>(program_id, rule_info)?;
     Ok(data)
 }
 
@@ -159,7 +328,7 @@ impl RuleVoteConfig {
         for mint_weight in &self.mint_weights {
             let mint_info = next_account_info(accounts_iter)?;
             if mint_info.key != &mint_weight.mint {
-                return Err(PostError::InvalidVoteMint.into());
+                return Err(GovernanceError::InvalidVoteMint.into());
             }
             let supply = get_spl_token_mint_supply(mint_info)?;
             sum = sum
@@ -227,13 +396,10 @@ impl RuleVoteConfig {
         }
     }
 } */
-pub fn find_create_rule_associated_program_address(
-    program_id: &Pubkey,
-    rule_id: &Pubkey,
-) -> (Pubkey, u8) {
+pub fn get_rule_program_address(program_id: &Pubkey, rule_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[rule_id.as_ref()], program_id)
 }
-pub fn create_rule_associated_program_address_seeds<'a>(
+pub fn get_rule_program_address_seeds<'a>(
     rule_id: &'a Pubkey,
     bump_seed: &'a [u8],
 ) -> [&'a [u8]; 2] {

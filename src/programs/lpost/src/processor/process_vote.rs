@@ -1,11 +1,7 @@
 use crate::{
     accounts::AccountType,
     error::PostError,
-    state::{
-        assert_authorized_by_tag,
-        post::{get_post_data},
-        vote_record::Vote,
-    },
+    state::{assert_authorized_by_tag, post::get_post_data, vote_record::Vote},
     state::{
         post::{PostAccount, VoteConfig},
         vote_record::{
@@ -15,7 +11,7 @@ use crate::{
 };
 use borsh::BorshSerialize;
 
-use lchannel::state::{ChannelAccount, ChannelAuthority};
+use lchannel::state::{ActivityAuthority, ChannelAccount};
 use shared::account::{
     check_system_program, close_system_account, create_and_serialize_account_verify_with_bump,
     get_account_data, MaxSize,
@@ -55,8 +51,8 @@ pub fn process_post_vote(
     let channel_data = get_account_data::<ChannelAccount>(&lchannel::id(), channel_info)?;
     let mut post = get_post_data(program_id, post_account_info, channel_info.key)?;
 
-    match &channel_data.channel_authority_config {
-        ChannelAuthority::AuthorityByTag { tag, authority } => {
+    match &channel_data.activity_authority {
+        ActivityAuthority::AuthorityByTag { tag, authority } => {
             let tag_record_info = next_account_info(accounts_iter)?;
             let tag_authority_info = next_account_info(accounts_iter)?;
             let tag_owner_info = next_account_info(accounts_iter)?;
@@ -65,6 +61,7 @@ pub fn process_post_vote(
             }
             assert_authorized_by_tag(tag_owner_info, tag_record_info, tag, tag_authority_info)?;
         }
+        ActivityAuthority::None => {}
     }
 
     let rent = Rent::get()?;

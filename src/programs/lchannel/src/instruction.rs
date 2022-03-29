@@ -6,7 +6,7 @@ use solana_program::{
     system_program,
 };
 
-use crate::state::{find_channel_program_address, ChannelAuthority};
+use crate::state::{find_channel_program_address, ActivityAuthority};
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum ChannelInstruction {
@@ -17,13 +17,13 @@ pub enum ChannelInstruction {
         #[allow(dead_code)] // but it's not
         name: String,
         #[allow(dead_code)] // but it's not
-        link: Option<ContentSource>,
+        info: Option<ContentSource>,
         #[allow(dead_code)] // but it's not
         channel_account_bump_seed: u8,
 
         // Tag that lets users create posts
         #[allow(dead_code)] // but it's not
-        channel_authority_config: ChannelAuthority,
+        channel_authority_config: ActivityAuthority,
     },
 
     // Update channel
@@ -41,9 +41,10 @@ pub fn create_channel(
     program_id: &Pubkey,
     channel_name: &str,
     creator: &Pubkey,
+    authority: &Pubkey,
     parent_and_authority: Option<(Pubkey, Pubkey)>,
-    link: Option<ContentSource>,
-    channel_authority_config: ChannelAuthority,
+    activity_authority: &ActivityAuthority,
+    info: Option<ContentSource>,
     payer: &Pubkey,
 ) -> Instruction {
     let (channel, channel_account_bump_seed) =
@@ -61,6 +62,7 @@ pub fn create_channel(
     let mut accounts = vec![
         AccountMeta::new(channel, false),
         AccountMeta::new_readonly(*creator, true),
+        AccountMeta::new_readonly(*authority, true),
         AccountMeta::new(*payer, true),
         /*    AccountMeta::new(create_rule_address, false), */
         AccountMeta::new(system_program::id(), false),
@@ -76,10 +78,10 @@ pub fn create_channel(
         program_id: *program_id,
         data: (ChannelInstruction::CreateChannel {
             name: channel_name.into(),
-            link,
+            info,
             parent: parent_address,
             channel_account_bump_seed,
-            channel_authority_config,
+            channel_authority_config: activity_authority.clone(),
         })
         .try_to_vec()
         .unwrap(),

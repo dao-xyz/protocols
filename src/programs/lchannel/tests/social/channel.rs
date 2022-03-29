@@ -2,7 +2,7 @@ use lchannel::instruction::{
     create_channel, create_update_authority_transacation, create_update_info_transacation,
 };
 
-use lchannel::state::{find_channel_program_address, ChannelAccount, ChannelAuthority};
+use lchannel::state::{find_channel_program_address, ActivityAuthority, ChannelAccount};
 use shared::content::ContentSource;
 use solana_program::borsh::try_from_slice_unchecked;
 use solana_program::hash::Hash;
@@ -26,11 +26,36 @@ pub async fn create_and_verify_channel(
     payer: &Keypair,
     recent_blockhash: &Hash,
     channel_name: &str,
-    channel_owner_user: &Keypair,
+    creator: &Keypair,
     parent_and_authority: &Option<(Pubkey, Pubkey)>,
-    channel_authority_config: &ChannelAuthority,
-    link: Option<ContentSource>,
-) -> Result<Pubkey, TransportError> {
+    activity_authority: &ActivityAuthority,
+    info: Option<ContentSource>,
+) -> Result<(Pubkey, Keypair), TransportError> {
+    let authority = Keypair::new();
+    create_and_verify_channel_with_authority(
+        banks_client,
+        payer,
+        recent_blockhash,
+        channel_name,
+        creator,
+        parent_and_authority,
+        activity_authority,
+        info,
+        authority,
+    )
+    .await
+}
+pub async fn create_and_verify_channel_with_authority(
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: &Hash,
+    channel_name: &str,
+    creator: &Keypair,
+    parent_and_authority: &Option<(Pubkey, Pubkey)>,
+    activity_authority: &ActivityAuthority,
+    info: Option<ContentSource>,
+    authority: Keypair,
+) -> Result<(Pubkey, Keypair), TransportError> {
     let (channel_address_pda, _bump) =
         find_channel_program_address(&lchannel::id(), channel_name).unwrap();
 
@@ -38,15 +63,16 @@ pub async fn create_and_verify_channel(
         &[create_channel(
             &lchannel::id(),
             channel_name,
-            &channel_owner_user.pubkey(),
+            &creator.pubkey(),
+            &authority.pubkey(),
             *parent_and_authority,
-            link,
-            channel_authority_config.clone(),
+            activity_authority,
+            info,
             &payer.pubkey(),
         )],
         Some(&payer.pubkey()),
     );
-    transaction_create.sign(&[payer, channel_owner_user], *recent_blockhash);
+    transaction_create.sign(&[payer, creator, &authority], *recent_blockhash);
     banks_client.process_transaction(transaction_create).await?;
 
     // Verify channel name
@@ -58,7 +84,7 @@ pub async fn create_and_verify_channel(
     let channel_account = deserialize_channel_account(&channel_account_info.data).unwrap();
 
     assert_eq!(channel_account.name.as_str(), channel_name);
-    Ok(channel_address_pda)
+    Ok((channel_address_pda, authority))
 }
 
 #[tokio::test]
@@ -67,14 +93,14 @@ pub async fn success() {
 
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
     // create a channel
-    let channel = create_and_verify_channel(
+    let (channel, authority) = create_and_verify_channel(
         &mut banks_client,
         &payer,
         &recent_blockhash,
         "Channel",
         &payer,
         &None,
-        &ChannelAuthority::AuthorityByTag {
+        &ActivityAuthority::AuthorityByTag {
             tag: Pubkey::new_unique(),
             authority: Pubkey::new_unique(),
         },
@@ -84,18 +110,19 @@ pub async fn success() {
     .unwrap();
 
     // create a subchannel
-    create_and_verify_channel(
+    create_and_verify_channel_with_authority(
         &mut banks_client,
         &payer,
         &recent_blockhash,
         "asd",
         &payer,
-        &Some((channel, payer.pubkey())),
-        &ChannelAuthority::AuthorityByTag {
+        &Some((channel, authority.pubkey())),
+        &ActivityAuthority::AuthorityByTag {
             tag: Pubkey::new_unique(),
             authority: Pubkey::new_unique(),
         },
         Some("link".into()),
+        authority,
     )
     .await
     .unwrap();
@@ -107,14 +134,14 @@ async fn success_update_info() {
 
     let channel_name = "Channel";
 
-    create_and_verify_channel(
+    let (channel_account_address, authority) = create_and_verify_channel(
         &mut banks_client,
         &payer,
         &recent_blockhash,
         channel_name,
         &payer,
         &None,
-        &ChannelAuthority::AuthorityByTag {
+        &ActivityAuthority::AuthorityByTag {
             tag: Pubkey::new_unique(),
             authority: Pubkey::new_unique(),
         },
@@ -129,19 +156,17 @@ async fn success_update_info() {
                 &lchannel::id(),
                 channel_name,
                 &new_authority,
-                &payer.pubkey(),
+                &authority.pubkey(),
             )],
             Some(&payer.pubkey()),
-            &[&payer],
+            &[&payer, &authority],
             recent_blockhash,
         ))
         .await
         .unwrap();
 
     // Verify channel changed
-    let channel_account_address = find_channel_program_address(&lchannel::id(), channel_name)
-        .unwrap()
-        .0;
+
     let channel_account_info = banks_client
         .get_account(channel_account_address)
         .await
@@ -157,14 +182,14 @@ async fn success_update_authority() {
 
     let channel_name = "Channel";
 
-    create_and_verify_channel(
+    let (channel_account_address, authority) = create_and_verify_channel(
         &mut banks_client,
         &payer,
         &recent_blockhash,
         channel_name,
         &payer,
         &None,
-        &ChannelAuthority::AuthorityByTag {
+        &ActivityAuthority::AuthorityByTag {
             tag: Pubkey::new_unique(),
             authority: Pubkey::new_unique(),
         },
@@ -181,19 +206,17 @@ async fn success_update_authority() {
                 &lchannel::id(),
                 channel_name,
                 Some(new_link.into()),
-                &payer.pubkey(),
+                &authority.pubkey(),
             )],
             Some(&payer.pubkey()),
-            &[&payer],
+            &[&payer, &authority],
             recent_blockhash,
         ))
         .await
         .unwrap();
 
     // Verify channel changed
-    let channel_account_address = find_channel_program_address(&lchannel::id(), channel_name)
-        .unwrap()
-        .0;
+
     let channel_account_info = banks_client
         .get_account(channel_account_address)
         .await
@@ -225,7 +248,7 @@ async fn fail_already_exist() {
         channel_name,
         &payer,
         &None,
-        &ChannelAuthority::AuthorityByTag {
+        &ActivityAuthority::AuthorityByTag {
             tag: Pubkey::new_unique(),
             authority: Pubkey::new_unique(),
         },
@@ -243,7 +266,7 @@ async fn fail_already_exist() {
         channel_name,
         &payer,
         &None,
-        &ChannelAuthority::AuthorityByTag {
+        &ActivityAuthority::AuthorityByTag {
             tag: Pubkey::new_unique(),
             authority: Pubkey::new_unique(),
         },
@@ -286,7 +309,7 @@ async fn fail_update_info_wrong_authority() {
         channel_name,
         &payer,
         &None,
-        &ChannelAuthority::AuthorityByTag {
+        &ActivityAuthority::AuthorityByTag {
             tag: Pubkey::new_unique(),
             authority: Pubkey::new_unique(),
         },
@@ -346,7 +369,7 @@ async fn fail_update_authority_wrong_authority() {
         channel_name,
         &payer,
         &None,
-        &ChannelAuthority::AuthorityByTag {
+        &ActivityAuthority::AuthorityByTag {
             tag: Pubkey::new_unique(),
             authority: Pubkey::new_unique(),
         },

@@ -18,9 +18,9 @@ spl-math = { version = "0.1", features = [ "no-entrypoint" ] }
 spl-associated-token-account = { version = "1.0.3", features = [ "no-entrypoint" ] }
 luser = { version = "0.0.1", path="../luser", features = [ "no-entrypoint" ] }
 ltag = { version = "0.0.1", path="../ltag", features = [ "no-entrypoint" ] }
+lchannel = { version = "0.0.1", path="../lchannel", features = [ "no-entrypoint" ] }
 
 shared = { version = "0.0.1", path = "../shared" }
-lchannel = { version = "0.0.1", path="../lchannel", features = [ "no-entrypoint" ] }
 
 thiserror = "1.0"
 bincode = "1.3.1"

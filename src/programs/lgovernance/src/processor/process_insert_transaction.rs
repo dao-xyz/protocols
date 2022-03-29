@@ -1,10 +1,10 @@
 use crate::{
     accounts::AccountType,
-    error::PostError,
+    error::GovernanceError,
     state::{
         enums::TransactionExecutionStatus,
         proposal::{
-            get_proposal_data_for_channel,
+            get_proposal_data,
             proposal_option::{get_proposal_option_data, ProposalOptionType},
             proposal_transaction::{
                 get_proposal_transaction_address_seeds, ConditionedInstruction,
@@ -12,7 +12,6 @@ use crate::{
             },
         },
         rules::rule::Rule,
-        token_owner_record::get_token_owner_record_data_for_proposal_owner,
     },
 };
 use std::cmp::Ordering;
@@ -22,6 +21,7 @@ use shared::account::{create_and_serialize_account_signed, get_account_data};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     program_error::ProgramError,
     pubkey::Pubkey,
     rent::Rent,
@@ -37,22 +37,22 @@ pub fn process_insert_transaction(
     instructions: Vec<ConditionedInstruction>,
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
-
-    let channel_info = next_account_info(account_info_iter)?; // 0
-    let proposal_info = next_account_info(account_info_iter)?; // 1
-    let token_owner_record_info = next_account_info(account_info_iter)?; // 2
-    let governance_authority_info = next_account_info(account_info_iter)?; // 3
-    let proposal_transaction_info = next_account_info(account_info_iter)?; // 4
-    let payer_info = next_account_info(account_info_iter)?; // 5
-    let system_info = next_account_info(account_info_iter)?; // 6
-    let rent_sysvar_info = next_account_info(account_info_iter)?; // 7
+    let proposal_info = next_account_info(account_info_iter)?;
+    let creator_info = next_account_info(account_info_iter)?;
+    let proposal_transaction_info = next_account_info(account_info_iter)?;
+    let option_info = next_account_info(account_info_iter)?;
+    let payer_info = next_account_info(account_info_iter)?;
+    let system_info = next_account_info(account_info_iter)?;
+    let rent_sysvar_info = next_account_info(account_info_iter)?;
     let rent = &Rent::from_account_info(rent_sysvar_info)?;
 
     if !proposal_transaction_info.data_is_empty() {
-        return Err(PostError::TransactionAlreadyExists.into());
+        return Err(GovernanceError::TransactionAlreadyExists.into());
     }
-    let proposal_data = get_proposal_data_for_channel(program_id, proposal_info, channel_info.key)?;
-    proposal_data.assert_can_edit_instructions()?;
+
+    let proposal_data = get_proposal_data(program_id, proposal_info)?;
+
+    proposal_data.assert_can_edit_instructions(creator_info)?;
 
     let mut rule_info = next_account_info(account_info_iter)?;
     // Make sure that hold up time is ok by all the rules
@@ -65,29 +65,29 @@ pub fn process_insert_transaction(
             }
         }
         let rule_data = get_account_data::<Rule>(program_id, rule_info)?;
-        if hold_up_time < rule_data.time_config.min_transaction_hold_up_time {
-            return Err(PostError::TransactionHoldUpTimeBelowRequiredMin.into());
+        if hold_up_time < rule_data.config.time_config.min_transaction_hold_up_time {
+            return Err(GovernanceError::TransactionHoldUpTimeBelowRequiredMin.into());
         }
-        instruction.rule_applicable(&rule_data)?;
+        rule_data.rule_applicable(&instruction.instruction_data)?;
 
         if !proposal_data
             .rules_max_vote_weight
             .iter()
             .any(|rule_weight| &rule_weight.rule == rule)
         {
-            return Err(PostError::InvalidVoteRule.into());
+            return Err(GovernanceError::InvalidVoteRule.into());
         }
     }
+    // CHECK AUTHORITY
+    /*
+       let token_owner_record_data = get_token_owner_record_data_for_proposal_owner(
+           program_id,
+           token_owner_record_info,
+           &proposal_data.token_owner_record,
+       )?;
 
-    let token_owner_record_data = get_token_owner_record_data_for_proposal_owner(
-        program_id,
-        token_owner_record_info,
-        &proposal_data.token_owner_record,
-    )?;
-
-    token_owner_record_data.assert_token_owner_or_delegate_is_signer(governance_authority_info)?;
-
-    let option_info = next_account_info(account_info_iter)?;
+       token_owner_record_data.assert_token_owner_or_delegate_is_signer(governance_authority_info)?;
+    */
     let mut option_data = get_proposal_option_data(program_id, option_info, proposal_info.key)?;
 
     if let ProposalOptionType::Instruction {
@@ -102,7 +102,7 @@ pub fn process_insert_transaction(
             transactions_count: transactions_count.checked_add(1).unwrap(),
             transactions_executed_count: *transactions_executed_count,
             transactions_next_index: match instruction_index.cmp(transactions_next_index) {
-                Ordering::Greater => return Err(PostError::InvalidTransactionIndex.into()),
+                Ordering::Greater => return Err(GovernanceError::InvalidTransactionIndex.into()),
                 // If the index is the same as instructions_next_index then we are adding a new instruction
                 // If the index is below instructions_next_index then we are inserting into an existing empty space
                 Ordering::Equal => transactions_next_index.checked_add(1).unwrap(),
@@ -111,7 +111,7 @@ pub fn process_insert_transaction(
         };
         option_data.serialize(&mut *option_info.data.borrow_mut())?;
     } else {
-        return Err(PostError::InvalidOptionForInstructions.into());
+        return Err(GovernanceError::InvalidOptionForInstructions.into());
     }
 
     let proposal_transaction_data = ProposalTransactionV2 {

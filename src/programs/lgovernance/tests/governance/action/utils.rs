@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use lpost::{
+use lgovernance::{
     instruction::create_post_execution_transaction,
     state::post::{deserialize_post_account, ActionStatus, PostType},
 };
@@ -19,7 +19,7 @@ pub fn time_since_epoch() -> u64 {
     since_the_epoch.as_secs()
 }
 
-pub async fn execute_post(
+pub async fn execute_proposal(
     banks_client: &mut BanksClient,
     payer: &Keypair,
     recent_blockhash: &Hash,

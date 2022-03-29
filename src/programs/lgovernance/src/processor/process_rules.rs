@@ -1,14 +1,18 @@
 use crate::{
     accounts::AccountType,
-    state::rules::rule::{
-        create_rule_associated_program_address_seeds, Rule, RuleTimeConfig, RuleVoteConfig,
+    state::{
+        governance::GovernanceV2,
+        rules::rule::{
+            get_rule_program_address_seeds, Rule, RuleConfig, RuleProposalConfig, RuleTimeConfig,
+            RuleVoteConfig,
+        },
     },
 };
+use lchannel::state::ChannelAccount;
 use shared::account::{
     check_account_owner, check_system_program, create_and_serialize_account_verify_with_bump,
 };
 
-use lchannel::state::ChannelAccount;
 use shared::account::get_account_data;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -23,41 +27,62 @@ pub fn process_create_rule(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     rule_id: &Pubkey,
-    vote_config: RuleVoteConfig,
-    time_config: RuleTimeConfig,
+    config: RuleConfig,
     new_rule_bump_seed: u8,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
-    let channel_info = next_account_info(accounts_iter)?;
-    let channel = get_account_data::<ChannelAccount>(program_id, channel_info)?;
-    let authority_info = next_account_info(accounts_iter)?;
-    channel.check_authority(authority_info)?;
-
     let new_rule_account_info = next_account_info(accounts_iter)?;
+    let governance_info = next_account_info(accounts_iter)?;
     let payer_info = next_account_info(accounts_iter)?;
     let system_info = next_account_info(accounts_iter)?;
 
-    check_account_owner(channel_info, program_id)?;
-    if !channel_info.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
+    let governance_data = get_account_data::<GovernanceV2>(program_id, governance_info)?;
+    if !governance_info.is_signer {
+        // Load channel, or parent(s) and check authority
+        let channel_authority_info = next_account_info(accounts_iter)?;
+        if !channel_authority_info.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        let mut channel_info = next_account_info(accounts_iter)?;
+
+        if &governance_data.channel != channel_info.key {
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        let mut channel = get_account_data::<ChannelAccount>(&lchannel::id(), channel_info)?;
+        while &channel.authority != channel_authority_info.key {
+            if let Some(parent) = &channel.parent {
+                let parent_channel_info = next_account_info(accounts_iter)?;
+                if parent != parent_channel_info.key {
+                    return Err(ProgramError::InvalidAccountData);
+                }
+                channel_info = parent_channel_info;
+                channel = get_account_data::<ChannelAccount>(&lchannel::id(), channel_info)?;
+            } else {
+                return Err(ProgramError::InvalidAccountData);
+            }
+        }
+        if &channel.authority != channel_authority_info.key {
+            return Err(ProgramError::InvalidAccountData);
+        }
     }
 
     check_system_program(system_info.key)?;
 
     let rent = Rent::get()?;
     let new_rule_bump_seeds = [new_rule_bump_seed];
-    let create_rule_seeds =
-        create_rule_associated_program_address_seeds(rule_id, &new_rule_bump_seeds);
+    let create_rule_seeds = get_rule_program_address_seeds(rule_id, &new_rule_bump_seeds);
     create_and_serialize_account_verify_with_bump::<Rule>(
         payer_info,
         new_rule_account_info,
         &Rule {
             account_type: AccountType::Rule,
-            channel: *channel_info.key,
+            governance: *governance_info.key,
             id: *rule_id,
-            vote_config,
-            time_config,
+            config,
             voting_proposal_count: 0,
+            proposal_count: 0,
             deleted: false,
         },
         &create_rule_seeds,

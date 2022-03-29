@@ -7,11 +7,10 @@ use crate::{
         post::{PostAccount, VoteConfig},
     },
 };
-use lchannel::state::{ChannelAccount, ChannelAuthority};
+use lchannel::state::{ActivityAuthority, ChannelAccount};
 
 use shared::account::{
-    check_system_program, create_and_serialize_account_verify_with_bump,
-    get_account_data,
+    check_system_program, create_and_serialize_account_verify_with_bump, get_account_data,
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -40,8 +39,8 @@ pub fn process_create_post(
     let channel_data = get_account_data::<ChannelAccount>(&lchannel::id(), channel_account_info)?;
     check_system_program(system_account.key)?;
 
-    match &channel_data.channel_authority_config {
-        ChannelAuthority::AuthorityByTag { tag, authority } => {
+    match &channel_data.activity_authority {
+        ActivityAuthority::AuthorityByTag { tag, authority } => {
             let tag_record_info = next_account_info(accounts_iter)?;
             let tag_authority_info = next_account_info(accounts_iter)?;
             let tag_owner_info = next_account_info(accounts_iter)?;
@@ -50,6 +49,7 @@ pub fn process_create_post(
             }
             assert_authorized_by_tag(tag_owner_info, tag_record_info, tag, tag_authority_info)?;
         }
+        ActivityAuthority::None => {}
     }
 
     let rent = Rent::get()?;

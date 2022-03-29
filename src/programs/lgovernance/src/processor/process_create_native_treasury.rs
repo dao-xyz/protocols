@@ -12,11 +12,14 @@ use solana_program::{
     sysvar::Sysvar,
 };
 
-use crate::state::native_treasury::{get_native_treasury_address_seeds, NativeTreasury};
+use crate::{
+    accounts::AccountType,
+    state::native_treasury::{get_native_treasury_address_seeds, NativeTreasury},
+};
 
 /// Checks if the given account type is on of the Governance account types of any version
-pub fn is_governance_account_type(account_type: &lchannel::state::AccountType) -> bool {
-    account_type == &lchannel::state::AccountType::Channel
+pub fn is_governance_account_type(account_type: &AccountType) -> bool {
+    account_type == &AccountType::Governance
 }
 
 /// Processes CreateNativeTreasury instruction
@@ -33,7 +36,7 @@ pub fn process_create_native_treasury(
 
     let rent = Rent::get()?;
 
-    assert_is_valid_account_of_types(&lchannel::id(), governance_info, is_governance_account_type)?;
+    assert_is_valid_account_of_types(&program_id, governance_info, is_governance_account_type)?;
 
     let native_treasury_data = NativeTreasury {};
 

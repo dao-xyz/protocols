@@ -1,12 +1,4 @@
-use crate::{
-    social::utils::{TestChannel, TestGovernanceToken, TestPost, TestUser},
-    utils::program_test,
-};
-use lpost::{
-    instruction::create_post_proposal,
-    state::{proposal::VoteType, rules::rule::find_create_rule_associated_program_address},
-};
-use solana_program::pubkey::Pubkey;
+use crate::{governance::utils::TestToken, utils::program_test};
 use solana_program_test::*;
 use solana_sdk::{signer::Signer, transaction::Transaction};
 
@@ -23,8 +15,7 @@ async fn approved_create_rule() {
     let program = program_test();
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
     let total_supply = 100;
-    let governance_token =
-        TestGovernanceToken::new(&mut banks_client, &payer, &recent_blockhash).await;
+    // let governance_token = TestToken::new(&mut banks_client, &payer, &recent_blockhash).await;
     /*  let test_user = TestUser::new(&mut banks_client, &payer, &recent_blockhash).await;
     let test_channel = TestChannel::new(
         &test_user,

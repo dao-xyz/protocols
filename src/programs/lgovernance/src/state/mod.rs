@@ -1,10 +1,11 @@
+pub mod channel;
+pub mod delegation;
 pub mod delegation_record;
 pub mod enums;
+pub mod governance;
 pub mod native_treasury;
-pub mod post;
 pub mod proposal;
 pub mod realm;
-pub mod rule_delegation_account;
 pub mod rules;
 pub mod token_owner_budget_record;
 pub mod token_owner_record;

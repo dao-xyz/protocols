@@ -7,33 +7,18 @@ pub mod processor;
 pub mod shared;
 pub mod state;
 pub mod tokens;
-solana_program::declare_id!(lchannel::lpost::ID);
-
+solana_program::declare_id!("GhhdZ7v99edo9v6XmitqEoKT5jev1mpCpVWim6bgKsh1");
 
 use solana_program::pubkey::Pubkey;
 
-
 use state::vote_record::Vote;
 
-use crate::tokens::spl_utils::{
+/* use crate::tokens::spl_utils::{
     create_authority_program_address_seeds, create_mint_escrow_program_address_seeds,
     find_authority_program_address, find_mint_escrow_program_address, MINT_SEED,
 };
-
+ */
 /// Seed for UPVOTE
-const USER: &[u8] = b"user";
-
-/// Seed for UPVOTE
-const UPVOTE: &[u8] = b"up";
-
-/// Seed for downvote
-const DOWNVOTE: &[u8] = b"down";
-
-/// Seed for MINT
-const MINT: &[u8] = b"mint";
-
-// Seed for stats
-const STATS: &[u8] = b"stats";
 
 const RULE: &[u8] = b"rule";
 
@@ -49,16 +34,6 @@ pub enum Vote {
     Down = 1,
 } */
 
-pub fn find_escrow_program_address(program_id: &Pubkey, post: &Pubkey) -> (Pubkey, u8) {
-    find_mint_escrow_program_address(program_id, post)
-}
-
-pub fn create_escrow_program_address_seeds<'a>(
-    post: &'a Pubkey,
-    bump_seed: &'a [u8],
-) -> [&'a [u8]; 3] {
-    create_mint_escrow_program_address_seeds(post, bump_seed)
-}
 /*
 pub fn create_post_mint_program_account<'a>(
     post: &Pubkey,
@@ -121,48 +96,6 @@ pub fn create_post_mint_program_account<'a>(
     Ok(())
 }
  */
-pub fn find_post_program_address(program_id: &Pubkey, hash: &[u8; 32]) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[hash], program_id)
-}
-
-/// Find address for the token upvote mint for the post account
-pub fn find_post_upvote_mint_program_address(program_id: &Pubkey, post: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[MINT_SEED, UPVOTE, &post.to_bytes()], program_id)
-}
-
-/// Create post mint upvote program address
-pub fn create_post_upvote_mint_program_address_seeds<'a>(
-    post: &'a Pubkey,
-    bump_seed: &'a [u8],
-) -> [&'a [u8]; 4] {
-    [MINT_SEED, UPVOTE, post.as_ref(), bump_seed]
-}
-
-/// Find post stats account address
-pub fn find_post_stats_program_address(program_id: &Pubkey, post: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[STATS, &post.to_bytes()], program_id)
-}
-
-/// Create post stats acount address
-pub fn create_post_stats_program_address_seeds<'a>(
-    post: &'a Pubkey,
-    bump_seed: &'a [u8],
-) -> [&'a [u8]; 3] {
-    [STATS, post.as_ref(), bump_seed]
-}
-
-/// Find address for the token downvote mint for the post account
-pub fn find_post_downvote_mint_program_address(program_id: &Pubkey, post: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[MINT_SEED, DOWNVOTE, &post.to_bytes()], program_id)
-}
-
-/// Create post mint downvote program address
-pub fn create_post_downvote_mint_program_address_seeds<'a>(
-    post: &'a Pubkey,
-    bump_seed: &'a [u8],
-) -> [&'a [u8]; 4] {
-    [MINT_SEED, DOWNVOTE, post.as_ref(), bump_seed]
-}
 
 /*
 /// Find rule account address
@@ -227,7 +160,7 @@ pub fn create_rule_associated_program_address_seeds<'a>(
         },
     }
 } */
-
+/*
 /// Find address for the token mint authority for the post account
 pub fn find_post_mint_authority_program_address(
     program_id: &Pubkey,
@@ -243,14 +176,14 @@ pub fn create_post_mint_authority_program_address_seeds<'a>(
 ) -> [&'a [u8]; 3] {
     create_authority_program_address_seeds(post, bump_seed)
 }
-
+ */
 /// Find treasury account address
 
 pub fn find_treasury_token_account_address(
+    program_id: &Pubkey,
     channel: &Pubkey,
     spl_token_mint_address: &Pubkey,
     token_program_id: &Pubkey,
-    program_id: &Pubkey,
 ) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[

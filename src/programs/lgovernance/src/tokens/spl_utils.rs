@@ -17,8 +17,8 @@ use spl_token::{
     state::Mint,
 };
 
-use crate::{error::PostError, pack::check_data_len};
-
+use crate::{error::GovernanceError, pack::check_data_len};
+/*
 pub const MINT_SEED: &[u8] = b"mint";
 pub const UTILITY_MINT: &[u8] = b"utility";
 
@@ -73,7 +73,7 @@ pub fn create_mint_escrow_program_address_seeds<'a>(
 ) -> [&'a [u8]; 3] {
     [ESCROW_ACCOUNT_SEED, mint.as_ref(), bump_seed]
 }
-
+*/
 #[allow(clippy::too_many_arguments)]
 pub fn create_program_account_mint_account_with_seed<'a>(
     mint_info: &AccountInfo<'a>,
@@ -441,15 +441,15 @@ pub fn transfer_spl_tokens_signed<'a>(
 /// Asserts the given account_info represents a valid SPL Token account which is initialized and belongs to spl_token program
 pub fn assert_is_valid_spl_token_account(account_info: &AccountInfo) -> Result<(), ProgramError> {
     if account_info.data_is_empty() {
-        return Err(PostError::SplTokenAccountDoesNotExist.into());
+        return Err(GovernanceError::SplTokenAccountDoesNotExist.into());
     }
 
     if account_info.owner != &spl_token::id() {
-        return Err(PostError::SplTokenAccountWithInvalidOwner.into());
+        return Err(GovernanceError::SplTokenAccountWithInvalidOwner.into());
     }
 
     if account_info.data_len() != spl_token::state::Account::LEN {
-        return Err(PostError::SplTokenInvalidTokenAccountData.into());
+        return Err(GovernanceError::SplTokenInvalidTokenAccountData.into());
     }
 
     // TokeAccount layout:   mint(32), owner(32), amount(8), delegate(36), state(1), ...
@@ -457,7 +457,7 @@ pub fn assert_is_valid_spl_token_account(account_info: &AccountInfo) -> Result<(
     let state = array_ref![data, 108, 1];
 
     if state == &[0] {
-        return Err(PostError::SplTokenAccountNotInitialized.into());
+        return Err(GovernanceError::SplTokenAccountNotInitialized.into());
     }
 
     Ok(())
@@ -466,15 +466,15 @@ pub fn assert_is_valid_spl_token_account(account_info: &AccountInfo) -> Result<(
 /// Asserts the given mint_info represents a valid SPL Token Mint account  which is initialized and belongs to spl_token program
 pub fn assert_is_valid_spl_token_mint(mint_info: &AccountInfo) -> Result<(), ProgramError> {
     if mint_info.data_is_empty() {
-        return Err(PostError::SplTokenMintDoesNotExist.into());
+        return Err(GovernanceError::SplTokenMintDoesNotExist.into());
     }
 
     if mint_info.owner != &spl_token::id() {
-        return Err(PostError::SplTokenMintWithInvalidOwner.into());
+        return Err(GovernanceError::SplTokenMintWithInvalidOwner.into());
     }
 
     if mint_info.data_len() != Mint::LEN {
-        return Err(PostError::SplTokenInvalidMintAccountData.into());
+        return Err(GovernanceError::SplTokenInvalidMintAccountData.into());
     }
 
     // In token program [36, 8, 1, is_initialized(1), 36] is the layout
@@ -482,7 +482,7 @@ pub fn assert_is_valid_spl_token_mint(mint_info: &AccountInfo) -> Result<(), Pro
     let is_initialized = array_ref![data, 45, 1];
 
     if is_initialized == &[0] {
-        return Err(PostError::SplTokenMintNotInitialized.into());
+        return Err(GovernanceError::SplTokenMintNotInitialized.into());
     }
 
     Ok(())
@@ -529,4 +529,24 @@ pub fn get_token_balance(token_account: &AccountInfo) -> Result<u64, ProgramErro
     let amount = array_ref![data, 64, 8];
 
     Ok(u64::from_le_bytes(*amount))
+}
+
+/// Returns Token account owner.
+/// Extrats owner field without unpacking entire struct.
+pub fn get_token_account_owner(token_account: &AccountInfo) -> Result<Pubkey, ProgramError> {
+    let data = token_account.try_borrow_data()?;
+    check_data_len(&data, spl_token::state::Account::get_packed_len())?;
+    let owner = array_ref![data, 32, 32];
+
+    Ok(Pubkey::new_from_array(*owner))
+}
+
+/// Returns Token account mint.
+/// Extrats mint field without unpacking entire struct.
+pub fn get_token_account_mint(token_account: &AccountInfo) -> Result<Pubkey, ProgramError> {
+    let data = token_account.try_borrow_data()?;
+    check_data_len(&data, spl_token::state::Account::get_packed_len())?;
+    let mint = array_ref![data, 0, 32];
+
+    Ok(Pubkey::new_from_array(*mint))
 }

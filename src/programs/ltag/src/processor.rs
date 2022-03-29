@@ -1,4 +1,4 @@
-use shared::account::{close_system_account, MaxSize};
+use shared::account::{dispose_account, MaxSize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     borsh::try_from_slice_unchecked,
@@ -146,19 +146,14 @@ impl Processor {
         let destination_account_info = next_account_info(accounts_iter)?;
 
         // Verify authority
-        let tag_record = get_tag_record_data_with_signed_authority_or_owner(
+        let _tag_record = get_tag_record_data_with_signed_authority_or_owner(
             program_id,
             tag_record_info,
             tag_authority_info,
             tag_owner_info,
         )?;
 
-        close_system_account(
-            destination_account_info,
-            tag_record_info,
-            tag_record.get_max_size().unwrap(),
-            program_id,
-        )?;
+        dispose_account(tag_record_info, destination_account_info);
 
         Ok(())
     }

@@ -13,6 +13,7 @@ no-entrypoint = []
 test-bpf = []
 
 [dependencies]
+
 shared = { version = "0.0.1", path = "../shared" }
 spl-token = { version = "3.2",  features = [ "no-entrypoint" ]  }
 thiserror = "1.0"

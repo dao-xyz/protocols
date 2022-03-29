@@ -2,7 +2,7 @@ use crate::{
     social::utils::{TestChannel, TestPost, TestUser},
     utils::program_test,
 };
-use lpost::{
+use lgovernance::{
     find_create_rule_associated_program_address,
     instruction::{create_post_transaction, CreatePostType},
     state::post::{Action, ActionStatus, CreateRule, TreasuryAction, VotingRuleUpdate},

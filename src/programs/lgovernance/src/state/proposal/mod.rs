@@ -1,26 +1,28 @@
 pub mod proposal_option;
 pub mod proposal_transaction;
 
+use std::slice::Iter;
+
 use borsh::maybestd::io::Write;
 use shared::account::{get_account_data, MaxSize};
+use shared::content::ContentSource;
+use solana_program::account_info::next_account_info;
 use solana_program::clock::{Slot, UnixTimestamp};
 
+use solana_program::msg;
+use solana_program::program_pack::IsInitialized;
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 
-use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError,
-    pubkey::Pubkey,
-};
-
-use crate::error::PostError;
+use crate::accounts::AccountType;
+use crate::error::GovernanceError;
 use crate::{state::enums::TransactionExecutionStatus, PROGRAM_AUTHORITY_SEED};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 
-use self::proposal_option::{ProposalOption};
+use self::proposal_option::{get_proposal_option_data, ProposalOption};
 
-use super::enums::{InstructionExecutionFlags, ProposalState};
+use super::enums::{InstructionExecutionFlags, ProposalState, VoteTipping};
 
-use super::post::{PostAccount, PostType};
-use super::rules::rule::{AcceptenceCriteria, RuleTimeConfig};
+use super::rules::rule::{AcceptenceCriteria, Rule, RuleTimeConfig};
 use super::rules::rule_weight::RuleWeight;
 use super::vote_record::Vote;
 use proposal_transaction::ProposalTransactionV2;
@@ -65,15 +67,36 @@ pub enum VoteType {
     },
 }
 
+#[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
+pub struct CommonRuleConfig {
+    pub vote_tipping: VoteTipping,
+    pub time_config: RuleTimeConfig,
+}
+
+impl CommonRuleConfig {
+    pub fn set_strictest(&mut self, compare: &Rule) {
+        self.vote_tipping = self
+            .vote_tipping
+            .get_strictest(&compare.config.vote_config.vote_tipping);
+        self.time_config = self.time_config.get_strictest(&compare.config.time_config);
+    }
+}
+
 /// Governance Proposal
 #[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
 pub struct ProposalV2 {
+    /// AccountType = Proposal
+    pub account_type: AccountType,
+
+    /// Governance account the Proposal belongs to
+    pub governance: Pubkey,
+
     /// Current proposal state
     pub state: ProposalState,
 
     // TODO: add state_at timestamp to have single field to filter recent proposals in the UI
-    /// The TokenOwnerRecord representing the user who created and owns this Proposal
-    pub token_owner_record: Pubkey,
+    /// The creator of the proposal
+    pub creator: Pubkey,
 
     /// The number of signatories assigned to the Proposal
     pub signatories_count: u8,
@@ -84,6 +107,9 @@ pub struct ProposalV2 {
     /// Vote type
     pub vote_type: VoteType,
 
+    /// Common/strictest config for rules
+    /*    pub common_rule_config: CommonRuleConfig, */
+
     /// Number of available options
     pub options_count: u16,
 
@@ -93,14 +119,19 @@ pub struct ProposalV2 {
     /// Number of available options that has been vote counted for
     pub options_executed_count: u16,
 
+    /// Amount of rules expected
+    pub rules_count: u8,
+
     /// All the rules used for the proposal
     pub rules_max_vote_weight: Vec<RuleWeight>,
 
-    /// Does deny option exist
-    pub deny_option_exist: bool,
+    /// Does deny option exist if this has some value
+    pub deny_option: Option<Pubkey>,
 
     /// Winning options
     pub winning_options: Vec<u16>,
+
+    pub defeated_options: Vec<u16>,
 
     /*
     /// Strictest acceptence_criteria
@@ -174,11 +205,19 @@ pub struct ProposalV2 {
     /// was changed for governance config after vote was completed.
     /// TODO: Use this field to override for the threshold from parent Governance (only higher value possible)
     pub vote_threshold_percentage: Option<AcceptenceCriteria>,
+
+    /// Info
+    pub source: ContentSource,
 }
 
+impl IsInitialized for ProposalV2 {
+    fn is_initialized(&self) -> bool {
+        self.account_type == AccountType::Proposal
+    }
+}
 impl MaxSize for ProposalV2 {
     fn get_max_size(&self) -> Option<usize> {
-        None
+        Some(1000) //TODO FIX
     }
 }
 
@@ -186,11 +225,11 @@ impl ProposalV2 {
     /// Checks if Signatories can be edited (added or removed) for the Proposal in the given state
     pub fn assert_can_edit_signatories(&self) -> Result<(), ProgramError> {
         self.assert_is_draft_state()
-            .map_err(|_| PostError::InvalidStateCannotEditSignatories.into())
+            .map_err(|_| GovernanceError::InvalidStateCannotEditSignatories.into())
     }
 
     /// Checks if Proposal can be singed off
-    pub fn assert_can_sign_off(&self) -> Result<(), ProgramError> {
+    /*   pub fn assert_can_sign_off(&self) -> Result<(), ProgramError> {
         match self.state {
             ProposalState::Draft | ProposalState::SigningOff => Ok(()),
             ProposalState::Executing
@@ -199,23 +238,42 @@ impl ProposalV2 {
             | ProposalState::Cancelled
             | ProposalState::Voting
             | ProposalState::Succeeded
-            | ProposalState::Defeated => Err(PostError::InvalidStateCannotSignOff.into()),
+            | ProposalState::Defeated => Err(GovernanceError::InvalidStateCannotSignOff.into()),
         }
+    } */
+
+    pub fn assert_can_finalize_draft(&self, creator: &AccountInfo) -> Result<(), ProgramError> {
+        self.assert_edit_authority(creator)?;
+        if self.state != ProposalState::Draft {
+            return Err(GovernanceError::InvalidStateCannotFinalizeDraft.into());
+        }
+        Ok(())
     }
 
     /// Checks the Proposal is in Voting state
     fn assert_is_voting_state(&self) -> Result<(), ProgramError> {
         if self.state != ProposalState::Voting {
-            return Err(PostError::InvalidProposalState.into());
+            return Err(GovernanceError::InvalidProposalState.into());
+        }
+        Ok(())
+    }
+
+    // Checks edit authority
+    fn assert_edit_authority(&self, creator: &AccountInfo) -> Result<(), ProgramError> {
+        if !creator.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
         }
 
-        Ok(())
+        if &self.creator != creator.key {
+            return Err(GovernanceError::InvalidCreatorForProposal.into());
+        }
+        return Ok(());
     }
 
     /// Checks the Proposal is in Draft state
     fn assert_is_draft_state(&self) -> Result<(), ProgramError> {
         if self.state != ProposalState::Draft {
-            return Err(PostError::InvalidProposalState.into());
+            return Err(GovernanceError::InvalidProposalState.into());
         }
 
         Ok(())
@@ -237,6 +295,11 @@ impl ProposalV2 {
            Ok(())
        }
     */
+
+    pub fn set_completed_voting_state(&mut self, state: ProposalState, unix_timestamp: i64) {
+        self.state = state;
+        self.voting_completed_at = Some(unix_timestamp);
+    }
     /// Checks whether the voting time has ended for the proposal
     pub fn has_vote_time_ended(
         &self,
@@ -258,11 +321,11 @@ impl ProposalV2 {
         current_unix_timestamp: UnixTimestamp,
     ) -> Result<(), ProgramError> {
         self.assert_is_voting_state()
-            .map_err(|_| PostError::InvalidStateCannotFinalize)?;
+            .map_err(|_| GovernanceError::InvalidStateCannotFinalize)?;
 
         // We can only finalize the vote after the configured max_voting_time has expired and vote time ended
         if !self.has_vote_time_ended(config, current_unix_timestamp) {
-            return Err(PostError::CannotFinalizeVotingInProgress.into());
+            return Err(GovernanceError::CannotFinalizeVotingInProgress.into());
         }
 
         Ok(())
@@ -272,9 +335,7 @@ impl ProposalV2 {
     /// If Proposal is still within max_voting_time period then error is returned
     pub fn finalize_vote(
         &mut self,
-        _criteria: &AcceptenceCriteria,
         rule_time_config: &RuleTimeConfig,
-        _max_vote_weight: u64,
         current_unix_timestamp: UnixTimestamp,
     ) -> Result<(), ProgramError> {
         self.assert_can_finalize_vote(rule_time_config, current_unix_timestamp)?;
@@ -414,12 +475,20 @@ impl ProposalV2 {
     */
     /// Checks if vote can be tipped and automatically transitioned to Succeeded or Defeated state
     /// If the conditions are met the state is updated accordingly
-    /*  pub fn try_tip_vote(
+    /* pub fn try_tip_vote(
         &mut self,
         max_voter_weight: u64,
         config: &RuleVoteConfig,
         current_unix_timestamp: UnixTimestamp,
     ) -> Result<bool, ProgramError> {
+        if self.vote_type != VoteType::SingleChoice
+        // Tipping should not be allowed for opinion only proposals (surveys without rejection) to allow everybody's voice to be heard
+        || self.deny_option.is_none()
+        || self.options_count != 2
+        {
+            return Ok(false);
+        };
+
         if let Some(tipped_state) = self.try_get_tipped_vote_state(max_voter_weight, config) {
             self.state = tipped_state;
             self.voting_completed_at = Some(current_unix_timestamp);
@@ -436,41 +505,33 @@ impl ProposalV2 {
 
     /// Checks if vote can be tipped and automatically transitioned to Succeeded or Defeated state
     /// If yes then Some(ProposalState) is returned and None otherwise
-    /*  #[allow(clippy::float_cmp)]
+    /* #[allow(clippy::float_cmp)]
     pub fn try_get_tipped_vote_state(
         &mut self,
-        max_vote_weight: u64,
-        config: &RuleVoteConfig,
+        option: &ProposalOption,
+        deny_option: Option<&ProposalOption>,
     ) -> Option<ProposalState> {
         // Vote tipping is currently supported for SingleChoice votes with single Yes and No (rejection) options only
         // Note: Tipping for multiple options (single choice and multiple choices) should be possible but it requires a great deal of considerations
         //       and I decided to fight it another day
         if self.vote_type != VoteType::SingleChoice
         // Tipping should not be allowed for opinion only proposals (surveys without rejection) to allow everybody's voice to be heard
-        || self.deny_vote_weight.is_none()
-        || self.options.len() != 1
+        || deny_option.is_none()
+        || self.options_count != 2
         {
             return None;
         };
 
-        let mut yes_option = &mut self.options[0];
-
-        let yes_vote_weight = yes_option.vote_weight;
-        let deny_vote_weight = self.deny_vote_weight.unwrap();
-
-        if yes_vote_weight == max_vote_weight {
-            yes_option.vote_result = OptionVoteResult::Succeeded;
+        if option.vote_result == OptionVoteResult::Succeeded {
             return Some(ProposalState::Succeeded);
         }
 
-        if deny_vote_weight == max_vote_weight {
-            yes_option.vote_result = OptionVoteResult::Defeated;
-            return Some(ProposalState::Defeated);
+        if let Some(deny_option) = deny_option {
+            if deny_option.vote_result == OptionVoteResult::Succeeded {
+                option.vote_result = OptionVoteResult::Defeated;
+                return Some(ProposalState::Defeated);
+            }
         }
-
-        let min_vote_threshold_weight =
-            get_min_vote_threshold_weight(&config.criteria, max_vote_weight).unwrap();
-
         match config.vote_tipping {
             VoteTipping::Disabled => {}
             VoteTipping::Strict => {
@@ -507,7 +568,7 @@ impl ProposalV2 {
     } */
 
     /// Checks if Proposal can be canceled in the given state
-    pub fn assert_can_cancel(
+    /* pub fn assert_can_cancel(
         &self,
         config: &RuleTimeConfig,
         current_unix_timestamp: UnixTimestamp,
@@ -518,7 +579,7 @@ impl ProposalV2 {
                 // Note: If there is no tipping point the proposal can be still in Voting state but already past the configured max_voting_time
                 // In that case we treat the proposal as finalized and it's no longer allowed to be canceled
                 if self.has_vote_time_ended(config, current_unix_timestamp) {
-                    return Err(PostError::ProposalVotingTimeExpired.into());
+                    return Err(GovernanceError::ProposalVotingTimeExpired.into());
                 }
                 Ok(())
             }
@@ -527,22 +588,49 @@ impl ProposalV2 {
             | ProposalState::Completed
             | ProposalState::Cancelled
             | ProposalState::Succeeded
-            | ProposalState::Defeated => Err(PostError::InvalidStateCannotCancelProposal.into()),
+            | ProposalState::Defeated => {
+                Err(GovernanceError::InvalidStateCannotCancelProposal.into())
+            }
         }
-    }
+    } */
 
     /// Checks if Instructions can be edited (inserted or removed) for the Proposal in the given state
     /// It also asserts whether the Proposal is executable (has the reject option)
-    pub fn assert_can_edit_instructions(&self) -> Result<(), ProgramError> {
+    pub fn assert_can_edit_instructions(
+        &self,
+        creator_info: &AccountInfo,
+    ) -> Result<(), ProgramError> {
+        self.assert_edit_authority(creator_info)?;
+
         if self.assert_is_draft_state().is_err() {
-            return Err(PostError::InvalidStateCannotEditTransactions.into());
+            return Err(GovernanceError::InvalidStateCannotEditTransactions.into());
         }
 
         // For security purposes only proposals with the reject option can have executable instructions
-        if self.deny_option_exist {
-            return Err(PostError::ProposalIsNotExecutable.into());
+        if self.deny_option.is_none() {
+            return Err(GovernanceError::ProposalIsNotExecutable.into());
         }
 
+        Ok(())
+    }
+
+    /// Checks if Rules can be edited (inserted or removed) for the Proposal
+    pub fn assert_can_edit_rules(&self, creator_info: &AccountInfo) -> Result<(), ProgramError> {
+        self.assert_edit_authority(creator_info)?;
+
+        if self.assert_is_draft_state().is_err() {
+            return Err(GovernanceError::InvalidStateCannotEditRules.into());
+        }
+
+        Ok(())
+    }
+
+    pub fn assert_can_edit_options(&self, creator_info: &AccountInfo) -> Result<(), ProgramError> {
+        self.assert_edit_authority(creator_info)?;
+
+        if self.assert_is_draft_state().is_err() {
+            return Err(GovernanceError::InvalidStateCannotEditOptions.into());
+        }
         Ok(())
     }
 
@@ -558,20 +646,20 @@ impl ProposalV2 {
             | ProposalState::Executing
             | ProposalState::ExecutingWithErrors => {}
             ProposalState::Draft
-            | ProposalState::SigningOff
             | ProposalState::Completed
             | ProposalState::Voting
             | ProposalState::Cancelled
             | ProposalState::Defeated => {
-                return Err(PostError::InvalidStateCannotExecuteTransaction.into())
+                return Err(GovernanceError::InvalidStateCannotExecuteTransaction.into())
             }
         }
+
         if proposal_option_data.index != proposal_transaction_data.option_index {
-            return Err(PostError::InvalidOptionForInstructions.into());
+            return Err(GovernanceError::InvalidOptionForInstructions.into());
         }
 
         if proposal_option_data.vote_result != OptionVoteResult::Succeeded {
-            return Err(PostError::CannotExecuteDefeatedOption.into());
+            return Err(GovernanceError::CannotExecuteDefeatedOption.into());
         }
 
         if self
@@ -581,11 +669,11 @@ impl ProposalV2 {
             .unwrap()
             >= current_unix_timestamp
         {
-            return Err(PostError::CannotExecuteTransactionWithinHoldUpTime.into());
+            return Err(GovernanceError::CannotExecuteTransactionWithinHoldUpTime.into());
         }
 
         if proposal_transaction_data.executed_at.is_some() {
-            return Err(PostError::TransactionAlreadyExecuted.into());
+            return Err(GovernanceError::TransactionAlreadyExecuted.into());
         }
 
         Ok(())
@@ -606,7 +694,7 @@ impl ProposalV2 {
         )?;
 
         if proposal_transaction_data.execution_status == TransactionExecutionStatus::Error {
-            return Err(PostError::TransactionAlreadyFlaggedWithError.into());
+            return Err(GovernanceError::TransactionAlreadyFlaggedWithError.into());
         }
 
         Ok(())
@@ -614,16 +702,24 @@ impl ProposalV2 {
 
     /// Asserts the given vote is valid for the proposal
     pub fn assert_valid_vote(&self, vote: &Vote) -> Result<(), ProgramError> {
-        if self.deny_option_exist {}
+        /*
+        Allow multichoice with deny or not?
+        if let Some(key) = self.deny_option {
 
-        if self.options_count != vote.len() as u16 || self.options_count == 0 {
-            return Err(PostError::InvalidVote.into());
+
+            if vote.len() != 1 || vote.get(0).unwrap() == &key {
+                return Err(GovernanceError::InvalidVote.into());
+            }
+        } */
+        msg!(" ?? {} ", vote.len());
+        if vote.len() == 0 {
+            return Err(GovernanceError::InvalidVote.into());
         }
 
         match self.vote_type {
             VoteType::SingleChoice { .. } => {
                 if vote.len() != 1 {
-                    return Err(PostError::InvalidVote.into());
+                    return Err(GovernanceError::InvalidVote.into());
                 }
             }
             VoteType::MultiChoice {
@@ -631,7 +727,7 @@ impl ProposalV2 {
             } => {
                 if let Some(max_options) = max_voter_options {
                     if vote.len() > max_options as usize {
-                        return Err(PostError::InvalidVote.into());
+                        return Err(GovernanceError::InvalidVote.into());
                     }
                 }
             }
@@ -649,7 +745,7 @@ impl ProposalV2 {
     /// Assert options to create proposal are valid for the Proposal vote_type
     pub fn assert_valid_proposal_options(&self, vote_type: &VoteType) -> Result<(), ProgramError> {
         if self.options_count <= 1 {
-            return Err(PostError::InvalidProposalOptions.into());
+            return Err(GovernanceError::InvalidProposalOptions.into());
         }
 
         if let VoteType::MultiChoice {
@@ -660,17 +756,54 @@ impl ProposalV2 {
         {
             if let Some(max_voter_options) = max_voter_options {
                 if self.options_count < max_voter_options as u16 {
-                    return Err(PostError::InvalidProposalOptions.into());
+                    return Err(GovernanceError::InvalidProposalOptions.into());
                 }
             }
             if let Some(max_winning_options) = max_winning_options {
                 if self.options_count < max_winning_options as u16 {
-                    return Err(PostError::InvalidProposalOptions.into());
+                    return Err(GovernanceError::InvalidProposalOptions.into());
                 }
             }
         }
 
         Ok(())
+    }
+
+    /// If add is true, then vote weight will be added, else vote weiight will be removed
+    pub fn perform_voting(
+        &self,
+        program_id: &Pubkey,
+        amount: u64,
+        add: bool,
+        governing_token_mint: &Pubkey,
+        rule: &Pubkey,
+        rule_data: &Rule,
+        proposal: &Pubkey,
+        accounts_iter: &mut Iter<AccountInfo>,
+    ) -> Result<Vec<u16>, ProgramError> {
+        let mut vote = Vec::new();
+        msg!("B");
+        let mut option_info_next = next_account_info(accounts_iter);
+        msg!("BB");
+
+        while let Ok(option_info) = option_info_next {
+            // Vote with rule weight
+            // Check create vote recor
+            msg!("::: {} {}", option_info.key, option_info.data_is_empty());
+            let mut option_data = get_proposal_option_data(program_id, option_info, proposal)?;
+            msg!("BBB");
+
+            option_data.update_weight(amount, add, governing_token_mint, rule, rule_data)?;
+            msg!("BBBB");
+
+            option_data.serialize(&mut *option_info.data.borrow_mut())?;
+            option_info_next = next_account_info(accounts_iter);
+            vote.push(option_data.index);
+        }
+        msg!("---B");
+        self.assert_valid_vote(&vote)?;
+        msg!("---C");
+        Ok(vote)
     }
 }
 
@@ -705,58 +838,54 @@ pub fn get_proposal_data(
     program_id: &Pubkey,
     proposal_info: &AccountInfo,
 ) -> Result<ProposalV2, ProgramError> {
-    let post = get_account_data::<PostAccount>(program_id, proposal_info)?;
-    if let PostType::Proposal(proposal) = post.post_type {
-        return Ok(proposal);
-    }
-    Err(ProgramError::InvalidAccountData)
+    let proposal = get_account_data::<ProposalV2>(program_id, proposal_info)?;
+    Ok(proposal)
 }
-/*
-/// Deserializes Proposal and validates it belongs to the given Governance and Governing Mint
-pub fn get_proposal_data_for_governance_and_governing_mint(
+/// Deserializes Proposal and validates it belongs to the given Governance
+pub fn get_proposal_data_for_governance(
     program_id: &Pubkey,
     proposal_info: &AccountInfo,
     governance: &Pubkey,
-    governing_token_mint: &Pubkey,
 ) -> Result<ProposalV2, ProgramError> {
-    let proposal_data = get_proposal_data_for_governance(program_id, proposal_info, governance)?;
+    let proposal_data = get_proposal_data(program_id, proposal_info)?;
 
-    if proposal_data.governing_token_mint != *governing_token_mint {
-        return Err(PostError::InvalidGoverningMintForProposal.into());
+    if proposal_data.governance != *governance {
+        return Err(GovernanceError::InvalidGovernanceForProposal.into());
     }
 
     Ok(proposal_data)
-} */
+}
 
-/// Deserializes Proposal and validates it belongs to the given Governance
-pub fn get_proposal_data_for_channel(
+/// Deserializes Proposal and validates it belongs to the given Creator
+pub fn get_proposal_data_for_creator(
     program_id: &Pubkey,
     proposal_info: &AccountInfo,
-    channel: &Pubkey,
+    creator_info: &AccountInfo,
 ) -> Result<ProposalV2, ProgramError> {
-    let post = get_account_data::<PostAccount>(program_id, proposal_info)?;
-    if &post.channel != channel {
-        return Err(PostError::InvalidGovernanceForProposal.into());
+    if !creator_info.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
     }
 
-    if let PostType::Proposal(proposal) = post.post_type {
-        return Ok(proposal);
+    let proposal_data = get_proposal_data(program_id, proposal_info)?;
+
+    if &proposal_data.creator != creator_info.key {
+        return Err(GovernanceError::InvalidProposalOwnerAccount.into());
     }
 
-    Err(PostError::InvalidGovernanceForProposal.into())
+    Ok(proposal_data)
 }
 
 /// Returns Proposal PDA seeds
 pub fn get_proposal_address_seeds<'a>(
     governance: &'a Pubkey,
-    governing_token_mint: &'a Pubkey,
     proposal_index_le_bytes: &'a [u8],
+    bump_seed: &'a [u8],
 ) -> [&'a [u8]; 4] {
     [
         PROGRAM_AUTHORITY_SEED,
         governance.as_ref(),
-        governing_token_mint.as_ref(),
         proposal_index_le_bytes,
+        bump_seed,
     ]
 }
 
@@ -764,14 +893,16 @@ pub fn get_proposal_address_seeds<'a>(
 pub fn get_proposal_address<'a>(
     program_id: &Pubkey,
     governance: &'a Pubkey,
-    governing_token_mint: &'a Pubkey,
     proposal_index_le_bytes: &'a [u8],
-) -> Pubkey {
+) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &get_proposal_address_seeds(governance, governing_token_mint, proposal_index_le_bytes),
+        &[
+            PROGRAM_AUTHORITY_SEED,
+            governance.as_ref(),
+            proposal_index_le_bytes,
+        ],
         program_id,
     )
-    .0
 }
 
 /*

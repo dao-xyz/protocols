@@ -26,11 +26,10 @@ pub enum Asset {
 pub enum ProposalState {
     /// Draft - Proposal enters Draft state when it's created
     Draft,
-
+    /*
     /// SigningOff - The Proposal is being signed off by Signatories
     /// Proposal enters the state when first Signatory Sings and leaves it when last Signatory signs
-    SigningOff,
-
+    SigningOff, */
     /// Taking votes
     Voting,
 
@@ -81,6 +80,29 @@ pub enum VoteTipping {
 
     /// Never tip the vote early.
     Disabled,
+}
+
+impl VoteTipping {
+    pub fn get_strictest(&self, other: &Self) -> Self {
+        match &self {
+            Self::Strict => {
+                if other == &VoteTipping::Disabled {
+                    return other.clone();
+                }
+                return self.clone();
+            }
+            Self::Early => {
+                if other != &VoteTipping::Early {
+                    return other.clone();
+                }
+                return self.clone();
+            }
+
+            Self::Disabled => {
+                return self.clone();
+            }
+        }
+    }
 }
 
 /// Transaction execution flags defining how instructions are executed for a Proposal

@@ -7,13 +7,9 @@ use solana_program::{
     system_program,
 };
 
-
 use crate::{
     find_post_program_address,
-    state::{
-        post::{PostContent},
-        vote_record::get_vote_record_address,
-    },
+    state::{post::PostContent, vote_record::get_vote_record_address},
     Vote,
 };
 
@@ -40,18 +36,19 @@ pub enum PostInstruction {
     },
     Unvote,
 }
-pub enum SigningChannelAuthority {
+pub enum SigningActivityAuthority {
     AuthorityByTag {
         tag: Pubkey,
         authority: Pubkey,
         owner: Pubkey, // signer
     },
+    None,
 }
 
-impl SigningChannelAuthority {
+impl SigningActivityAuthority {
     pub fn add_account_infos(&self, accounts: &mut Vec<AccountMeta>) {
         match &self {
-            SigningChannelAuthority::AuthorityByTag {
+            SigningActivityAuthority::AuthorityByTag {
                 tag,
                 authority,
                 owner,
@@ -62,6 +59,7 @@ impl SigningChannelAuthority {
                 accounts.push(AccountMeta::new_readonly(*authority, false));
                 accounts.push(AccountMeta::new_readonly(*owner, true));
             }
+            SigningActivityAuthority::None => {}
         }
     }
 }
@@ -73,7 +71,7 @@ pub fn create_post(
     hash: &[u8; 32],
     content: &PostContent,
     vote_config: &CreateVoteConfig,
-    authority_config: &SigningChannelAuthority,
+    authority_config: &SigningActivityAuthority,
 ) -> Instruction {
     let (post_address, post_bump_seed) = find_post_program_address(program_id, hash);
     let mut accounts = vec![
@@ -108,7 +106,7 @@ pub fn cast_vote(
     post: &Pubkey,
     channel: &Pubkey,
     record_owner: &Pubkey,
-    authority_config: &SigningChannelAuthority,
+    authority_config: &SigningActivityAuthority,
     vote: Vote,
 ) -> Instruction {
     let (record_address, record_bump_seed) =

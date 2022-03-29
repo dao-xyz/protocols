@@ -1,26 +1,28 @@
+use std::borrow::Borrow;
 
-
-
-
+use bincode::deserialize;
+use solana_program::{
+    clock::{Clock, UnixTimestamp},
+    pubkey::Pubkey,
+    sysvar,
+};
 use solana_program_test::*;
-
 
 pub fn program_test() -> ProgramTest {
     let mut program = ProgramTest::new(
-        "lpost",
-        lpost::id(),
-        processor!(lpost::processor::Processor::process),
+        "lgovernance",
+        lgovernance::id(),
+        processor!(lgovernance::processor::Processor::process),
     );
     program.add_program(
         "lchannel",
         lchannel::id(),
-        processor!(lchannel::processor::Processor::process),
+        processor!(ltag::processor::Processor::process),
     );
-
     program.add_program(
-        "luser",
-        luser::id(),
-        processor!(luser::processor::Processor::process),
+        "ltag",
+        ltag::id(),
+        processor!(ltag::processor::Processor::process),
     );
     program
 }

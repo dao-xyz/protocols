@@ -1,13 +1,13 @@
 use super::OptionVoteResult;
 use crate::{
     accounts::AccountType,
-    error::PostError,
+    error::GovernanceError,
     state::rules::{rule::Rule, rule_weight::RuleWeight},
 };
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use shared::account::{get_account_data, MaxSize};
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, program_pack::IsInitialized,
+    account_info::AccountInfo, msg, program_error::ProgramError, program_pack::IsInitialized,
     pubkey::Pubkey,
 };
 
@@ -50,29 +50,37 @@ pub struct ProposalOption {
     pub vote_result: OptionVoteResult,
 }
 impl ProposalOption {
-    pub fn add_weight(
+    pub fn update_weight(
         &mut self,
         amount: u64,
+        add: bool,
         vote_mint: &Pubkey,
         rule: &Pubkey,
         rule_data: &Rule,
     ) -> Result<(), ProgramError> {
         // Find mint weight
-        for rule_mint_weight in &rule_data.vote_config.mint_weights {
+        for rule_mint_weight in &rule_data.config.vote_config.mint_weights {
             if &rule_mint_weight.mint == vote_mint {
                 // Find rule vote weight to modify
                 for vote_weight in &mut self.vote_weights {
                     if &vote_weight.rule == rule {
-                        vote_weight.weight = vote_weight
-                            .weight
-                            .checked_add(amount.checked_mul(vote_weight.weight).unwrap())
-                            .unwrap();
+                        // lets hope compiler is smart
+                        vote_weight.weight = match add {
+                            true => vote_weight
+                                .weight
+                                .checked_add(amount.checked_mul(rule_mint_weight.weight).unwrap())
+                                .unwrap(),
+                            false => vote_weight
+                                .weight
+                                .checked_sub(amount.checked_mul(rule_mint_weight.weight).unwrap())
+                                .unwrap(),
+                        };
                         return Ok(());
                     }
                 }
             }
         }
-        Err(PostError::InvalidVoteMint.into())
+        Err(GovernanceError::InvalidVote.into())
     }
 }
 
@@ -94,21 +102,22 @@ pub fn get_proposal_option_data(
 ) -> Result<ProposalOption, ProgramError> {
     let data = get_account_data::<ProposalOption>(program_id, proposal_option_info)?;
     if &data.proposal != proposal {
-        return Err(PostError::InvalidProposalForOption.into());
+        return Err(GovernanceError::InvalidProposalForOption.into());
     }
     Ok(data)
 }
 
-pub fn find_proposal_option_program_address(
+pub fn get_proposal_option_program_address(
     program_id: &Pubkey,
     proposal: &Pubkey,
     option_index: &[u8; 2],
 ) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[proposal.as_ref(), option_index], program_id)
 }
-pub fn create_proposal_option_program_address_seeds<'a>(
+pub fn get_proposal_option_program_address_seeds<'a>(
     proposal: &'a Pubkey,
     option_index: &'a [u8; 2],
-) -> [&'a [u8]; 2] {
-    return [proposal.as_ref(), option_index];
+    bump_seed: &'a [u8],
+) -> [&'a [u8]; 3] {
+    return [proposal.as_ref(), option_index, bump_seed];
 }

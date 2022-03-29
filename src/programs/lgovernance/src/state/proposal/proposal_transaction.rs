@@ -1,9 +1,7 @@
-
-
 use borsh::maybestd::io::Write;
 
 use crate::{
-    accounts::AccountType, error::PostError, state::enums::TransactionExecutionStatus,
+    accounts::AccountType, error::GovernanceError, state::enums::TransactionExecutionStatus,
     PROGRAM_AUTHORITY_SEED,
 };
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
@@ -18,10 +16,6 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-use super::{
-    super::rules::rule::{Rule, RuleCondition},
-    OptionVoteResult,
-};
 /// InstructionData wrapper. It can be removed once Borsh serialization for Instruction is supported in the SDK
 #[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
 #[repr(C)]
@@ -106,49 +100,6 @@ impl From<&ConditionedInstruction> for Instruction {
 pub struct ConditionedInstruction {
     pub instruction_data: InstructionData,
     pub rule: Pubkey,
-    pub vote_weight: u64,
-    pub vote_result: OptionVoteResult,
-}
-
-impl ConditionedInstruction {
-    pub fn rule_applicable(&self, rule: &Rule) -> Result<(), ProgramError> {
-        if let Some(config) = &rule.vote_config.rule_condition {
-            match config {
-                RuleCondition::None => return Ok(()),
-                RuleCondition::ProgramId(program_id) => {
-                    if program_id != &self.instruction_data.program_id {
-                        return Err(PostError::RuleNotApplicableForInstruction.into());
-                    }
-                    return Ok(());
-                }
-                RuleCondition::Granular {
-                    program_id,
-                    instruction_condition,
-                } => {
-                    if program_id != &self.instruction_data.program_id {
-                        return Err(PostError::RuleNotApplicableForInstruction.into());
-                    }
-
-                    // Check instruction data
-                    for chunk in &instruction_condition.chunks {
-                        for (i, chunk_data) in chunk.data.iter().enumerate() {
-                            if self
-                                .instruction_data
-                                .data
-                                .get(chunk.offset as usize + i)
-                                .unwrap()
-                                != chunk_data
-                            {
-                                return Err(PostError::RuleNotApplicableForInstruction.into());
-                            }
-                        }
-                    }
-                    return Ok(());
-                }
-            }
-        }
-        Ok(())
-    }
 }
 
 /// Account for an instruction to be executed for Proposal
@@ -271,7 +222,7 @@ pub fn get_proposal_transaction_data_for_proposal(
         get_proposal_transaction_data(program_id, proposal_transaction_info)?;
 
     if proposal_transaction_data.proposal != *proposal {
-        return Err(PostError::InvalidProposalForProposalTransaction.into());
+        return Err(GovernanceError::InvalidProposalForProposalTransaction.into());
     }
 
     Ok(proposal_transaction_data)
@@ -282,7 +233,7 @@ mod test {
 
     use std::str::FromStr;
 
-    use solana_program::{bpf_loader_upgradeable};
+    use solana_program::bpf_loader_upgradeable;
 
     use super::*;
 
@@ -306,8 +257,6 @@ mod test {
                 data: vec![1, 2, 3],
             },
             rule: Pubkey::new_unique(),
-            vote_weight: 0,
-            vote_result: OptionVoteResult::None,
         }]
     }
 

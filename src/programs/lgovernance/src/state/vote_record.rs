@@ -6,12 +6,11 @@ use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use shared::account::{get_account_data, MaxSize};
 use solana_program::account_info::AccountInfo;
 
-
 use solana_program::program_error::ProgramError;
 use solana_program::{program_pack::IsInitialized, pubkey::Pubkey};
 
 use crate::accounts::AccountType;
-use crate::error::PostError;
+use crate::error::GovernanceError;
 
 use crate::PROGRAM_AUTHORITY_SEED;
 
@@ -34,7 +33,7 @@ impl VoteChoice {
         Ok(match self.weight_percentage {
             100 => voter_weight,
             0 => 0,
-            _ => return Err(PostError::InvalidVoteChoiceWeightPercentage.into()),
+            _ => return Err(GovernanceError::InvalidVoteChoiceWeightPercentage.into()),
         })
     }
 }
@@ -49,7 +48,13 @@ pub struct VoteRecordV2 {
     pub account_type: AccountType,
 
     /// Proposal account
-    pub post: Pubkey,
+    pub proposal: Pubkey,
+
+    /// Last vote made
+    pub previous_vote: Option<Pubkey>,
+
+    /// Next vote
+    pub next_vote: Option<Pubkey>,
 
     /// The user who casted this vote
     /// This is the Governing Token Owner who deposited governing tokens into the Realm
@@ -76,7 +81,7 @@ impl VoteRecordV2 {
     /// Checks the vote can be relinquished
     pub fn assert_can_relinquish_vote(&self) -> Result<(), ProgramError> {
         if self.is_relinquished {
-            return Err(PostError::VoteAlreadyRelinquished.into());
+            return Err(GovernanceError::VoteAlreadyRelinquished.into());
         }
 
         Ok(())
@@ -85,6 +90,18 @@ impl VoteRecordV2 {
     /// Serializes account into the target buffer
     pub fn serialize<W: Write>(self, writer: &mut W) -> Result<(), ProgramError> {
         BorshSerialize::serialize(&self, writer)?;
+        Ok(())
+    }
+
+    pub fn assert_vote_equals(&self, other: &Vote) -> Result<(), ProgramError> {
+        if self.vote.len() != other.len() {
+            return Err(GovernanceError::InvalidVote.into());
+        }
+        for (a, b) in self.vote.iter().zip(other.iter().as_ref()) {
+            if a != b {
+                return Err(GovernanceError::InvalidVote.into());
+            }
+        }
         Ok(())
     }
 }
@@ -101,17 +118,41 @@ pub fn get_vote_record_data(
 pub fn get_vote_record_data_for_proposal_and_token_owner(
     program_id: &Pubkey,
     vote_record_info: &AccountInfo,
-    post: &Pubkey,
+    proposal: &Pubkey,
+    governing_token_owner: &AccountInfo,
+) -> Result<VoteRecordV2, ProgramError> {
+    let vote_record_data = get_vote_record_data(program_id, vote_record_info)?;
+
+    if vote_record_data.proposal != *proposal {
+        return Err(GovernanceError::InvalidProposalForVoterRecord.into());
+    }
+
+    if &vote_record_data.governing_token_owner != governing_token_owner.key {
+        return Err(GovernanceError::InvalidGoverningTokenOwnerForVoteRecord.into());
+    }
+
+    if !governing_token_owner.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    Ok(vote_record_data)
+}
+
+/// Deserializes VoteRecord and checks it belongs to the provided Proposal and unsigned Governing Token Owner
+pub fn get_vote_record_data_for_proposal_and_unsigned_token_owner(
+    program_id: &Pubkey,
+    vote_record_info: &AccountInfo,
+    proposal: &Pubkey,
     governing_token_owner: &Pubkey,
 ) -> Result<VoteRecordV2, ProgramError> {
     let vote_record_data = get_vote_record_data(program_id, vote_record_info)?;
 
-    if vote_record_data.post != *post {
-        return Err(PostError::InvalidProposalForVoterRecord.into());
+    if vote_record_data.proposal != *proposal {
+        return Err(GovernanceError::InvalidProposalForVoterRecord.into());
     }
 
-    if vote_record_data.governing_token_owner != *governing_token_owner {
-        return Err(PostError::InvalidGoverningTokenOwnerForVoteRecord.into());
+    if &vote_record_data.governing_token_owner != governing_token_owner {
+        return Err(GovernanceError::InvalidGoverningTokenOwnerForVoteRecord.into());
     }
 
     Ok(vote_record_data)
@@ -122,12 +163,14 @@ pub fn get_vote_record_address_seeds<'a>(
     proposal: &'a Pubkey,
     token_owner_record: &'a Pubkey,
     rule: &'a Pubkey,
-) -> [&'a [u8]; 4] {
+    bump_seed: &'a [u8],
+) -> [&'a [u8]; 5] {
     [
         PROGRAM_AUTHORITY_SEED,
         proposal.as_ref(),
         token_owner_record.as_ref(),
         rule.as_ref(),
+        bump_seed,
     ]
 }
 
@@ -137,10 +180,14 @@ pub fn get_vote_record_address(
     proposal: &Pubkey,
     token_owner_record: &Pubkey,
     rule: &Pubkey,
-) -> Pubkey {
+) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &get_vote_record_address_seeds(proposal, token_owner_record, rule),
+        &[
+            PROGRAM_AUTHORITY_SEED,
+            proposal.as_ref(),
+            token_owner_record.as_ref(),
+            rule.as_ref(),
+        ],
         program_id,
     )
-    .0
 }
