@@ -26,11 +26,13 @@ pub struct RuleDelegationRecordAccount {
     /// Undelegation can only be done if the vote_head is equal to the latest vote key of the delegatee token owner record
     /// This means that this delegatee is not actively used in any voting
     pub vote_head: Option<Pubkey>,
+
+    pub last_vote_head: Option<Pubkey>,
 }
 
 impl MaxSize for RuleDelegationRecordAccount {
     fn get_max_size(&self) -> Option<usize> {
-        Some(1 + 32 + 32 + 8 + 1 + 32)
+        Some(1 + 32 + 32 + 8 + 1 + 32 + 1 + 32)
     }
 }
 impl IsInitialized for RuleDelegationRecordAccount {
@@ -75,7 +77,8 @@ impl RuleDelegationRecordAccount {
                     amount,
                     delegator_token_owner_record: *token_owner_record_info.key,
                     delegatee_token_owner_record: *delegatee_token_owner_record_info.key,
-                    vote_head: delegatee_token_owner_record.latest_vote,
+                    vote_head: None,
+                    last_vote_head: delegatee_token_owner_record.latest_vote,
                 },
                 &seeds,
                 program_id,
@@ -134,19 +137,9 @@ impl RuleDelegationRecordAccount {
         )?;
 
         // check the state (so we can update)
-        if !match (
-            &delegatee_token_owner_record.latest_vote,
-            &rule_delegation_record.vote_head,
-        ) {
-            (Some(a), Some(b)) => a == b,
-            (None, None) => true,
-            _ => false,
-        } {
-            msg!(
-                "VOTE HEAD NOT SYNC FOR UNDEL {} {}",
-                delegatee_token_owner_record.latest_vote.is_none(),
-                rule_delegation_record.vote_head.is_none()
-            );
+        if rule_delegation_record.vote_head.is_some()
+            || &delegatee_token_owner_record.latest_vote != &rule_delegation_record.last_vote_head
+        {
             return Err(GovernanceError::InvalidDelegationStateForUpdates.into());
         }
 
@@ -162,16 +155,19 @@ impl RuleDelegationRecordAccount {
     }
 }
 
-pub fn get_delegation_record_data_for_delegator(
+pub fn get_delegation_record_data_for_delegator_or_delegatee(
     program_id: &Pubkey,
     rule_delegation_record_info: &AccountInfo,
-    delegator_token_owner_record: &Pubkey,
+    delegator_or_delegatee_token_owner_record: &AccountInfo,
 ) -> Result<RuleDelegationRecordAccount, ProgramError> {
     let data =
         get_account_data::<RuleDelegationRecordAccount>(program_id, rule_delegation_record_info)?;
-    if &data.delegator_token_owner_record != delegator_token_owner_record {
+    if &data.delegator_token_owner_record != delegator_or_delegatee_token_owner_record.key
+        && &data.delegatee_token_owner_record != delegator_or_delegatee_token_owner_record.key
+    {
         return Err(GovernanceError::InvalidTokenOwnerRecordAccountAddress.into());
     }
+
     Ok(data)
 }
 

@@ -796,25 +796,28 @@ pub fn delegate_history(
 
     // Accounts
     vote_record: &Pubkey,
-    previous_vote_record: &Pubkey,
-    previous_proposal: &Pubkey,
-    previous_vote_options: &Vec<Pubkey>,
+    proposal: &Pubkey,
+    vote_options: &Vec<Pubkey>,
     rule_delegation_record: &Pubkey,
-    delegator_token_owner_record: &Pubkey,
-    delegator_governing_token_owner_record: &Pubkey,
+    delegator_or_delegatee_token_owner_record: &Pubkey,
+    delegator_or_delegatee_governing_token_owner_record: &Pubkey,
     rule: &Pubkey,
+    /* next_vote_record: Option<&Pubkey>, */ // Has to be some if
 ) -> Instruction {
     let mut accounts = vec![
         AccountMeta::new_readonly(*vote_record, false),
-        AccountMeta::new(*previous_vote_record, false),
-        AccountMeta::new(*previous_proposal, false),
+        AccountMeta::new(*proposal, false),
         AccountMeta::new(*rule_delegation_record, false),
-        AccountMeta::new_readonly(*delegator_token_owner_record, false),
-        AccountMeta::new_readonly(*delegator_governing_token_owner_record, true),
+        AccountMeta::new_readonly(*delegator_or_delegatee_token_owner_record, false),
+        AccountMeta::new_readonly(*delegator_or_delegatee_governing_token_owner_record, true),
         AccountMeta::new_readonly(*rule, false),
     ];
+    /*
+    if let Some(key) = previous_vote_record {
+        accounts.push(AccountMeta::new(*key, false));
+    } */
 
-    for option in previous_vote_options {
+    for option in vote_options {
         accounts.push(AccountMeta::new(*option, false))
     }
 
@@ -833,18 +836,23 @@ pub fn undelegate_history(
     proposal: &Pubkey,
     options: &Vec<Pubkey>,
     rule_delegation_record: &Pubkey,
-    delegator_token_owner_record: &Pubkey,
-    delegator_governing_token_owner_record: &Pubkey,
+    delegator_or_delegatee_token_owner_record: &Pubkey,
+    delegator_or_delegatee_governing_token_owner_record: &Pubkey,
     rule: &Pubkey,
+    previous_vote_record: Option<&Pubkey>,
 ) -> Instruction {
     let mut accounts = vec![
         AccountMeta::new(*vote_record, false),
         AccountMeta::new(*proposal, false),
         AccountMeta::new(*rule_delegation_record, false),
-        AccountMeta::new_readonly(*delegator_token_owner_record, false),
-        AccountMeta::new_readonly(*delegator_governing_token_owner_record, true),
+        AccountMeta::new_readonly(*delegator_or_delegatee_token_owner_record, false),
+        AccountMeta::new_readonly(*delegator_or_delegatee_governing_token_owner_record, true),
         AccountMeta::new_readonly(*rule, false),
     ];
+
+    if let Some(key) = previous_vote_record {
+        accounts.push(AccountMeta::new(*key, false));
+    }
 
     for option in options {
         accounts.push(AccountMeta::new(*option, false))

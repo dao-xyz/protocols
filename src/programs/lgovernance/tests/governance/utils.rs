@@ -371,180 +371,6 @@ impl TestUser {
             .unwrap();
     }
 
-    pub async fn delegate(
-        &self,
-        bench: &mut ProgramTestBench,
-        to: &TestUser,
-        token: &TestToken,
-        rule: &Pubkey,
-        amount: &u64,
-    ) {
-        if self
-            .get_token_owner_budget_record(bench, &token, rule)
-            .await
-            .is_none()
-        {
-            self.create_budget(bench, token, rule).await;
-        }
-
-        bench
-            .process_transaction(
-                &[delegate(
-                    &lgovernance::id(),
-                    &self.get_token_owner_record_address(&token.mint),
-                    &self.get_token_owner_budget_record_address(&token.mint, rule),
-                    &self.keypair.pubkey(),
-                    &to.get_token_owner_delegate_record_address(rule, &token.mint),
-                    &to.keypair.pubkey(),
-                    &bench.payer.pubkey(),
-                    amount,
-                    rule,
-                )],
-                Some(&[&self.keypair]),
-            )
-            .await
-            .unwrap();
-    }
-
-    pub async fn undelegate(
-        &self,
-        bench: &mut ProgramTestBench,
-        to: &TestUser,
-        token: &TestToken,
-        rule: &Pubkey,
-        amount: &u64,
-    ) {
-        // Undelegate
-        bench
-            .process_transaction(
-                &[undelegate(
-                    &lgovernance::id(),
-                    &get_rule_delegation_account_program_address(
-                        &lgovernance::id(),
-                        &self.get_token_owner_record_address(&token.mint),
-                        &to.get_token_owner_delegate_record_address(rule, &token.mint),
-                        rule,
-                    )
-                    .0,
-                    &self.get_token_owner_record_address(&token.mint),
-                    &self.get_token_owner_budget_record_address(&token.mint, rule),
-                    &self.keypair.pubkey(),
-                    &to.get_token_owner_delegate_record_address(rule, &token.mint),
-                    &to.keypair.pubkey(),
-                    &bench.payer.pubkey(),
-                    amount,
-                )],
-                Some(&[&self.keypair]),
-            )
-            .await
-            .unwrap();
-    }
-
-    pub async fn delegate_history(
-        &self,
-        bench: &mut ProgramTestBench,
-        to: &TestUser,
-        proposal: &TestProposal,
-        token: &TestToken,
-        rule: &Pubkey,
-    ) {
-        let delegatee_token_owner_record = get_token_owner_delegatee_record_address(
-            &lgovernance::id(),
-            &token.mint,
-            &to.keypair.pubkey(),
-            rule,
-        )
-        .0;
-        let (vote_record_address, vote_record) = to
-            .get_vote_record_delegate(bench, &proposal, rule, token)
-            .await
-            .unwrap();
-        let previous_vote_record = try_from_slice_unchecked::<VoteRecordV2>(
-            &bench
-                .get_account(&vote_record.previous_vote.unwrap())
-                .await
-                .unwrap()
-                .data,
-        )
-        .unwrap();
-
-        let token_owner_record = self.get_token_owner_record_address(&token.mint);
-        let rule_delegation_record = get_rule_delegation_account_program_address(
-            &lgovernance::id(),
-            &token_owner_record,
-            &delegatee_token_owner_record,
-            rule,
-        )
-        .0;
-        let previous_vote_options = proposal
-            .get_vote_option(bench, &previous_vote_record.vote)
-            .await;
-        bench
-            .process_transaction(
-                &[delegate_history(
-                    &lgovernance::id(),
-                    &vote_record_address,
-                    &vote_record.previous_vote.unwrap(),
-                    &previous_vote_record.proposal,
-                    &previous_vote_options,
-                    &rule_delegation_record,
-                    &token_owner_record,
-                    &self.keypair.pubkey(),
-                    &rule,
-                )],
-                Some(&[&self.keypair]),
-            )
-            .await
-            .unwrap();
-    }
-
-    pub async fn undelegate_history(
-        &self,
-        bench: &mut ProgramTestBench,
-        to: &TestUser,
-        proposal: &TestProposal,
-        token: &TestToken,
-        rule: &Pubkey,
-    ) {
-        let delegatee_token_owner_record = get_token_owner_delegatee_record_address(
-            &lgovernance::id(),
-            &token.mint,
-            &to.keypair.pubkey(),
-            rule,
-        )
-        .0;
-        let (vote_record_address, vote_record) = to
-            .get_vote_record_delegate(bench, &proposal, rule, token)
-            .await
-            .unwrap();
-
-        let token_owner_record = self.get_token_owner_record_address(&token.mint);
-        let rule_delegation_record = get_rule_delegation_account_program_address(
-            &lgovernance::id(),
-            &token_owner_record,
-            &delegatee_token_owner_record,
-            rule,
-        )
-        .0;
-        let vote_options = proposal.get_vote_option(bench, &vote_record.vote).await;
-        bench
-            .process_transaction(
-                &[undelegate_history(
-                    &lgovernance::id(),
-                    &vote_record_address,
-                    &vote_record.proposal,
-                    &vote_options,
-                    &rule_delegation_record,
-                    &token_owner_record,
-                    &self.keypair.pubkey(),
-                    &rule,
-                )],
-                Some(&[&self.keypair]),
-            )
-            .await
-            .unwrap();
-    }
-
     pub fn get_associated_token_account_address(&self, token: &TestToken) -> Pubkey {
         get_associated_token_address(&self.keypair.pubkey(), &token.mint)
     }
@@ -721,6 +547,261 @@ impl TestUser {
     } */
 }
 
+pub struct TestDelegation<'a> {
+    from: &'a TestUser,
+    to: &'a TestUser,
+    token: &'a TestToken,
+    rule: Pubkey,
+    delegation: Pubkey,
+}
+impl<'a> TestDelegation<'a> {
+    pub async fn new(
+        bench: &mut ProgramTestBench,
+        from: &'a TestUser,
+        to: &'a TestUser,
+        token: &'a TestToken,
+        rule: &Pubkey,
+    ) -> TestDelegation<'a> {
+        let from_token_record = from.get_token_owner_record_address(&token.mint);
+        let to_token_record = to.get_token_owner_delegate_record_address(rule, &token.mint);
+        // Create budget
+        if from
+            .get_token_owner_budget_record(bench, &token, &rule)
+            .await
+            .is_none()
+        {
+            from.create_budget(bench, &token, &rule).await;
+        }
+
+        // Enable the delegatee
+        if bench
+            .get_account(&to.get_token_owner_delegate_record_address(&rule, &token.mint))
+            .await
+            .is_none()
+        {
+            to.create_delegatee(bench, &token, &rule).await;
+        }
+        TestDelegation {
+            from,
+            to,
+            token: token,
+            rule: *rule,
+            delegation: get_rule_delegation_account_program_address(
+                &lgovernance::id(),
+                &from_token_record,
+                &to_token_record,
+                rule,
+            )
+            .0,
+        }
+    }
+    pub async fn delegate(&self, bench: &mut ProgramTestBench, amount: &u64) {
+        let from_token_record = self.get_delegator_token_owner_record_address();
+        let to_token_record = self.get_delegatee_token_owner_record_address();
+        bench
+            .process_transaction(
+                &[delegate(
+                    &lgovernance::id(),
+                    &from_token_record,
+                    &self
+                        .from
+                        .get_token_owner_budget_record_address(&self.token.mint, &self.rule),
+                    &self.from.keypair.pubkey(),
+                    &to_token_record,
+                    &self.to.keypair.pubkey(),
+                    &bench.payer.pubkey(),
+                    amount,
+                    &self.rule,
+                )],
+                Some(&[&self.from.keypair]),
+            )
+            .await
+            .unwrap();
+    }
+
+    pub async fn undelegate(&self, bench: &mut ProgramTestBench, amount: &u64) {
+        // Undelegate
+        let from_token_record = self.get_delegator_token_owner_record_address();
+        let to_token_record = self.get_delegatee_token_owner_record_address();
+        bench
+            .process_transaction(
+                &[undelegate(
+                    &lgovernance::id(),
+                    &get_rule_delegation_account_program_address(
+                        &lgovernance::id(),
+                        &from_token_record,
+                        &to_token_record,
+                        &self.rule,
+                    )
+                    .0,
+                    &from_token_record,
+                    &self
+                        .from
+                        .get_token_owner_budget_record_address(&self.token.mint, &self.rule),
+                    &self.from.keypair.pubkey(),
+                    &to_token_record,
+                    &self.to.keypair.pubkey(),
+                    &bench.payer.pubkey(),
+                    amount,
+                )],
+                Some(&[&self.from.keypair]),
+            )
+            .await
+            .unwrap();
+    }
+
+    pub async fn delegate_history(&self, bench: &mut ProgramTestBench) {
+        let token_owner_record = self.get_delegator_token_owner_record_address();
+        let delegation_record = self.get_delegation_record(bench).await.unwrap();
+
+        // Pick the rule delegation vote head. If missing we have already delegated votes for all active proposals
+        // (since we delegated before any votes where casted by the delegatee)
+        let vote_record_address = if let Some(vote_head) = &delegation_record.last_vote_head {
+            *vote_head
+        } else {
+            panic!("Unexpected");
+        };
+        let vote_record = try_from_slice_unchecked::<VoteRecordV2>(
+            &bench.get_account(&vote_record_address).await.unwrap().data,
+        )
+        .unwrap();
+        /*
+               let previous_vote_record = try_from_slice_unchecked::<VoteRecordV2>(
+                   &bench
+                       .get_account(&vote_record.previous_vote.unwrap())
+                       .await
+                       .unwrap()
+                       .data,
+               )
+               .unwrap();
+        */
+        let vote_options = TestProposal::get_vote_option_for_proposal(
+            bench,
+            &vote_record.proposal,
+            &vote_record.vote,
+        )
+        .await;
+
+        bench
+            .process_transaction(
+                &[delegate_history(
+                    &lgovernance::id(),
+                    &vote_record_address,
+                    &vote_record.proposal,
+                    &vote_options,
+                    &self.delegation,
+                    &token_owner_record,
+                    &self.from.keypair.pubkey(),
+                    &self.rule,
+                )],
+                Some(&[&self.from.keypair]),
+            )
+            .await
+            .unwrap();
+    }
+
+    pub async fn undelegate_history(&self, bench: &mut ProgramTestBench) {
+        let token_owner_record = self.get_delegator_token_owner_record_address();
+        let delegatee_token_owner_record =
+            self.get_delegatee_token_owner_record(bench).await.unwrap();
+
+        let delegation_record = self.get_delegation_record(bench).await.unwrap();
+
+        // Pick the rule delegation vote head, or the first vote casted (that is relavent)
+        let (vote_record_address, previous_vote_record_address) =
+            if let Some(vote_head) = &delegation_record.vote_head {
+                (*vote_head, None)
+            } else if let Some(previous_vote_head) = &delegation_record.last_vote_head {
+                let previous_vote_record = try_from_slice_unchecked::<VoteRecordV2>(
+                    &bench.get_account(&previous_vote_head).await.unwrap().data,
+                )
+                .unwrap();
+                (
+                    previous_vote_record.next_vote.unwrap(),
+                    Some(*previous_vote_head),
+                )
+            } else {
+                (delegatee_token_owner_record.first_vote.unwrap(), None)
+            };
+
+        let vote_record = try_from_slice_unchecked::<VoteRecordV2>(
+            &bench.get_account(&vote_record_address).await.unwrap().data,
+        )
+        .unwrap();
+
+        let vote_options = TestProposal::get_vote_option_for_proposal(
+            bench,
+            &vote_record.proposal,
+            &vote_record.vote,
+        )
+        .await;
+        bench
+            .process_transaction(
+                &[undelegate_history(
+                    &lgovernance::id(),
+                    &vote_record_address,
+                    &vote_record.proposal,
+                    &vote_options,
+                    &self.delegation,
+                    &token_owner_record,
+                    &self.from.keypair.pubkey(),
+                    &self.rule,
+                    previous_vote_record_address.as_ref(),
+                )],
+                Some(&[&self.from.keypair]),
+            )
+            .await
+            .unwrap();
+    }
+
+    pub fn get_delegator_token_owner_record_address(&self) -> Pubkey {
+        self.from.get_token_owner_record_address(&self.token.mint)
+    }
+    pub async fn get_delegator_token_owner_record(
+        &self,
+        bench: &mut ProgramTestBench,
+    ) -> Option<TokenOwnerRecordV2> {
+        let account = bench
+            .get_account(&self.get_delegator_token_owner_record_address())
+            .await;
+        if let Some(account) = account {
+            Some(try_from_slice_unchecked::<TokenOwnerRecordV2>(&account.data).unwrap())
+        } else {
+            None
+        }
+    }
+
+    pub fn get_delegatee_token_owner_record_address(&self) -> Pubkey {
+        self.to
+            .get_token_owner_delegate_record_address(&self.rule, &self.token.mint)
+    }
+
+    pub async fn get_delegatee_token_owner_record(
+        &self,
+        bench: &mut ProgramTestBench,
+    ) -> Option<TokenOwnerRecordV2> {
+        let account = bench
+            .get_account(&self.get_delegatee_token_owner_record_address())
+            .await;
+        if let Some(account) = account {
+            Some(try_from_slice_unchecked::<TokenOwnerRecordV2>(&account.data).unwrap())
+        } else {
+            None
+        }
+    }
+
+    pub async fn get_delegation_record(
+        &self,
+        bench: &mut ProgramTestBench,
+    ) -> Option<RuleDelegationRecordAccount> {
+        let account = bench.get_account(&self.delegation).await;
+        if let Some(account) = account {
+            Some(try_from_slice_unchecked::<RuleDelegationRecordAccount>(&account.data).unwrap())
+        } else {
+            None
+        }
+    }
+}
 pub struct TestGovernance {
     pub governance: Pubkey,
 }
@@ -1106,6 +1187,24 @@ impl TestProposal {
             let option = get_proposal_option_program_address(
                 &lgovernance::id(),
                 &self.proposal,
+                &index.to_le_bytes(),
+            )
+            .0;
+            vote_options.push(option);
+        }
+        vote_options
+    }
+
+    pub async fn get_vote_option_for_proposal(
+        bench: &mut ProgramTestBench,
+        proposal: &Pubkey,
+        vote: &Vote,
+    ) -> Vec<Pubkey> {
+        let mut vote_options = Vec::new();
+        for index in vote {
+            let option = get_proposal_option_program_address(
+                &lgovernance::id(),
+                proposal,
                 &index.to_le_bytes(),
             )
             .0;

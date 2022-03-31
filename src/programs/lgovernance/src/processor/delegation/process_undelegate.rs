@@ -66,13 +66,14 @@ pub fn process_undelegate(
         token_owner_record_info,
         governing_token_owner_info,
     )?;
-    let rule = &token_owner_budget_record.rule;
 
     let delegatee_token_owner_record =
         get_token_owner_record_data(program_id, delegatee_token_owner_record_info)?;
 
     // we can only undelegate if delegation is not used actively in any voting,
-    if delegation_record.vote_head != delegatee_token_owner_record.latest_vote {
+    if delegation_record.vote_head.is_some()
+        || delegation_record.last_vote_head != delegatee_token_owner_record.latest_vote
+    {
         return Err(GovernanceError::InvalidDelegatioStateForUndelegation.into());
     }
 
@@ -106,7 +107,7 @@ pub fn process_undelegate(
     delegatee_token_owner_record_data.governing_token_deposit_amount =
         delegatee_token_owner_record_data
             .governing_token_deposit_amount
-            .checked_add(amount)
+            .checked_sub(amount)
             .unwrap();
 
     delegatee_token_owner_record_data

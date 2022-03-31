@@ -1,4 +1,4 @@
-use crate::utils::program_test;
+use crate::{governance::utils::TestDelegation, utils::program_test};
 use lgovernance::{
     instruction::CreateProposalOptionType,
     state::{
@@ -20,7 +20,6 @@ use super::utils::{TestChannel, TestGovernance, TestProposal, TestToken, TestUse
 #[tokio::test]
 async fn success_delegate_simple() {
     // Delegate before vote cast
-
     let mut bench = ProgramTestBench::start_new(program_test()).await;
 
     let user_delegatee = TestUser::new();
@@ -79,15 +78,16 @@ async fn success_delegate_simple() {
     )
     .await;
 
-    // Enable the delegatee
-    user_delegatee
-        .create_delegatee(&mut bench, &governance_token, &rule)
-        .await;
-
+    let delegation = TestDelegation::new(
+        &mut bench,
+        &user_delegator,
+        &user_delegatee,
+        &governance_token,
+        &rule,
+    )
+    .await;
     // Delegate so that the delegatee now controls 51% of supply
-    user_delegator
-        .delegate(&mut bench, &user_delegatee, &governance_token, &rule, &50)
-        .await;
+    delegation.delegate(&mut bench, &50).await;
 
     // vote for the transaction option
     proposal
@@ -117,19 +117,9 @@ async fn success_delegate_simple() {
         ProposalState::Succeeded
     ); // Enough votes now since delegated
 
-    user_delegator
-        .undelegate_history(
-            &mut bench,
-            &user_delegatee,
-            &proposal,
-            &governance_token,
-            &rule,
-        )
-        .await;
+    delegation.undelegate_history(&mut bench).await;
 
-    user_delegator
-        .undelegate(&mut bench, &user_delegatee, &governance_token, &rule, &49)
-        .await;
+    delegation.undelegate(&mut bench, &49).await;
 }
 
 #[tokio::test]
@@ -160,6 +150,10 @@ async fn success_delegate_synchronization() {
         )
         .await;
 
+    user_delegatee
+        .deposit_governance_tokens(&mut bench, 1, &governance_token)
+        .await;
+
     user_delegator
         .create_associated_token_account(&mut bench, &governance_token)
         .await;
@@ -173,7 +167,7 @@ async fn success_delegate_synchronization() {
         .await;
 
     user_delegator
-        .deposit_governance_tokens(&mut bench, 1, &governance_token)
+        .deposit_governance_tokens(&mut bench, 99, &governance_token)
         .await;
 
     let mut governance =
@@ -190,11 +184,6 @@ async fn success_delegate_synchronization() {
     )
     .await;
 
-    // Enable the delegatee
-    user_delegatee
-        .create_delegatee(&mut bench, &governance_token, &rule)
-        .await;
-
     // vote for the transaction option
     proposal
         .vote(
@@ -210,22 +199,13 @@ async fn success_delegate_synchronization() {
 
     assert_eq!(proposal.get_state(&mut bench).await, ProposalState::Voting); // Not enought votes
 
-    // Delegate so that the delegatee now controls 51% of supply
-    user_delegator
-        .delegate(&mut bench, &user_delegatee, &governance_token, &rule, &50)
+    user_delegatee
+        .create_delegatee(&mut bench, &governance_token, &rule)
         .await;
 
-    // vote for the transaction option
-    proposal
-        .vote(
-            &mut bench,
-            &vec![1],
-            &user_delegatee,
-            &governance_token,
-            &rule,
-        )
-        .await;
-
+    // Vote with delegated tokens,
+    // even though we do not have any yet
+    // This in order to make the delegation later to update this vote
     proposal
         .vote_with_delegate(
             &mut bench,
@@ -236,10 +216,75 @@ async fn success_delegate_synchronization() {
         )
         .await;
 
+    let delegation = TestDelegation::new(
+        &mut bench,
+        &user_delegator,
+        &user_delegatee,
+        &governance_token,
+        &rule,
+    )
+    .await;
+
+    // Delegate so that the delegatee now controls 51% of supply
+    delegation.delegate(&mut bench, &50).await;
+    delegation.delegate_history(&mut bench).await;
+    let delegatee_token_owner_record = delegation
+        .get_delegatee_token_owner_record(&mut bench)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        delegatee_token_owner_record.governing_token_deposit_amount,
+        50
+    );
+    assert_eq!(
+        delegation
+            .get_delegation_record(&mut bench)
+            .await
+            .unwrap()
+            .amount,
+        50
+    );
+
     proposal.count_votes(&mut bench).await;
 
     assert_eq!(
         proposal.get_state(&mut bench).await,
         ProposalState::Succeeded
     ); // Enough votes now since delegated
+
+    delegation.undelegate_history(&mut bench).await;
+
+    delegation.undelegate(&mut bench, &49).await;
+
+    assert_eq!(
+        delegation
+            .get_delegation_record(&mut bench)
+            .await
+            .unwrap()
+            .amount,
+        1
+    );
+    assert_eq!(
+        delegation
+            .get_delegatee_token_owner_record(&mut bench)
+            .await
+            .unwrap()
+            .governing_token_deposit_amount,
+        1
+    );
+
+    delegation.undelegate(&mut bench, &1).await;
+
+    // Delegation record should not exist anymore, since we autmatically dispose if no more tokens left
+    assert!(delegation.get_delegation_record(&mut bench).await.is_none());
+
+    assert_eq!(
+        delegation
+            .get_delegatee_token_owner_record(&mut bench)
+            .await
+            .unwrap()
+            .governing_token_deposit_amount,
+        0
+    );
 }

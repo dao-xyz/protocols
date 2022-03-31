@@ -51,12 +51,15 @@ pub struct TokenOwnerRecordV2 {
     pub delegated_by_rule: Option<Pubkey>,
 
     /// Latest vote using the token owner record
+    pub first_vote: Option<Pubkey>,
+
+    /// Latest vote using the token owner record
     pub latest_vote: Option<Pubkey>,
 }
 
 impl MaxSize for TokenOwnerRecordV2 {
     fn get_max_size(&self) -> Option<usize> {
-        Some(1 + 32 + 32 + 8 + 8 + 4 + 4 + 1 + 1 + 32 + 1 + 32)
+        Some(1 + 32 + 32 + 8 + 8 + 4 + 4 + 1 + 1 + 32 + 1 + 32 + 1 + 32)
     }
 }
 
@@ -102,6 +105,7 @@ impl TokenOwnerRecordV2 {
                 total_votes_count: 0,
                 outstanding_proposal_count: 0,
                 delegated_by_rule: None, // this is not a delegation
+                first_vote: None,
                 latest_vote: None,
             };
 
@@ -154,6 +158,7 @@ impl TokenOwnerRecordV2 {
                 total_votes_count: 0,
                 outstanding_proposal_count: 0,
                 delegated_by_rule: Some(*delegated_by_rule), // this is not a delegation
+                first_vote: None,
                 latest_vote: None,
             };
 
@@ -540,6 +545,7 @@ mod test {
             total_votes_count: 1,
             outstanding_proposal_count: 1,
             delegated_by_rule: Some(Pubkey::new_unique()),
+            first_vote: None,
             latest_vote: None,
         };
 

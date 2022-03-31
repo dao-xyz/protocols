@@ -1,6 +1,6 @@
 pub mod channel;
 pub mod delegation;
-pub mod delegation_record;
+//pub mod _delegation_record;
 pub mod enums;
 pub mod governance;
 pub mod native_treasury;

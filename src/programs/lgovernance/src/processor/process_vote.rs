@@ -169,7 +169,9 @@ pub fn process_cast_vote(
         .unwrap();
 
     token_owner_record_data.latest_vote = Some(*vote_record_info.key);
-
+    if token_owner_record_data.first_vote.is_none() {
+        token_owner_record_data.first_vote = Some(*vote_record_info.key);
+    }
     // Update propsal
     proposal.serialize(&mut *proposal_account_info.data.borrow_mut())?;
     token_owner_record_data.serialize(&mut *token_owner_record_info.data.borrow_mut())?;

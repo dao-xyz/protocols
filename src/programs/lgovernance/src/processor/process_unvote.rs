@@ -116,6 +116,10 @@ pub fn process_uncast_vote(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
             let mut next = next.unwrap();
             next.1.previous_vote = None;
             next.1.serialize(&mut *next.0.data.borrow_mut())?;
+            token_owner_record_data.first_vote = Some(*next.0.key);
+        } else {
+            // None, None
+            token_owner_record_data.first_vote = None;
         }
 
         // Update total votes counts
