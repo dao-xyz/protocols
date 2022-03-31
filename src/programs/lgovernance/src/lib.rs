@@ -20,7 +20,7 @@ use state::vote_record::Vote;
  */
 /// Seed for UPVOTE
 
-const RULE: &[u8] = b"rule";
+const scope: &[u8] = b"scope";
 
 const AUTHORITY: &[u8] = b"authority";
 
@@ -98,25 +98,25 @@ pub fn create_post_mint_program_account<'a>(
  */
 
 /*
-/// Find rule account address
-pub fn find_create_rule_associated_program_address(
+/// Find scope account address
+pub fn find_create_scope_associated_program_address(
     program_id: &Pubkey,
     action_type: &ActionType,
     channel: &Pubkey,
 ) -> (Pubkey, u8) {
     match action_type {
         ActionType::DeletePost => {
-            Pubkey::find_program_address(&[RULE, b"delete", channel.as_ref()], program_id)
+            Pubkey::find_program_address(&[scope, b"delete", channel.as_ref()], program_id)
         }
         ActionType::CustomEvent(event_type) => {
-            Pubkey::find_program_address(&[RULE, event_type.as_ref(), channel.as_ref()], program_id)
+            Pubkey::find_program_address(&[scope, event_type.as_ref(), channel.as_ref()], program_id)
         }
-        ActionType::ManageRule(manage_rule) => match manage_rule {
-            RuleUpdateType::Create => {
-                Pubkey::find_program_address(&[RULE, b"rule_create", channel.as_ref()], program_id)
+        ActionType::ManageScope(manage_scope) => match manage_scope {
+            ScopeUpdateType::Create => {
+                Pubkey::find_program_address(&[scope, b"scope_create", channel.as_ref()], program_id)
             }
-            RuleUpdateType::Delete => {
-                Pubkey::find_program_address(&[RULE, b"rule_delete", channel.as_ref()], program_id)
+            ScopeUpdateType::Delete => {
+                Pubkey::find_program_address(&[scope, b"scope_delete", channel.as_ref()], program_id)
             }
         },
         ActionType::Treasury(treasury_action) => match treasury_action {
@@ -129,25 +129,25 @@ pub fn find_create_rule_associated_program_address(
                 program_id,
             ),
             TreasuryActionType::Create => Pubkey::find_program_address(
-                &[RULE, b"treasury_create", channel.as_ref()],
+                &[scope, b"treasury_create", channel.as_ref()],
                 program_id,
             ),
         },
     }
 }
 
-/// Create rule account address
-pub fn create_rule_associated_program_address_seeds<'a>(
+/// Create scope account address
+pub fn create_scope_associated_program_address_seeds<'a>(
     channel: &'a Pubkey,
     action_type: &'a ActionType,
     bump_seed: &'a [u8],
 ) -> [&'a [u8]; 4] {
     match action_type {
-        ActionType::CustomEvent(key) => [RULE, key.as_ref(), channel.as_ref(), bump_seed],
-        ActionType::DeletePost => [RULE, b"delete", channel.as_ref(), bump_seed],
-        ActionType::ManageRule(manage_rule) => match manage_rule {
-            RuleUpdateType::Create => [RULE, b"rule_create", channel.as_ref(), bump_seed],
-            RuleUpdateType::Delete => [RULE, b"rule_delete", channel.as_ref(), bump_seed],
+        ActionType::CustomEvent(key) => [scope, key.as_ref(), channel.as_ref(), bump_seed],
+        ActionType::DeletePost => [scope, b"delete", channel.as_ref(), bump_seed],
+        ActionType::ManageScope(manage_scope) => match manage_scope {
+            ScopeUpdateType::Create => [scope, b"scope_create", channel.as_ref(), bump_seed],
+            ScopeUpdateType::Delete => [scope, b"scope_delete", channel.as_ref(), bump_seed],
         },
         ActionType::Treasury(treasury_action) => match treasury_action {
             TreasuryActionType::Transfer { from, to } => [
@@ -156,7 +156,7 @@ pub fn create_rule_associated_program_address_seeds<'a>(
                 channel.as_ref(),
                 bump_seed,
             ],
-            TreasuryActionType::Create => [RULE, b"treasury_create", channel.as_ref(), bump_seed],
+            TreasuryActionType::Create => [scope, b"treasury_create", channel.as_ref(), bump_seed],
         },
     }
 } */

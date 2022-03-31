@@ -3,10 +3,10 @@ use crate::{
     utils::program_test,
 };
 use lgovernance::{
-    find_create_rule_associated_program_address,
+    find_create_scope_associated_program_address,
     instruction::{create_post_transaction, CreatePostType},
-    state::post::{Action, ActionStatus, CreateRule, VotingRuleUpdate},
-    state::rules::{deserialize_action_rule_account, AcceptenceCriteria, ActionType},
+    state::post::{Action, ActionStatus, Createscope, VotingScopeUpdate},
+    state::scopes::{deserialize_action_scope_account, AcceptenceCriteria, ActionType},
     Vote,
 };
 use solana_program::{instruction::InstructionError, pubkey::Pubkey};
@@ -50,16 +50,16 @@ async fn create_event() {
 
     let expires_in_sec = 1;
     let expires_at = time_since_epoch() + expires_in_sec;
-    let custom_rule_key = Pubkey::new_unique();
-    let (_custom_rule_address, _) = find_create_rule_associated_program_address(
+    let custom_scope_key = Pubkey::new_unique();
+    let (_custom_scope_address, _) = find_create_scope_associated_program_address(
         &lpost::id(),
-        &ActionType::CustomEvent(custom_rule_key),
+        &ActionType::CustomEvent(custom_scope_key),
         &test_channel.channel,
     );
-    let action_type = ActionType::CustomEvent(custom_rule_key);
+    let action_type = ActionType::CustomEvent(custom_scope_key);
 
-    // Create the rule for the event
-    let create_rule_post = TestPost::new(&test_channel.channel).await;
+    // Create the scope for the event
+    let create_scope_post = TestPost::new(&test_channel.channel).await;
     let mut transaction_post = Transaction::new_with_payer(
         &[create_post_transaction(
             &lpost::id(),
@@ -67,11 +67,11 @@ async fn create_event() {
             &test_user.user,
             &test_channel.channel,
             &test_channel.mint,
-            &create_rule_post.hash,
+            &create_scope_post.hash,
             &CreatePostType::ActionPost {
                 expires_at,
-                action: Action::ManageRule(VotingRuleUpdate::create(
-                    CreateRule {
+                action: Action::ManageScope(VotingScopeUpdate::create(
+                    CreateScope {
                         channel: test_channel.channel,
                         name: Some("Custom event".into()),
                         action: action_type.clone(),
@@ -82,7 +82,7 @@ async fn create_event() {
                     &lpost::id(),
                 )),
             },
-            &create_rule_post.source,
+            &create_scope_post.source,
         )],
         Some(&payer.pubkey()),
     );
@@ -92,14 +92,14 @@ async fn create_event() {
         .await
         .unwrap();
 
-    create_rule_post
+    create_scope_post
         .vote(&mut banks_client, &payer, Vote::Up, total_supply)
         .await;
 
     tokio::time::sleep(Duration::from_millis(expires_in_sec + 10)).await;
     assert_action_status(
         &mut banks_client,
-        &create_rule_post.post,
+        &create_scope_post.post,
         &ActionStatus::Pending,
     )
     .await;
@@ -109,7 +109,7 @@ async fn create_event() {
         &payer,
         &recent_blockhash,
         &test_channel,
-        &create_rule_post,
+        &create_scope_post,
     )
     .await
     .unwrap();
@@ -117,20 +117,20 @@ async fn create_event() {
     // assert post is approved
     assert_action_status(
         &mut banks_client,
-        &create_rule_post.post,
+        &create_scope_post.post,
         &ActionStatus::Approved,
     )
     .await;
 
     // unvote to get tokens bak
-    create_rule_post
+    create_scope_post
         .unvote(&mut banks_client, &payer, Vote::Up, total_supply)
         .await;
 
-    deserialize_action_rule_account(
+    deserialize_action_scope_account(
         &*banks_client
             .get_account(
-                find_create_rule_associated_program_address(
+                find_create_scope_associated_program_address(
                     &lpost::id(),
                     &action_type,
                     &test_channel.channel,
@@ -219,7 +219,7 @@ async fn create_event() {
                 expires_at,
                 action: Action::CustomEvent {
                     data: vec![1, 2, 3],
-                    event_type: custom_rule_key,
+                    event_type: custom_scope_key,
                 },
             },
             &create_post_valid_action.source,

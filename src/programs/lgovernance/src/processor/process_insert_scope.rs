@@ -7,9 +7,9 @@ use crate::state::{
             get_proposal_transaction_address_seeds, ConditionedInstruction, ProposalTransactionV2,
         },
     },
-    rules::{
-        rule::{get_rule_data, Rule},
-        rule_weight::RuleWeight,
+    scopes::{
+        scope::{get_scope_data, Scope},
+        scope_weight::ScopeWeight,
     },
 };
 
@@ -19,24 +19,24 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-pub fn process_insert_rule(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+pub fn process_insert_scope(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
-    let rule_info = next_account_info(account_info_iter)?; // 1
+    let scope_info = next_account_info(account_info_iter)?; // 1
     let proposal_info = next_account_info(account_info_iter)?; // 1
     let creator_info = next_account_info(account_info_iter)?; // 0
     let mut proposal_data = get_proposal_data(program_id, proposal_info)?;
-    proposal_data.assert_can_edit_rules(creator_info)?;
+    proposal_data.assert_can_edit_scopes(creator_info)?;
 
-    let rule_data = get_rule_data(program_id, rule_info)?;
+    let scope_data = get_scope_data(program_id, scope_info)?;
 
-    proposal_data.rules_max_vote_weight.push(RuleWeight {
-        rule: *rule_info.key,
+    proposal_data.scopes_max_vote_weight.push(ScopeWeight {
+        scope: *scope_info.key,
         weight: 0, // max vote weight is calculated later
     });
 
     /*    proposal_data
-    .common_rule_config
-    .set_strictest(&rule_data.config.vote_config.vote_tipping); */
+    .common_scope_config
+    .set_strictest(&scope_data.config.vote_config.vote_tipping); */
 
     proposal_data.serialize(&mut *proposal_info.data.borrow_mut())?;
     Ok(())

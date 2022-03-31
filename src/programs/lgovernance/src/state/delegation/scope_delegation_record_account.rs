@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub struct RuleDelegationRecordAccount {
+pub struct ScopeDelegationRecordAccount {
     pub account_type: AccountType,
     pub delegator_token_owner_record: Pubkey,
     pub delegatee_token_owner_record: Pubkey,
@@ -30,25 +30,25 @@ pub struct RuleDelegationRecordAccount {
     pub last_vote_head: Option<Pubkey>,
 }
 
-impl MaxSize for RuleDelegationRecordAccount {
+impl MaxSize for ScopeDelegationRecordAccount {
     fn get_max_size(&self) -> Option<usize> {
         Some(1 + 32 + 32 + 8 + 1 + 32 + 1 + 32)
     }
 }
-impl IsInitialized for RuleDelegationRecordAccount {
+impl IsInitialized for ScopeDelegationRecordAccount {
     fn is_initialized(&self) -> bool {
         self.account_type == AccountType::DelegationRecord
     }
 }
 
-impl RuleDelegationRecordAccount {
+impl ScopeDelegationRecordAccount {
     pub fn delegate<'a>(
         program_id: &Pubkey,
         amount: u64,
-        rule: &Pubkey,
+        scope: &Pubkey,
         rent: &Rent,
-        rule_delegation_record_info: &AccountInfo<'a>,
-        rule_delegation_record_bump_seed: u8,
+        scope_delegation_record_info: &AccountInfo<'a>,
+        scope_delegation_record_bump_seed: u8,
         token_owner_record: &TokenOwnerRecordV2,
         token_owner_record_info: &AccountInfo<'a>,
         governing_token_owner_info: &AccountInfo<'a>,
@@ -60,19 +60,19 @@ impl RuleDelegationRecordAccount {
         msg!("Z");
 
         // TODO check delegation owner redcord mint
-        if rule_delegation_record_info.data_is_empty() {
-            let bump_seeds = [rule_delegation_record_bump_seed];
-            let seeds = get_rule_delegation_account_program_address_seeds(
+        if scope_delegation_record_info.data_is_empty() {
+            let bump_seeds = [scope_delegation_record_bump_seed];
+            let seeds = get_scope_delegation_account_program_address_seeds(
                 token_owner_record_info.key,
                 delegatee_token_owner_record_info.key,
-                &rule,
+                &scope,
                 &bump_seeds,
             );
 
-            create_and_serialize_account_verify_with_bump::<RuleDelegationRecordAccount>(
+            create_and_serialize_account_verify_with_bump::<ScopeDelegationRecordAccount>(
                 payer_info,
-                rule_delegation_record_info,
-                &RuleDelegationRecordAccount {
+                scope_delegation_record_info,
+                &ScopeDelegationRecordAccount {
                     account_type: AccountType::DelegationRecord,
                     amount,
                     delegator_token_owner_record: *token_owner_record_info.key,
@@ -86,9 +86,9 @@ impl RuleDelegationRecordAccount {
                 &rent,
             )?;
         } else {
-            let mut rule_delegation_record = get_rule_delegation_record_data(
+            let mut scope_delegation_record = get_scope_delegation_record_data(
                 program_id,
-                rule_delegation_record_info,
+                scope_delegation_record_info,
                 token_owner_record,
                 token_owner_record_info,
                 governing_token_owner_info,
@@ -98,7 +98,7 @@ impl RuleDelegationRecordAccount {
             // check the state (so we can update)
             if !match (
                 &delegatee_token_owner_record.latest_vote,
-                &rule_delegation_record.vote_head,
+                &scope_delegation_record.vote_head,
             ) {
                 (Some(a), Some(b)) => a == b,
                 (None, None) => true,
@@ -107,10 +107,10 @@ impl RuleDelegationRecordAccount {
                 return Err(GovernanceError::InvalidDelegationStateForUpdates.into());
             }
 
-            rule_delegation_record.amount =
-                rule_delegation_record.amount.checked_add(amount).unwrap();
-            rule_delegation_record
-                .serialize(&mut *rule_delegation_record_info.data.borrow_mut())?;
+            scope_delegation_record.amount =
+                scope_delegation_record.amount.checked_add(amount).unwrap();
+            scope_delegation_record
+                .serialize(&mut *scope_delegation_record_info.data.borrow_mut())?;
         }
         Ok(())
     }
@@ -118,7 +118,7 @@ impl RuleDelegationRecordAccount {
     pub fn undelegate<'a>(
         program_id: &Pubkey,
         amount: u64,
-        rule_delegation_record_info: &AccountInfo<'a>,
+        scope_delegation_record_info: &AccountInfo<'a>,
         token_owner_record: &TokenOwnerRecordV2,
         token_owner_record_info: &AccountInfo<'a>,
         governing_token_owner_info: &AccountInfo<'a>,
@@ -127,9 +127,9 @@ impl RuleDelegationRecordAccount {
         beneficiary_info: &AccountInfo<'a>,
     ) -> Result<(), ProgramError> {
         // TODO check delegation owner redcord mint
-        let mut rule_delegation_record = get_rule_delegation_record_data(
+        let mut scope_delegation_record = get_scope_delegation_record_data(
             program_id,
-            rule_delegation_record_info,
+            scope_delegation_record_info,
             token_owner_record,
             token_owner_record_info,
             governing_token_owner_info,
@@ -137,19 +137,20 @@ impl RuleDelegationRecordAccount {
         )?;
 
         // check the state (so we can update)
-        if rule_delegation_record.vote_head.is_some()
-            || &delegatee_token_owner_record.latest_vote != &rule_delegation_record.last_vote_head
+        if scope_delegation_record.vote_head.is_some()
+            || &delegatee_token_owner_record.latest_vote != &scope_delegation_record.last_vote_head
         {
             return Err(GovernanceError::InvalidDelegationStateForUpdates.into());
         }
 
-        rule_delegation_record.amount = rule_delegation_record.amount.checked_sub(amount).unwrap();
+        scope_delegation_record.amount =
+            scope_delegation_record.amount.checked_sub(amount).unwrap();
 
-        if rule_delegation_record.amount == 0 {
-            dispose_account(rule_delegation_record_info, beneficiary_info);
+        if scope_delegation_record.amount == 0 {
+            dispose_account(scope_delegation_record_info, beneficiary_info);
         } else {
-            rule_delegation_record
-                .serialize(&mut *rule_delegation_record_info.data.borrow_mut())?;
+            scope_delegation_record
+                .serialize(&mut *scope_delegation_record_info.data.borrow_mut())?;
         }
         Ok(())
     }
@@ -157,11 +158,11 @@ impl RuleDelegationRecordAccount {
 
 pub fn get_delegation_record_data_for_delegator_or_delegatee(
     program_id: &Pubkey,
-    rule_delegation_record_info: &AccountInfo,
+    scope_delegation_record_info: &AccountInfo,
     delegator_or_delegatee_token_owner_record: &AccountInfo,
-) -> Result<RuleDelegationRecordAccount, ProgramError> {
+) -> Result<ScopeDelegationRecordAccount, ProgramError> {
     let data =
-        get_account_data::<RuleDelegationRecordAccount>(program_id, rule_delegation_record_info)?;
+        get_account_data::<ScopeDelegationRecordAccount>(program_id, scope_delegation_record_info)?;
     if &data.delegator_token_owner_record != delegator_or_delegatee_token_owner_record.key
         && &data.delegatee_token_owner_record != delegator_or_delegatee_token_owner_record.key
     {
@@ -171,46 +172,46 @@ pub fn get_delegation_record_data_for_delegator_or_delegatee(
     Ok(data)
 }
 
-pub fn get_rule_delegation_account_program_address(
+pub fn get_scope_delegation_account_program_address(
     program_id: &Pubkey,
     from_token_owner_record: &Pubkey,
     to_token_owner_record: &Pubkey,
-    rule: &Pubkey,
+    scope: &Pubkey,
 ) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[
-            b"rule_delegation",
+            b"scope_delegation",
             from_token_owner_record.as_ref(),
             to_token_owner_record.as_ref(),
-            rule.as_ref(),
+            scope.as_ref(),
         ],
         program_id,
     )
 }
-pub fn get_rule_delegation_account_program_address_seeds<'a>(
+pub fn get_scope_delegation_account_program_address_seeds<'a>(
     from_token_owner_record: &'a Pubkey,
     to_token_owner_record: &'a Pubkey,
-    rule: &'a Pubkey,
+    scope: &'a Pubkey,
     bump_seed: &'a [u8],
 ) -> [&'a [u8]; 5] {
     return [
-        b"rule_delegation",
+        b"scope_delegation",
         from_token_owner_record.as_ref(),
         to_token_owner_record.as_ref(),
-        rule.as_ref(),
+        scope.as_ref(),
         bump_seed,
     ];
 }
 
-/// Deserializes RuleDelegationAccount account and asserts it belongs to the given realm
-pub fn get_rule_delegation_record_data(
+/// Deserializes ScopeDelegationAccount account and asserts it belongs to the given realm
+pub fn get_scope_delegation_record_data(
     program_id: &Pubkey,
     delegation_record_info: &AccountInfo,
     token_owner_record: &TokenOwnerRecordV2,
     token_owner_record_info: &AccountInfo,
     governing_token_owner_info: &AccountInfo,
     delegatee_token_owner_record_info: &AccountInfo,
-) -> Result<RuleDelegationRecordAccount, ProgramError> {
+) -> Result<ScopeDelegationRecordAccount, ProgramError> {
     if !governing_token_owner_info.is_signer {
         return Err(GovernanceError::GoverningTokenOwnerMustSign.into());
     }
@@ -219,16 +220,17 @@ pub fn get_rule_delegation_record_data(
     }
 
     msg!("Y");
-    let rule_delegation_data =
-        get_account_data::<RuleDelegationRecordAccount>(program_id, delegation_record_info)?;
+    let scope_delegation_data =
+        get_account_data::<ScopeDelegationRecordAccount>(program_id, delegation_record_info)?;
     msg!("YY");
 
-    if &rule_delegation_data.delegator_token_owner_record != token_owner_record_info.key {
+    if &scope_delegation_data.delegator_token_owner_record != token_owner_record_info.key {
         return Err(GovernanceError::InvalidTokenOwnerRecordAccountAddress.into());
     }
-    if &rule_delegation_data.delegatee_token_owner_record != delegatee_token_owner_record_info.key {
+    if &scope_delegation_data.delegatee_token_owner_record != delegatee_token_owner_record_info.key
+    {
         return Err(GovernanceError::InvalidTokenOwnerRecordAccountAddress.into());
     }
 
-    Ok(rule_delegation_data)
+    Ok(scope_delegation_data)
 }

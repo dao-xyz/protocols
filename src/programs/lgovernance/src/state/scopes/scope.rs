@@ -7,8 +7,7 @@ use shared::{
     content::ContentSource,
 };
 use solana_program::{
-    account_info::{next_account_info, next_account_infos, AccountInfo},
-    msg,
+    account_info::{next_account_info, AccountInfo},
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::Pubkey,
@@ -21,7 +20,7 @@ use crate::{
         proposal::{proposal_transaction::InstructionData, ProposalV2},
         token_owner_record::get_token_owner_record_data_for_owner,
     },
-    tokens::spl_utils::{get_spl_token_mint_supply, get_token_balance},
+    tokens::spl_utils::get_spl_token_mint_supply,
 };
 
 use super::super::enums::VoteTipping;
@@ -42,7 +41,7 @@ impl Default for AcceptenceCriteria {
 }
 /*
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub enum RuleUpdateType {
+pub enum ScopeUpdateType {
     Create,
     Delete,
 }
@@ -59,7 +58,7 @@ pub enum TreasuryActionType {
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum ActionType {
     CustomEvent(Pubkey), // event pubkey
-    ManageRule(RuleUpdateType),
+    ManageScope(ScopeUpdateType),
     Treasury(TreasuryActionType),
     DeletePost,
 }*/
@@ -76,7 +75,7 @@ pub struct InstructionConditional {
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub enum RuleCondition {
+pub enum ScopeCondition {
     // For what program id?
     None,
     ProgramId(Pubkey),
@@ -87,7 +86,7 @@ pub enum RuleCondition {
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub struct RuleTimeConfig {
+pub struct ScopeTimeConfig {
     pub min_transaction_hold_up_time: u32,
 
     /// Time limit in seconds for proposal to be open for voting
@@ -98,7 +97,7 @@ pub struct RuleTimeConfig {
     /// Note: This field is not implemented in the current version
     pub proposal_cool_off_time: u32,
 }
-impl RuleTimeConfig {
+impl ScopeTimeConfig {
     pub fn get_strictest(&self, other: &Self) -> Self {
         Self {
             max_voting_time: self.max_voting_time.max(other.max_voting_time),
@@ -112,7 +111,7 @@ impl RuleTimeConfig {
     }
 }
 
-impl Default for RuleTimeConfig {
+impl Default for ScopeTimeConfig {
     fn default() -> Self {
         Self {
             min_transaction_hold_up_time: 0,
@@ -128,8 +127,8 @@ pub struct MintWeight {
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub struct RuleVoteConfig {
-    pub rule_condition: Option<RuleCondition>,
+pub struct ScopeVoteConfig {
+    pub scope_condition: Option<ScopeCondition>,
     pub criteria: AcceptenceCriteria,
     pub mint_weights: Vec<MintWeight>,
     /// Conditions under which a vote will complete early
@@ -140,11 +139,11 @@ pub struct RuleVoteConfig {
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub struct RuleProposalConfig {
+pub struct ScopeProposalConfig {
     pub create_proposal_criteria: CreateProposalCriteria,
 }
 
-impl RuleProposalConfig {
+impl ScopeProposalConfig {
     pub fn assert_can_create_proposal(
         &self,
         program_id: &Pubkey,
@@ -190,28 +189,28 @@ impl RuleProposalConfig {
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
-pub struct RuleConfig {
-    pub vote_config: RuleVoteConfig,
-    pub time_config: RuleTimeConfig,
-    pub proposal_config: RuleProposalConfig,
+pub struct ScopeConfig {
+    pub vote_config: ScopeVoteConfig,
+    pub time_config: ScopeTimeConfig,
+    pub proposal_config: ScopeProposalConfig,
 }
 
-impl RuleConfig {
+impl ScopeConfig {
     pub fn get_single_mint_config(
         governance_mint: &Pubkey,
-        rule_condition: &Option<RuleCondition>,
+        scope_condition: &Option<ScopeCondition>,
         name: &Option<String>,
         info: &Option<ContentSource>,
     ) -> Self {
         Self {
-            proposal_config: RuleProposalConfig {
+            proposal_config: ScopeProposalConfig {
                 create_proposal_criteria: CreateProposalCriteria::TokenOwner {
                     amount: 1,
                     mint: *governance_mint,
                 },
             },
-            time_config: RuleTimeConfig::default(),
-            vote_config: RuleVoteConfig {
+            time_config: ScopeTimeConfig::default(),
+            vote_config: ScopeVoteConfig {
                 criteria: AcceptenceCriteria::default(),
                 info: info.clone(),
                 mint_weights: vec![MintWeight {
@@ -219,7 +218,7 @@ impl RuleConfig {
                     weight: 100,
                 }],
                 name: name.clone(),
-                rule_condition: rule_condition.clone(),
+                scope_condition: scope_condition.clone(),
                 vote_tipping: VoteTipping::Strict,
             },
         }
@@ -232,7 +231,7 @@ pub enum CreateProposalCriteria {
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub struct Rule {
+pub struct Scope {
     pub account_type: AccountType,
 
     // config
@@ -242,35 +241,35 @@ pub struct Rule {
     pub deleted: bool,
 
     // config
-    pub config: RuleConfig,
+    pub config: ScopeConfig,
 
     // stats
     pub proposal_count: u64,
     pub voting_proposal_count: u64,
 }
-impl MaxSize for Rule {
+impl MaxSize for Scope {
     fn get_max_size(&self) -> Option<usize> {
         None
     }
 }
 
-impl Rule {
-    pub fn rule_applicable(&self, instruction_data: &InstructionData) -> Result<(), ProgramError> {
-        if let Some(config) = &self.config.vote_config.rule_condition {
+impl Scope {
+    pub fn scope_applicable(&self, instruction_data: &InstructionData) -> Result<(), ProgramError> {
+        if let Some(config) = &self.config.vote_config.scope_condition {
             match config {
-                RuleCondition::None => return Ok(()),
-                RuleCondition::ProgramId(program_id) => {
+                ScopeCondition::None => return Ok(()),
+                ScopeCondition::ProgramId(program_id) => {
                     if program_id != &instruction_data.program_id {
-                        return Err(GovernanceError::RuleNotApplicableForInstruction.into());
+                        return Err(GovernanceError::ScopeNotApplicableForInstruction.into());
                     }
                     return Ok(());
                 }
-                RuleCondition::Granular {
+                ScopeCondition::Granular {
                     program_id,
                     instruction_condition,
                 } => {
                     if program_id != &instruction_data.program_id {
-                        return Err(GovernanceError::RuleNotApplicableForInstruction.into());
+                        return Err(GovernanceError::ScopeNotApplicableForInstruction.into());
                     }
 
                     // Check instruction data
@@ -282,7 +281,9 @@ impl Rule {
                                 .unwrap()
                                 != chunk_data
                             {
-                                return Err(GovernanceError::RuleNotApplicableForInstruction.into());
+                                return Err(
+                                    GovernanceError::ScopeNotApplicableForInstruction.into()
+                                );
                             }
                         }
                     }
@@ -294,32 +295,35 @@ impl Rule {
     }
 }
 
-impl IsInitialized for Rule {
+impl IsInitialized for Scope {
     fn is_initialized(&self) -> bool {
-        self.account_type == AccountType::Rule
+        self.account_type == AccountType::Scope
     }
 }
 
-/// Deserializes Rule account and governance key
-pub fn get_rule_data_for_governance(
+/// Deserializes Scope account and governance key
+pub fn get_scope_data_for_governance(
     program_id: &Pubkey,
-    rule_info: &AccountInfo,
+    scope_info: &AccountInfo,
     governance: &Pubkey,
-) -> Result<Rule, ProgramError> {
-    let data = get_account_data::<Rule>(program_id, rule_info)?;
+) -> Result<Scope, ProgramError> {
+    let data = get_account_data::<Scope>(program_id, scope_info)?;
     if &data.governance != governance {
-        return Err(GovernanceError::InvalidGovernanceForRule.into());
+        return Err(GovernanceError::InvalidGovernanceForscope.into());
     }
     Ok(data)
 }
 
-/// Deserializes Rule account
-pub fn get_rule_data(program_id: &Pubkey, rule_info: &AccountInfo) -> Result<Rule, ProgramError> {
-    let data = get_account_data::<Rule>(program_id, rule_info)?;
+/// Deserializes Scope account
+pub fn get_scope_data(
+    program_id: &Pubkey,
+    scope_info: &AccountInfo,
+) -> Result<Scope, ProgramError> {
+    let data = get_account_data::<Scope>(program_id, scope_info)?;
     Ok(data)
 }
 
-impl RuleVoteConfig {
+impl ScopeVoteConfig {
     pub fn max_vote_weight(
         &self,
         accounts_iter: &mut Iter<AccountInfo>,
@@ -370,7 +374,7 @@ impl RuleVoteConfig {
     }
 }
 
-/* impl Rule {
+/* impl Scope {
     pub fn is_approved(&self, upvotes: u64, downvotes: u64, total_supply: u64) -> Option<bool> {
         match self.vote_config.criteria {
             AcceptenceCriteria::Threshold(threshold) => {
@@ -396,12 +400,12 @@ impl RuleVoteConfig {
         }
     }
 } */
-pub fn get_rule_program_address(program_id: &Pubkey, rule_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[rule_id.as_ref()], program_id)
+pub fn get_scope_program_address(program_id: &Pubkey, scope_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[scope_id.as_ref()], program_id)
 }
-pub fn get_rule_program_address_seeds<'a>(
-    rule_id: &'a Pubkey,
+pub fn get_scope_program_address_seeds<'a>(
+    scope_id: &'a Pubkey,
     bump_seed: &'a [u8],
 ) -> [&'a [u8]; 2] {
-    return [rule_id.as_ref(), bump_seed];
+    return [scope_id.as_ref(), bump_seed];
 }

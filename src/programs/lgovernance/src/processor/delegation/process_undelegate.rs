@@ -3,8 +3,8 @@
 use crate::{
     error::GovernanceError,
     state::{
-        delegation::rule_delegation_record_account::{
-            get_rule_delegation_record_data, RuleDelegationRecordAccount,
+        delegation::scope_delegation_record_account::{
+            get_scope_delegation_record_data, ScopeDelegationRecordAccount,
         },
         token_owner_budget_record::{
             get_token_owner_budget_record_data_for_token_record, TokenOwnerBudgetRecord,
@@ -50,7 +50,7 @@ pub fn process_undelegate(
     )?;
     msg!("XX {}", delegation_record_info.data_is_empty());
 
-    let delegation_record = get_rule_delegation_record_data(
+    let delegation_record = get_scope_delegation_record_data(
         program_id,
         delegation_record_info,
         &token_owner_record,
@@ -82,8 +82,8 @@ pub fn process_undelegate(
         return Err(GovernanceError::InvalidGoverningTokenMint.into());
     }
 
-    let rule = delegatee_token_owner_record
-        .delegated_by_rule
+    let scope = delegatee_token_owner_record
+        .delegated_by_scope
         .as_ref()
         .unwrap();
 
@@ -102,7 +102,7 @@ pub fn process_undelegate(
             delegatee_token_owner_record_info,
             delegatee_governing_token_owner_info.key,
             &token_owner_record.governing_token_mint,
-            Some(rule),
+            Some(scope),
         )?;
     delegatee_token_owner_record_data.governing_token_deposit_amount =
         delegatee_token_owner_record_data
@@ -114,7 +114,7 @@ pub fn process_undelegate(
         .serialize(&mut *delegatee_token_owner_record_info.data.borrow_mut())?;
 
     // Update delegation, might also dispose
-    RuleDelegationRecordAccount::undelegate(
+    ScopeDelegationRecordAccount::undelegate(
         program_id,
         amount,
         delegation_record_info,
@@ -131,7 +131,7 @@ pub fn process_undelegate(
         delegatee_token_owner_record_info,
         delegatee_governing_token_owner_info.key,
         &token_owner_record.governing_token_mint,
-        Some(rule),
+        Some(scope),
         amount,
     )?; */
 
@@ -147,7 +147,7 @@ pub fn process_undelegate(
                total_votes_count: 0,
                delegated_governing_token_deposit_amount: 0,
                outstanding_proposal_count: 0,
-               delegated_by_rule: Some(rule),
+               delegated_by_scope: Some(scope),
            };
 
            create_and_serialize_account_signed(

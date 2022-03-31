@@ -99,7 +99,7 @@ impl From<&ConditionedInstruction> for Instruction {
 #[repr(C)]
 pub struct ConditionedInstruction {
     pub instruction_data: InstructionData,
-    pub rule: Pubkey,
+    pub scope: Pubkey,
 }
 
 /// Account for an instruction to be executed for Proposal
@@ -164,8 +164,8 @@ impl ProposalTransactionV2 {
         Ok(())
     }
 
-    pub fn get_used_rules(&self) -> impl Iterator<Item = Pubkey> + '_ {
-        self.instructions.iter().map(|i| i.rule)
+    pub fn get_used_scopes(&self) -> impl Iterator<Item = Pubkey> + '_ {
+        self.instructions.iter().map(|i| i.scope)
     }
 }
 
@@ -256,7 +256,7 @@ mod test {
                 ],
                 data: vec![1, 2, 3],
             },
-            rule: Pubkey::new_unique(),
+            scope: Pubkey::new_unique(),
         }]
     }
 

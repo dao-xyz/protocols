@@ -3,11 +3,11 @@ use crate::{
     utils::program_test,
 };
 use lgovernance::{
-    find_create_rule_associated_program_address,
+    find_create_scope_associated_program_address,
     instruction::{create_post_transaction, CreatePostType},
-    state::post::{Action, ActionStatus, CreateRule, TreasuryAction, VotingRuleUpdate},
-    state::rules::{
-        deserialize_action_rule_account, AcceptenceCriteria, ActionType, TreasuryActionType,
+    state::post::{Action, ActionStatus, Createscope, TreasuryAction, VotingScopeUpdate},
+    state::scopes::{
+        deserialize_action_scope_account, AcceptenceCriteria, ActionType, TreasuryActionType,
     },
     Vote,
 };
@@ -42,8 +42,8 @@ async fn success_create_and_transfer() {
 
     let treasury_create_action_type = ActionType::Treasury(TreasuryActionType::Create);
 
-    // Create the rule for the event
-    let create_event_rule_post = TestPost::new(&test_channel.channel).await;
+    // Create the scope for the event
+    let create_event_scope_post = TestPost::new(&test_channel.channel).await;
     let mut transaction_post = Transaction::new_with_payer(
         &[create_post_transaction(
             &lpost::id(),
@@ -51,11 +51,11 @@ async fn success_create_and_transfer() {
             &test_user.user,
             &test_channel.channel,
             &test_channel.mint,
-            &create_event_rule_post.hash,
+            &create_event_scope_post.hash,
             &CreatePostType::ActionPost {
                 expires_at,
-                action: Action::ManageRule(VotingRuleUpdate::create(
-                    CreateRule {
+                action: Action::ManageScope(VotingScopeUpdate::create(
+                    CreateScope {
                         channel: test_channel.channel,
                         name: None,
                         action: treasury_create_action_type.clone(),
@@ -66,7 +66,7 @@ async fn success_create_and_transfer() {
                     &lpost::id(),
                 )),
             },
-            &create_event_rule_post.source,
+            &create_event_scope_post.source,
         )],
         Some(&payer.pubkey()),
     );
@@ -76,14 +76,14 @@ async fn success_create_and_transfer() {
         .await
         .unwrap();
 
-    create_event_rule_post
+    create_event_scope_post
         .vote(&mut banks_client, &payer, Vote::Up, total_supply)
         .await;
 
     tokio::time::sleep(Duration::from_millis(expires_in_sec + 10)).await;
     assert_action_status(
         &mut banks_client,
-        &create_event_rule_post.post,
+        &create_event_scope_post.post,
         &ActionStatus::Pending,
     )
     .await;
@@ -92,7 +92,7 @@ async fn success_create_and_transfer() {
         &payer,
         &recent_blockhash,
         &test_channel,
-        &create_event_rule_post,
+        &create_event_scope_post,
     )
     .await
     .unwrap();
@@ -100,15 +100,15 @@ async fn success_create_and_transfer() {
     // assert post is approved
     assert_action_status(
         &mut banks_client,
-        &create_event_rule_post.post,
+        &create_event_scope_post.post,
         &ActionStatus::Approved,
     )
     .await;
 
-    deserialize_action_rule_account(
+    deserialize_action_scope_account(
         &*banks_client
             .get_account(
-                find_create_rule_associated_program_address(
+                find_create_scope_associated_program_address(
                     &lpost::id(),
                     &treasury_create_action_type,
                     &test_channel.channel,
@@ -123,7 +123,7 @@ async fn success_create_and_transfer() {
     .unwrap();
 
     // Unvote to re require tokens
-    create_event_rule_post
+    create_event_scope_post
         .unvote(&mut banks_client, &payer, Vote::Up, total_supply)
         .await;
 
@@ -230,19 +230,19 @@ async fn success_create_and_transfer() {
     );
 
     // Create a proposal that allows treasury transfers
-    let treasury_transfer_rule_post = TestPost::new(&test_channel.channel).await;
-    let mut transaction_transfer_treasury_rule_post = Transaction::new_with_payer(
+    let treasury_transfer_scope_post = TestPost::new(&test_channel.channel).await;
+    let mut transaction_transfer_treasury_scope_post = Transaction::new_with_payer(
         &[create_post_transaction(
             &lpost::id(),
             &payer.pubkey(),
             &test_user.user,
             &test_channel.channel,
             &test_channel.mint,
-            &treasury_transfer_rule_post.hash,
+            &treasury_transfer_scope_post.hash,
             &CreatePostType::ActionPost {
                 expires_at,
-                action: Action::ManageRule(VotingRuleUpdate::create(
-                    CreateRule {
+                action: Action::ManageScope(VotingScopeUpdate::create(
+                    CreateScope {
                         action: ActionType::Treasury(TreasuryActionType::Transfer {
                             from: Some(test_channel.get_treasury_address(&test_channel.mint)),
                             to: Some(get_associated_token_address(
@@ -259,24 +259,24 @@ async fn success_create_and_transfer() {
                     &lpost::id(),
                 )),
             },
-            &treasury_transfer_rule_post.source,
+            &treasury_transfer_scope_post.source,
         )],
         Some(&payer.pubkey()),
     );
-    transaction_transfer_treasury_rule_post.sign(&[&payer], recent_blockhash);
+    transaction_transfer_treasury_scope_post.sign(&[&payer], recent_blockhash);
     banks_client
-        .process_transaction(transaction_transfer_treasury_rule_post)
+        .process_transaction(transaction_transfer_treasury_scope_post)
         .await
         .unwrap();
 
-    treasury_transfer_rule_post
+    treasury_transfer_scope_post
         .vote(&mut banks_client, &payer, Vote::Up, total_supply - 1)
         .await;
 
     tokio::time::sleep(Duration::from_millis(expires_in_sec + 10)).await;
     assert_action_status(
         &mut banks_client,
-        &treasury_transfer_rule_post.post,
+        &treasury_transfer_scope_post.post,
         &ActionStatus::Pending,
     )
     .await;
@@ -286,7 +286,7 @@ async fn success_create_and_transfer() {
         &payer,
         &recent_blockhash,
         &test_channel,
-        &treasury_transfer_rule_post,
+        &treasury_transfer_scope_post,
     )
     .await
     .unwrap();
@@ -294,19 +294,19 @@ async fn success_create_and_transfer() {
     // assets post is approved
     assert_action_status(
         &mut banks_client,
-        &treasury_transfer_rule_post.post,
+        &treasury_transfer_scope_post.post,
         &ActionStatus::Approved,
     )
     .await;
 
     // unvote to reclaim tokens
-    treasury_transfer_rule_post
+    treasury_transfer_scope_post
         .unvote(&mut banks_client, &payer, Vote::Up, total_supply - 1)
         .await;
 
-    // check that the rule exist
+    // check that the scope exist
 
-    let transfer_treasury_rule_address = find_create_rule_associated_program_address(
+    let transfer_treasury_scope_address = find_create_scope_associated_program_address(
         &lpost::id(),
         &ActionType::Treasury(TreasuryActionType::Transfer {
             from: Some(test_channel.get_treasury_address(&test_channel.mint)),
@@ -319,9 +319,9 @@ async fn success_create_and_transfer() {
     )
     .0;
 
-    let _rule = deserialize_action_rule_account(
+    let _scope = deserialize_action_scope_account(
         &*banks_client
-            .get_account(transfer_treasury_rule_address)
+            .get_account(transfer_treasury_scope_address)
             .await
             .unwrap()
             .unwrap()

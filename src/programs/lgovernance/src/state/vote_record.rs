@@ -60,8 +60,8 @@ pub struct VoteRecordV2 {
     /// This is the Governing Token Owner who deposited governing tokens into the Realm
     pub governing_token_owner: Pubkey,
 
-    /// The voting has been made through this rule
-    pub rule: Pubkey,
+    /// The voting has been made through this scope
+    pub scope: Pubkey,
 
     /// Indicates whether the vote was relinquished by voter
     pub is_relinquished: bool,
@@ -162,14 +162,14 @@ pub fn get_vote_record_data_for_proposal_and_unsigned_token_owner(
 pub fn get_vote_record_address_seeds<'a>(
     proposal: &'a Pubkey,
     token_owner_record: &'a Pubkey,
-    rule: &'a Pubkey,
+    scope: &'a Pubkey,
     bump_seed: &'a [u8],
 ) -> [&'a [u8]; 5] {
     [
         PROGRAM_AUTHORITY_SEED,
         proposal.as_ref(),
         token_owner_record.as_ref(),
-        rule.as_ref(),
+        scope.as_ref(),
         bump_seed,
     ]
 }
@@ -179,14 +179,14 @@ pub fn get_vote_record_address(
     program_id: &Pubkey,
     proposal: &Pubkey,
     token_owner_record: &Pubkey,
-    rule: &Pubkey,
+    scope: &Pubkey,
 ) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[
             PROGRAM_AUTHORITY_SEED,
             proposal.as_ref(),
             token_owner_record.as_ref(),
-            rule.as_ref(),
+            scope.as_ref(),
         ],
         program_id,
     )

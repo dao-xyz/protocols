@@ -12,7 +12,7 @@ use solana_program::{
 pub fn process_create_delegatee(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    rule: Pubkey,
+    scope: Pubkey,
     governing_token_mint: Pubkey,
     token_owner_record_bump_seed: u8,
 ) -> ProgramResult {
@@ -25,7 +25,7 @@ pub fn process_create_delegatee(
 
     TokenOwnerRecordV2::create_empty_delegate(
         program_id,
-        &rule,
+        &scope,
         &rent,
         token_owner_record_info,
         token_owner_record_bump_seed,

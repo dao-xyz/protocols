@@ -6,7 +6,7 @@ use crate::{
         proposal::{
             get_proposal_data, proposal_option::get_proposal_option_data, OptionVoteResult,
         },
-        rules::rule::{get_rule_data, get_rule_data_for_governance},
+        scopes::scope::{get_scope_data, get_scope_data_for_governance},
     },
     tokens::spl_utils::get_spl_token_mint_supply,
 };
@@ -59,55 +59,55 @@ pub fn process_count_votes(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
     if proposal.max_vote_weights_calculated_at.is_none() {
         return Err(GovernanceError::MaxWeightsNotCalculated.into());
     }
-    for (i, max_rule_weight) in proposal.rules_max_vote_weight.iter().enumerate() {
+    for (i, max_scope_weight) in proposal.scopes_max_vote_weight.iter().enumerate() {
         let option_vote_weight = proposal_option_data.vote_weights.get(i).unwrap();
         let deny_vote_weight = match &deny_option {
             Some((_, data)) => {
                 let deny_option_vote_weight = data.vote_weights.get(i).unwrap();
-                if max_rule_weight.rule != option_vote_weight.rule
-                    || max_rule_weight.rule != deny_option_vote_weight.rule
+                if max_scope_weight.scope != option_vote_weight.scope
+                    || max_scope_weight.scope != deny_option_vote_weight.scope
                 {
-                    return Err(GovernanceError::InvalidVoteRule.into());
+                    return Err(GovernanceError::InvalidVotescope.into());
                 }
                 deny_option_vote_weight.weight
             }
             None => 0,
         };
 
-        let rule_info = next_account_info(accounts_iter)?;
-        let rule = get_rule_data_for_governance(program_id, rule_info, &proposal.governance)?;
+        let scope_info = next_account_info(accounts_iter)?;
+        let scope = get_scope_data_for_governance(program_id, scope_info, &proposal.governance)?;
 
-        // If not approved by one rule, proposal is defauted
+        // If not approved by one scope, proposal is defauted
         /*
         msg!(
             "RESULT {} {} {} {} {}",
             proposal_deny_option_info.key == proposal_option_info.key,
             proposal_option_data.vote_result == OptionVoteResult::Defeated,
             option_vote_weight.weight,
-            max_rule_weight.weight,
-            rule.config.vote_config.is_approved(
+            max_scope_weight.weight,
+            scope.config.vote_config.is_approved(
                 option_vote_weight.weight,
                 Some(deny_vote_weight),
-                max_rule_weight.weight,
+                max_scope_weight.weight,
         )
         );
         */
         let has_vote_time_ended =
-            proposal.has_vote_time_ended(&rule.config.time_config, current_unix_timestamp);
+            proposal.has_vote_time_ended(&scope.config.time_config, current_unix_timestamp);
 
         // vote tipping should be done here
         if has_vote_time_ended {
-            if !rule.config.vote_config.is_approved(
+            if !scope.config.vote_config.is_approved(
                 option_vote_weight.weight,
                 Some(deny_vote_weight),
-                max_rule_weight.weight,
+                max_scope_weight.weight,
             ) {
                 proposal_option_data.vote_result = OptionVoteResult::Defeated;
                 break;
-            } else if rule.config.vote_config.is_approved(
+            } else if scope.config.vote_config.is_approved(
                 deny_vote_weight,
                 None,
-                max_rule_weight.weight,
+                max_scope_weight.weight,
             ) {
                 proposal_option_data.vote_result = OptionVoteResult::Defeated;
             }
@@ -126,23 +126,23 @@ pub fn process_count_votes(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
                 break;
             };
 
-            match rule.config.vote_config.vote_tipping {
+            match scope.config.vote_config.vote_tipping {
                 VoteTipping::Disabled => {
                     continue;
                 }
                 VoteTipping::Strict => {
-                    if rule.config.vote_config.is_approved(
+                    if scope.config.vote_config.is_approved(
                         option_vote_weight.weight,
                         Some(deny_vote_weight),
-                        max_rule_weight.weight,
-                    ) && rule.config.vote_config.is_approved(
+                        max_scope_weight.weight,
+                    ) && scope.config.vote_config.is_approved(
                         option_vote_weight.weight,
                         Some(
-                            max_rule_weight
+                            max_scope_weight
                                 .weight
                                 .saturating_sub(option_vote_weight.weight),
                         ),
-                        max_rule_weight.weight,
+                        max_scope_weight.weight,
                     ) {
                         if proposal_option_data.vote_result == OptionVoteResult::None {
                             proposal_option_data.vote_result = OptionVoteResult::Succeeded;
@@ -161,10 +161,10 @@ pub fn process_count_votes(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
                     }
                 }
                 VoteTipping::Early => {
-                    if rule.config.vote_config.is_approved(
+                    if scope.config.vote_config.is_approved(
                         option_vote_weight.weight,
                         Some(deny_vote_weight),
-                        max_rule_weight.weight,
+                        max_scope_weight.weight,
                     ) {
                         if proposal_option_data.vote_result == OptionVoteResult::None {
                             proposal_option_data.vote_result = OptionVoteResult::Succeeded;
@@ -172,10 +172,10 @@ pub fn process_count_votes(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
                     }
                 }
             };
-            if rule
+            if scope
                 .config
                 .vote_config
-                .is_approved(deny_vote_weight, None, max_rule_weight.weight)
+                .is_approved(deny_vote_weight, None, max_scope_weight.weight)
             {
                 proposal_option_data.vote_result = OptionVoteResult::Defeated;
             }
@@ -306,13 +306,13 @@ pub fn process_count_max_vote_weights(
     let mut proposal = get_proposal_data(program_id, proposal_account_info)?;
     proposal.max_vote_weights_calculated_at = Some(Clock::get()?.unix_timestamp);
 
-    for vote_weight in &mut proposal.rules_max_vote_weight {
-        let rule_info = next_account_info(accounts_iter)?;
+    for vote_weight in &mut proposal.scopes_max_vote_weight {
+        let scope_info = next_account_info(accounts_iter)?;
 
-        let rule_data = get_rule_data(program_id, rule_info)?;
+        let scope_data = get_scope_data(program_id, scope_info)?;
 
         let mut sum: u64 = 0;
-        for mint_weight in rule_data.config.vote_config.mint_weights {
+        for mint_weight in scope_data.config.vote_config.mint_weights {
             let mint_info = next_account_info(accounts_iter)?;
 
             if mint_info.key != &mint_weight.mint {

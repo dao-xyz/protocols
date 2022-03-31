@@ -1,5 +1,5 @@
 /* pub mod custom_event; */
-pub mod rule;
+pub mod scope;
 /* pub mod treasury;
 pub mod utils;
  */

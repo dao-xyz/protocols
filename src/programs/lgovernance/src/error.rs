@@ -87,9 +87,9 @@ pub enum GovernanceError {
     #[error("Invalid GoverningTokenOwner for VoteRecord")]
     InvalidGoverningTokenOwnerForVoteRecord,
 
-    /// Invalid Rule for VoteRecord
-    #[error("Invalid Rule for VoteRecord")]
-    InvalidRuleVoteRecord,
+    /// Invalid Scope for VoteRecord
+    #[error("Invalid Scope for VoteRecord")]
+    InvalidScopeVoteRecord,
 
     /// Invalid Governance config: Vote threshold percentage out of range"
     #[error("Invalid Governance config: Vote threshold percentage out of range")]
@@ -119,9 +119,9 @@ pub enum GovernanceError {
     #[error("Invalid State: Can't edit Signatories")]
     InvalidStateCannotEditSignatories,
 
-    /// Invalid state cannot edit rules
-    #[error("Invalid state cannot edit rules")]
-    InvalidStateCannotEditRules,
+    /// Invalid state cannot edit scopes
+    #[error("Invalid state cannot edit scopes")]
+    InvalidStateCannotEditscopes,
 
     /// Invalid state cannot edit options
     #[error("Invalid state cannot edit option")]
@@ -198,9 +198,9 @@ pub enum GovernanceError {
     #[error("Proposal does not belong to the given Governance")]
     InvalidGovernanceForProposal,
 
-    /// Proposal does not belong to the given Rule
-    #[error("Proposal does not belong to the given Rule")]
-    InvalidGovernanceForRule,
+    /// Proposal does not belong to the given Scope
+    #[error("Proposal does not belong to the given Scope")]
+    InvalidGovernanceForscope,
 
     /// Proposal does not belong to given Governing Mint"
     #[error("Proposal does not belong to given Governing Mint")]
@@ -446,13 +446,13 @@ pub enum GovernanceError {
     #[error("Invalid vote mint")]
     InvalidVoteMint,
 
-    /// Invalid vote rule
-    #[error("Invalid vote rule")]
-    InvalidVoteRule,
+    /// Invalid vote scope
+    #[error("Invalid vote scope")]
+    InvalidVotescope,
 
-    /// Rule not applicable
-    #[error("Rule not applicable")]
-    RuleNotApplicableForInstruction,
+    /// Scope not applicable
+    #[error("Scope not applicable")]
+    ScopeNotApplicableForInstruction,
 
     /// Invalid channel
     #[error("Invalid channel")]
@@ -482,9 +482,9 @@ pub enum GovernanceError {
     #[error("Invalid creator for proposal")]
     InvalidCreatorForProposal,
 
-    /// Missing rules for proposal
-    #[error("Missing rules for propasal")]
-    MissingRulesForProposal,
+    /// Missing scopes for proposal
+    #[error("Missing scopes for propasal")]
+    MissingscopesForProposal,
 
     /// Invalid tag record
     #[error("Invalid tag record")]

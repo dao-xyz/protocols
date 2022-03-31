@@ -1,1 +1,1 @@
-pub mod rule_delegation_record_account;
+pub mod scope_delegation_record_account;

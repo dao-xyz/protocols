@@ -4,7 +4,7 @@ use crate::{
     accounts::AccountType,
     error::GovernanceError,
     state::{
-        delegation::rule_delegation_record_account::RuleDelegationRecordAccount,
+        delegation::scope_delegation_record_account::ScopeDelegationRecordAccount,
         token_owner_budget_record::{
             get_token_owner_budget_record_address_seeds,
             get_token_owner_budget_record_data_for_token_record, TokenOwnerBudgetRecord,
@@ -24,7 +24,7 @@ use solana_program::{
 pub fn process_create_token_owner_budget_record(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    rule: Pubkey,
+    scope: Pubkey,
     token_owner_budget_record_bump_seed: u8,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
@@ -40,7 +40,7 @@ pub fn process_create_token_owner_budget_record(
     let token_owner_budget_record_bump_seeds = [token_owner_budget_record_bump_seed];
     let seeds = get_token_owner_budget_record_address_seeds(
         token_owner_record_info.key,
-        &rule,
+        &scope,
         &token_owner_budget_record_bump_seeds,
     );
 
@@ -51,7 +51,7 @@ pub fn process_create_token_owner_budget_record(
             &TokenOwnerBudgetRecord {
                 account_type: AccountType::TokenOwnerBudgetRecord,
                 amount: token_owner_record.governing_token_deposit_amount,
-                rule: rule.clone(),
+                scope: scope.clone(),
                 token_owner_record: *token_owner_record_info.key,
             },
             &seeds,

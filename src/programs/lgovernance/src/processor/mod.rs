@@ -19,8 +19,8 @@ use crate::processor::{
     process_create_token_owner_budget_record::process_create_token_owner_budget_record,
     process_execute_transaction::process_execute_transaction,
     process_finalize_draft::process_finalize_draft,
-    process_insert_rule::process_insert_rule,
-    process_rules::process_create_rule,
+    process_insert_scope::process_insert_scope,
+    process_scopes::process_create_scope,
     process_unvote::process_uncast_vote,
     process_vote::process_cast_vote,
 };
@@ -48,9 +48,9 @@ pub mod process_create_token_owner_budget_record;
 pub mod process_deposit_governing_tokens;
 pub mod process_execute_transaction;
 pub mod process_finalize_draft;
-pub mod process_insert_rule;
+pub mod process_insert_scope;
 pub mod process_insert_transaction;
-pub mod process_rules;
+pub mod process_scopes;
 pub mod process_unvote;
 pub mod process_vote;
 
@@ -71,20 +71,20 @@ impl Processor {
         check_account_owner(channel_account_info, &lchannel::id())?;
         let channel = deserialize_channel_account(*channel_account_info.data.borrow())?;
         let governence_mint_info = next_account_info(accounts_iter)?;
-        let action_rule_info = next_account_info(accounts_iter)?;
-        if action_rule_info.data_is_empty() {
+        let action_scope_info = next_account_info(accounts_iter)?;
+        if action_scope_info.data_is_empty() {
             return Err(ProgramError::InvalidArgument);
         }
-        let action_rule = deserialize_action_rule_account(*action_rule_info.data.borrow())?;
+        let action_scope = deserialize_action_scope_account(*action_scope_info.data.borrow())?;
 
-        if &action_rule.channel != channel_account_info.key {
+        if &action_scope.channel != channel_account_info.key {
             return Err(ProgramError::InvalidArgument);
         }
 
-        if &action_rule.vote_mint != governence_mint_info.key {
+        if &action_scope.vote_mint != governence_mint_info.key {
             return Err(ProgramError::InvalidArgument);
         }
-        check_account_owner(action_rule_info, program_id)?;
+        check_account_owner(action_scope_info, program_id)?;
 
         if &post.channel != channel_account_info.key {
             return Err(ProgramError::InvalidArgument);
@@ -104,7 +104,7 @@ impl Processor {
                     return Err(ProgramError::Custom(124)); // Not ready yet!
                 }
 
-                if action_rule
+                if action_scope
                     .is_approved(action.upvotes, action.downvotes, supply)
                     .unwrap()
                 {
@@ -221,30 +221,30 @@ impl Processor {
                                 }
                             }
                         },
-                        Action::ManageRule(modification) => match modification {
-                            VotingRuleUpdate::Create { rule, bump_seed } => {
+                        Action::ManageScope(modification) => match modification {
+                            VotingScopeUpdate::Create { scope, bump_seed } => {
                                 let payer_info = next_account_info(accounts_iter)?;
-                                let new_rule_info = next_account_info(accounts_iter)?;
+                                let new_scope_info = next_account_info(accounts_iter)?;
                                 let system_account = next_account_info(accounts_iter)?;
                                 check_system_program(system_account.key)?;
-                                let create_rule_bump_seeds = &[*bump_seed];
-                                let seeds = create_rule_associated_program_address_seeds(
+                                let create_scope_bump_seeds = &[*bump_seed];
+                                let seeds = create_scope_associated_program_address_seeds(
                                     channel_account_info.key,
-                                    &rule.action,
-                                    create_rule_bump_seeds,
+                                    &scope.action,
+                                    create_scope_bump_seeds,
                                 );
 
                                 create_and_serialize_account_signed_verify(
                                     payer_info,
-                                    new_rule_info,
-                                    &Rule {
-                                        account_type: AccountType::Rule,
-                                        action: rule.action.clone(),
-                                        channel: rule.channel,
-                                        vote_mint: rule.vote_mint,
-                                        info: rule.info.clone(),
-                                        name: rule.name.clone(),
-                                        criteria: rule.criteria.clone(),
+                                    new_scope_info,
+                                    &Scope {
+                                        account_type: AccountType::Scope,
+                                        action: scope.action.clone(),
+                                        channel: scope.channel,
+                                        vote_mint: scope.vote_mint,
+                                        info: scope.info.clone(),
+                                        name: scope.name.clone(),
+                                        criteria: scope.criteria.clone(),
                                         deleted: false,
                                     },
                                     &seeds,
@@ -253,20 +253,20 @@ impl Processor {
                                     &Rent::get()?,
                                 )?;
                             }
-                            VotingRuleUpdate::Delete(rule) => {
-                                let rule_info = next_account_info(accounts_iter)?;
-                                check_account_owner(rule_info, program_id)?;
+                            VotingScopeUpdate::Delete(scope) => {
+                                let scope_info = next_account_info(accounts_iter)?;
+                                check_account_owner(scope_info, program_id)?;
 
-                                if rule_info.key != rule {
+                                if scope_info.key != scope {
                                     return Err(ProgramError::InvalidArgument);
                                 }
-                                let mut rule =
-                                    deserialize_action_rule_account(*rule_info.data.borrow())?;
-                                if &rule.channel != channel_account_info.key {
+                                let mut scope =
+                                    deserialize_action_scope_account(*scope_info.data.borrow())?;
+                                if &scope.channel != channel_account_info.key {
                                     return Err(ProgramError::InvalidArgument);
                                 }
-                                rule.deleted = true;
-                                rule.serialize(&mut *rule_info.data.borrow_mut())?;
+                                scope.deleted = true;
+                                scope.serialize(&mut *scope_info.data.borrow_mut())?;
                             }
                         },
                         Action::CustomEvent {
@@ -274,10 +274,10 @@ impl Processor {
                             event_type,
                         } => {
                             // well we dont need to do anything since the data is already on chain and the approved status has/will be set, so integration can be made
-                            // but we have to check that the action event_type matches the rule event type
-                            // since rules for custom events are controlled by their event type
+                            // but we have to check that the action event_type matches the scope event type
+                            // since scopes for custom events are controlled by their event type
 
-                            if let ActionType::CustomEvent(expected_event_type) = action_rule.action
+                            if let ActionType::CustomEvent(expected_event_type) = action_scope.action
                             {
                                 if &expected_event_type != event_type {
                                     return Err(ProgramError::InvalidArgument);
@@ -414,7 +414,7 @@ impl Processor {
         match instruction {
             PostInstruction::CreateProposal {
                 bump_seed,
-                rules_count,
+                scopes_count,
                 source,
                 vote_type,
             } => {
@@ -423,7 +423,7 @@ impl Processor {
                     program_id,
                     accounts,
                     vote_type,
-                    rules_count,
+                    scopes_count,
                     source,
                     bump_seed,
                 )
@@ -432,9 +432,9 @@ impl Processor {
                 msg!("Instruction: Create realm");
                 process_create_realm(program_id, accounts, bump_seed)
             }
-            PostInstruction::InsertRule => {
-                msg!("Instruction: Insert rule");
-                process_insert_rule(program_id, accounts)
+            PostInstruction::InsertScope => {
+                msg!("Instruction: Insert scope");
+                process_insert_scope(program_id, accounts)
             }
 
             /* ChatInstruction::CreatePostContent(content) => {
@@ -461,13 +461,13 @@ impl Processor {
                 process_execute_transaction(program_id, accounts, governance_bump_seed)
             }
 
-            PostInstruction::CreateRule {
+            PostInstruction::CreateScope {
                 id,
                 bump_seed,
                 config,
             } => {
-                msg!("Instruction: Create rule");
-                process_create_rule(program_id, accounts, &id, config, bump_seed)
+                msg!("Instruction: Create scope");
+                process_create_scope(program_id, accounts, &id, config, bump_seed)
             }
             PostInstruction::CreateProposalOption {
                 option_type,
@@ -544,26 +544,26 @@ impl Processor {
             PostInstruction::CreateDelegatee {
                 token_owner_record_bump_seed,
                 governing_token_mint,
-                rule,
+                scope,
             } => {
                 msg!("Instruction: Create delegate");
                 process_create_delegatee(
                     program_id,
                     accounts,
-                    rule,
+                    scope,
                     governing_token_mint,
                     token_owner_record_bump_seed,
                 )
             }
             PostInstruction::CreateTokenOwnerBudgetRecord {
-                rule,
+                scope,
                 token_owner_budget_record_bump_seed,
             } => {
                 msg!("Instruction: Create token owner budget record");
                 process_create_token_owner_budget_record(
                     program_id,
                     accounts,
-                    rule,
+                    scope,
                     token_owner_budget_record_bump_seed,
                 )
             }

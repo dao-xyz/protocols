@@ -2,9 +2,9 @@ use crate::{
     accounts::AccountType,
     state::{
         governance::GovernanceV2,
-        rules::rule::{
-            get_rule_program_address_seeds, Rule, RuleConfig, RuleProposalConfig, RuleTimeConfig,
-            RuleVoteConfig,
+        scopes::scope::{
+            get_scope_program_address_seeds, Scope, ScopeConfig, ScopeProposalConfig,
+            ScopeTimeConfig, ScopeVoteConfig,
         },
     },
 };
@@ -23,15 +23,15 @@ use solana_program::{
     sysvar::Sysvar,
 };
 
-pub fn process_create_rule(
+pub fn process_create_scope(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    rule_id: &Pubkey,
-    config: RuleConfig,
-    new_rule_bump_seed: u8,
+    scope_id: &Pubkey,
+    config: ScopeConfig,
+    new_scope_bump_seed: u8,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
-    let new_rule_account_info = next_account_info(accounts_iter)?;
+    let new_scope_account_info = next_account_info(accounts_iter)?;
     let governance_info = next_account_info(accounts_iter)?;
     let payer_info = next_account_info(accounts_iter)?;
     let system_info = next_account_info(accounts_iter)?;
@@ -71,21 +71,21 @@ pub fn process_create_rule(
     check_system_program(system_info.key)?;
 
     let rent = Rent::get()?;
-    let new_rule_bump_seeds = [new_rule_bump_seed];
-    let create_rule_seeds = get_rule_program_address_seeds(rule_id, &new_rule_bump_seeds);
-    create_and_serialize_account_verify_with_bump::<Rule>(
+    let new_scope_bump_seeds = [new_scope_bump_seed];
+    let create_scope_seeds = get_scope_program_address_seeds(scope_id, &new_scope_bump_seeds);
+    create_and_serialize_account_verify_with_bump::<Scope>(
         payer_info,
-        new_rule_account_info,
-        &Rule {
-            account_type: AccountType::Rule,
+        new_scope_account_info,
+        &Scope {
+            account_type: AccountType::Scope,
             governance: *governance_info.key,
-            id: *rule_id,
+            id: *scope_id,
             config,
             voting_proposal_count: 0,
             proposal_count: 0,
             deleted: false,
         },
-        &create_rule_seeds,
+        &create_scope_seeds,
         program_id,
         system_info,
         &rent,
@@ -93,10 +93,10 @@ pub fn process_create_rule(
     Ok(())
 }
 /*
-pub fn process_create_rule_vote_mint_weight(
+pub fn process_create_scope_vote_mint_weight(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    rule_id: &Pubkey,
+    scope_id: &Pubkey,
     vote_mint: &Pubkey,
     vote_weight: u64,
     vote_weight_bump_seed: u8,
@@ -120,15 +120,15 @@ pub fn process_create_rule_vote_mint_weight(
     let rent = Rent::get()?;
     let vote_weight_bump_seeds = [vote_weight_bump_seed];
     let vote_weight_seeds =
-        create_rule_vote_weight_program_address_seeds(rule_id, vote_mint, &vote_weight_bump_seeds);
-    create_and_serialize_account_verify_with_bump::<RuleVoteWeight>(
+        create_scope_vote_weight_program_address_seeds(scope_id, vote_mint, &vote_weight_bump_seeds);
+    create_and_serialize_account_verify_with_bump::<ScopeVoteWeight>(
         payer_info,
         vote_weight_account_info,
-        &RuleVoteWeight {
-            account_type: AccountType::RuleVoteWeight,
+        &ScopeVoteWeight {
+            account_type: AccountType::ScopeVoteWeight,
             mint: *vote_mint,
             weight: vote_weight,
-            rule: *rule_id,
+            scope: *scope_id,
         },
         &vote_weight_seeds,
         program_id,
@@ -138,21 +138,21 @@ pub fn process_create_rule_vote_mint_weight(
     Ok(())
 }
  */
-/* pub fn process_create_first_rule(
+/* pub fn process_create_first_scope(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     id: &Pubkey,
-    config: &RuleCondition,
-    rule_bump_seed: u8,
+    config: &ScopeCondition,
+    scope_bump_seed: u8,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
-    let new_rule_account_info = next_account_info(accounts_iter)?;
+    let new_scope_account_info = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_account = next_account_info(accounts_iter)?;
     check_system_program(system_account.key);
 
-    // Create a rule with acceptance criteria on the channel that allows
-    // proposals to made to create other rules
+    // Create a scope with acceptance criteria on the channel that allows
+    // proposals to made to create other scopes
 
 }
  */

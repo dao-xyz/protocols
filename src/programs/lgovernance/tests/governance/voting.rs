@@ -7,7 +7,7 @@ use lgovernance::{
         proposal::{
             proposal_option::ProposalOption, proposal_transaction::ConditionedInstruction, VoteType,
         },
-        rules::rule::{RuleCondition, RuleConfig},
+        scopes::scope::{ScopeCondition, ScopeConfig},
     },
 };
 use solana_program::{borsh::try_from_slice_unchecked, system_instruction, system_program};
@@ -50,7 +50,7 @@ async fn success_vote_execute() {
     governance.with_native_treasury(&mut bench).await;
 
     let transfer_amount = 1;
-    let (proposal, rule, recipent_wallet) = TestProposal::new_transfer_proposal(
+    let (proposal, scope, recipent_wallet) = TestProposal::new_transfer_proposal(
         &mut bench,
         &user,
         &channel,
@@ -69,7 +69,7 @@ async fn success_vote_execute() {
 
     // vote for the transaction option
     proposal
-        .vote(&mut bench, &vec![1], &user, &governance_token, &rule)
+        .vote(&mut bench, &vec![1], &user, &governance_token, &scope)
         .await;
 
     proposal.count_votes(&mut bench).await;
@@ -128,7 +128,7 @@ async fn success_vote_unvote() {
         TestGovernance::new(&mut bench, &channel.channel, &channel.authority).await;
     governance.with_native_treasury(&mut bench).await;
 
-    let (proposal, rule, _recipent_wallet) = TestProposal::new_transfer_proposal(
+    let (proposal, scope, _recipent_wallet) = TestProposal::new_transfer_proposal(
         &mut bench,
         &user,
         &channel,
@@ -140,7 +140,7 @@ async fn success_vote_unvote() {
 
     // vote for the transaction option
     proposal
-        .vote(&mut bench, &vec![0], &user, &governance_token, &rule)
+        .vote(&mut bench, &vec![0], &user, &governance_token, &scope)
         .await;
 
     let beneficiary = bench.with_wallet().await;
@@ -156,7 +156,7 @@ async fn success_vote_unvote() {
             vec![0],
             &user,
             &governance_token,
-            &rule,
+            &scope,
             &beneficiary.address,
         )
         .await;

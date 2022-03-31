@@ -3,7 +3,7 @@
 use crate::{
     error::GovernanceError,
     state::{
-        delegation::rule_delegation_record_account::RuleDelegationRecordAccount,
+        delegation::scope_delegation_record_account::ScopeDelegationRecordAccount,
         token_owner_budget_record::{
             get_token_owner_budget_record_data_for_token_record, TokenOwnerBudgetRecord,
         },
@@ -52,7 +52,7 @@ pub fn process_delegate(
         governing_token_owner_info,
     )?;
 
-    if token_owner_record.delegated_by_rule.is_some() {
+    if token_owner_record.delegated_by_scope.is_some() {
         return Err(GovernanceError::DelegatingDelegateNotAllowed.into());
     }
 
@@ -66,7 +66,7 @@ pub fn process_delegate(
         token_owner_record_info,
         governing_token_owner_info,
     )?;
-    let rule = &token_owner_budget_record.rule;
+    let scope = &token_owner_budget_record.scope;
 
     token_owner_budget_record.amount = token_owner_budget_record
         .amount
@@ -82,7 +82,7 @@ pub fn process_delegate(
             delegatee_token_owner_record_info,
             delegatee_governing_token_owner_info.key,
             governing_token_mint,
-            Some(rule),
+            Some(scope),
         )?;
 
     // Modify the delegatee token owner record
@@ -93,10 +93,10 @@ pub fn process_delegate(
             .unwrap();
 
     // Create delegation record so we can undelegate at some point
-    RuleDelegationRecordAccount::delegate(
+    ScopeDelegationRecordAccount::delegate(
         program_id,
         amount,
-        rule,
+        scope,
         &rent,
         delegation_record_info,
         delegation_record_bump_seed,
@@ -118,7 +118,7 @@ pub fn process_delegate(
         delegatee_token_owner_record_info,
         delegatee_governing_token_owner_info.key,
         &governing_token_mint,
-        Some(rule),
+        Some(scope),
         amount,
     )?; */
     // for all outstanding active votes, done by the delegatee_token_owner_record,
@@ -133,7 +133,7 @@ pub fn process_delegate(
                total_votes_count: 0,
                delegated_governing_token_deposit_amount: 0,
                outstanding_proposal_count: 0,
-               delegated_by_rule: Some(rule),
+               delegated_by_scope: Some(scope),
            };
 
            create_and_serialize_account_signed(

@@ -48,7 +48,7 @@ pub fn process_create_proposal_option(
     let option_index = proposal_data.options_count;
     proposal_data.options_count = proposal_data.options_count.checked_add(1).unwrap();
 
-    let proposal_vote_weigths = proposal_data.rules_max_vote_weight.clone(); // will be an array with 0s
+    let proposal_vote_weigths = proposal_data.scopes_max_vote_weight.clone(); // will be an array with 0s
 
     let proposal_option_data = ProposalOption {
         account_type: AccountType::ProposalOption,

@@ -3,7 +3,7 @@ use crate::{
     error::GovernanceError,
     state::{
         proposal::get_proposal_data,
-        rules::rule::get_rule_data_for_governance,
+        scopes::scope::get_scope_data_for_governance,
         token_owner_budget_record::{
             get_token_owner_budget_record_data_for_token_record, TokenOwnerBudgetRecord,
         },
@@ -35,14 +35,14 @@ pub fn process_cast_vote(
     let vote_record_info = next_account_info(accounts_iter)?;
     let token_owner_record_info = next_account_info(accounts_iter)?;
     let governing_token_owner_info = next_account_info(accounts_iter)?;
-    let rule_info = next_account_info(accounts_iter)?;
+    let scope_info = next_account_info(accounts_iter)?;
     let payer_info = next_account_info(accounts_iter)?;
     let system_info = next_account_info(accounts_iter)?;
     let rent = Rent::get()?;
 
     // TODO: More granular check proposal data?
     let proposal = get_proposal_data(program_id, proposal_account_info)?;
-    let rule = get_rule_data_for_governance(program_id, rule_info, &proposal.governance)?;
+    let scope = get_scope_data_for_governance(program_id, scope_info, &proposal.governance)?;
 
     msg!("X");
     let mut token_owner_record_data = get_token_owner_record_data_for_owner(
@@ -52,13 +52,13 @@ pub fn process_cast_vote(
     )?;
     msg!("XX");
 
-    let vote_weight = match token_owner_record_data.delegated_by_rule {
-        Some(_rule) => {
-            /*     let rule_delegation_record_info = next_account_info(accounts_iter)?;
-                       let mut rule_delegation_record_data =
+    let vote_weight = match token_owner_record_data.delegated_by_scope {
+        Some(_scope) => {
+            /*     let scope_delegation_record_info = next_account_info(accounts_iter)?;
+                       let mut scope_delegation_record_data =
                            get_delegation_record_data_for_delegator_and_delegatee(
                                program_id,
-                               rule_delegation_record_info,
+                               scope_delegation_record_info,
                                delegator_token_owner_record_info.key,
                                &delegatee_token_owner_record,
                            )?;
@@ -120,21 +120,21 @@ pub fn process_cast_vote(
             vote_weight,
             true,
             &token_owner_record_data.governing_token_mint,
-            rule_info.key,
-            &rule,
+            scope_info.key,
+            &scope,
             proposal_account_info.key,
             accounts_iter,
         )?;
 
         // Update last vote record to point to the new one
 
-        // Add vote record so we can not vote again through the same rule
+        // Add vote record so we can not vote again through the same scope
         let vote_record_data = VoteRecordV2 {
             account_type: AccountType::VoteRecordV2,
             proposal: *proposal_account_info.key,
             governing_token_owner: *governing_token_owner_info.key,
             vote,
-            rule: *rule_info.key,
+            scope: *scope_info.key,
             is_relinquished: false,
             previous_vote: last_vote_record_key, // move vote in top of the "stack"
             next_vote: None,
@@ -147,7 +147,7 @@ pub fn process_cast_vote(
             &get_vote_record_address_seeds(
                 proposal_account_info.key,
                 token_owner_record_info.key,
-                rule_info.key,
+                scope_info.key,
                 &[vote_record_bump_seed],
             ),
             program_id,

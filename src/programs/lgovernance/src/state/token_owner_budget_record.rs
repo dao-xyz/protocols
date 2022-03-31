@@ -1,5 +1,5 @@
 //! Token Owner Consumption Record Account
-//! Account for handling budgets that are affected by delegations by rule(s)
+//! Account for handling budgets that are affected by delegations by scope(s)
 
 use std::slice::Iter;
 
@@ -31,8 +31,8 @@ pub struct TokenOwnerBudgetRecord {
     /// Budget for token owner record
     pub token_owner_record: Pubkey,
 
-    /// Budget for rule
-    pub rule: Pubkey,
+    /// Budget for scope
+    pub scope: Pubkey,
 
     /// The budget
     pub amount: u64,
@@ -99,12 +99,12 @@ impl IsInitialized for TokenOwnerBudgetRecord {
 pub fn assert_token_owner_budget_record_address<'a>(
     program_id: &'a Pubkey,
     token_owner_record: &'a Pubkey,
-    rule: &'a Pubkey,
+    scope: &'a Pubkey,
     bump_seed: &'a [u8],
     account_info: &AccountInfo,
 ) -> Result<(), ProgramError> {
     let address = Pubkey::create_program_address(
-        &get_token_owner_budget_record_address_seeds(token_owner_record, rule, bump_seed),
+        &get_token_owner_budget_record_address_seeds(token_owner_record, scope, bump_seed),
         program_id,
     )?;
     if &address != account_info.key {
@@ -117,10 +117,14 @@ pub fn assert_token_owner_budget_record_address<'a>(
 pub fn get_token_owner_budget_record_address(
     program_id: &Pubkey,
     token_owner_record: &Pubkey,
-    rule: &Pubkey,
+    scope: &Pubkey,
 ) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &[b"budget_record", token_owner_record.as_ref(), rule.as_ref()],
+        &[
+            b"budget_record",
+            token_owner_record.as_ref(),
+            scope.as_ref(),
+        ],
         program_id,
     )
 }
@@ -128,13 +132,13 @@ pub fn get_token_owner_budget_record_address(
 /// Returns TokenOwnerRecord PDA seeds
 pub fn get_token_owner_budget_record_address_seeds<'a>(
     token_owner_record: &'a Pubkey,
-    rule: &'a Pubkey,
+    scope: &'a Pubkey,
     bump_seed: &'a [u8],
 ) -> [&'a [u8]; 4] {
     [
         b"budget_record",
         token_owner_record.as_ref(),
-        rule.as_ref(),
+        scope.as_ref(),
         bump_seed,
     ]
 }

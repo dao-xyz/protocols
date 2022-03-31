@@ -6,7 +6,7 @@ pub mod governance;
 pub mod native_treasury;
 pub mod proposal;
 pub mod realm;
-pub mod rules;
+pub mod scopes;
 pub mod token_owner_budget_record;
 pub mod token_owner_record;
 pub mod vote_record;

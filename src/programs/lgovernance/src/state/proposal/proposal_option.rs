@@ -2,7 +2,7 @@ use super::OptionVoteResult;
 use crate::{
     accounts::AccountType,
     error::GovernanceError,
-    state::rules::{rule::Rule, rule_weight::RuleWeight},
+    state::scopes::{scope::Scope, scope_weight::ScopeWeight},
 };
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use shared::account::{get_account_data, MaxSize};
@@ -44,7 +44,7 @@ pub struct ProposalOption {
     pub option_type: ProposalOptionType,
 
     /// Weights
-    pub vote_weights: Vec<RuleWeight>,
+    pub vote_weights: Vec<ScopeWeight>,
 
     /// Vote result for the option
     pub vote_result: OptionVoteResult,
@@ -55,24 +55,24 @@ impl ProposalOption {
         amount: u64,
         add: bool,
         vote_mint: &Pubkey,
-        rule: &Pubkey,
-        rule_data: &Rule,
+        scope: &Pubkey,
+        scope_data: &Scope,
     ) -> Result<(), ProgramError> {
         // Find mint weight
-        for rule_mint_weight in &rule_data.config.vote_config.mint_weights {
-            if &rule_mint_weight.mint == vote_mint {
-                // Find rule vote weight to modify
+        for scope_mint_weight in &scope_data.config.vote_config.mint_weights {
+            if &scope_mint_weight.mint == vote_mint {
+                // Find scope vote weight to modify
                 for vote_weight in &mut self.vote_weights {
-                    if &vote_weight.rule == rule {
+                    if &vote_weight.scope == scope {
                         // lets hope compiler is smart
                         vote_weight.weight = match add {
                             true => vote_weight
                                 .weight
-                                .checked_add(amount.checked_mul(rule_mint_weight.weight).unwrap())
+                                .checked_add(amount.checked_mul(scope_mint_weight.weight).unwrap())
                                 .unwrap(),
                             false => vote_weight
                                 .weight
-                                .checked_sub(amount.checked_mul(rule_mint_weight.weight).unwrap())
+                                .checked_sub(amount.checked_mul(scope_mint_weight.weight).unwrap())
                                 .unwrap(),
                         };
                         return Ok(());

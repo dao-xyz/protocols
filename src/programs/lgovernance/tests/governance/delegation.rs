@@ -7,7 +7,7 @@ use lgovernance::{
         proposal::{
             proposal_option::ProposalOption, proposal_transaction::ConditionedInstruction, VoteType,
         },
-        rules::rule::{RuleCondition, RuleConfig},
+        scopes::scope::{ScopeCondition, ScopeConfig},
     },
 };
 use solana_program::{borsh::try_from_slice_unchecked, system_instruction, system_program};
@@ -68,7 +68,7 @@ async fn success_delegate_simple() {
         TestGovernance::new(&mut bench, &channel.channel, &channel.authority).await;
     governance.with_native_treasury(&mut bench).await;
 
-    let (proposal, rule, _destination) = TestProposal::new_transfer_proposal(
+    let (proposal, scope, _destination) = TestProposal::new_transfer_proposal(
         &mut bench,
         &user_delegatee,
         &channel,
@@ -83,7 +83,7 @@ async fn success_delegate_simple() {
         &user_delegator,
         &user_delegatee,
         &governance_token,
-        &rule,
+        &scope,
     )
     .await;
     // Delegate so that the delegatee now controls 51% of supply
@@ -96,7 +96,7 @@ async fn success_delegate_simple() {
             &vec![1],
             &user_delegatee,
             &governance_token,
-            &rule,
+            &scope,
         )
         .await;
 
@@ -106,7 +106,7 @@ async fn success_delegate_simple() {
             &vec![1],
             &user_delegatee,
             &governance_token,
-            &rule,
+            &scope,
         )
         .await;
 
@@ -123,7 +123,7 @@ async fn success_delegate_simple() {
 }
 
 #[tokio::test]
-async fn success_delegate_synchronization() {
+async fn success_delegate_undelegate_with_synchronization() {
     // Delegate when vote already cast.
     // Call synchronization funcionality to update previously casted vote
     let mut bench = ProgramTestBench::start_new(program_test()).await;
@@ -174,7 +174,7 @@ async fn success_delegate_synchronization() {
         TestGovernance::new(&mut bench, &channel.channel, &channel.authority).await;
     governance.with_native_treasury(&mut bench).await;
 
-    let (proposal, rule, _destination) = TestProposal::new_transfer_proposal(
+    let (proposal, scope, _destination) = TestProposal::new_transfer_proposal(
         &mut bench,
         &user_delegatee,
         &channel,
@@ -191,7 +191,7 @@ async fn success_delegate_synchronization() {
             &vec![1],
             &user_delegatee,
             &governance_token,
-            &rule,
+            &scope,
         )
         .await;
 
@@ -200,7 +200,7 @@ async fn success_delegate_synchronization() {
     assert_eq!(proposal.get_state(&mut bench).await, ProposalState::Voting); // Not enought votes
 
     user_delegatee
-        .create_delegatee(&mut bench, &governance_token, &rule)
+        .create_delegatee(&mut bench, &governance_token, &scope)
         .await;
 
     // Vote with delegated tokens,
@@ -212,7 +212,7 @@ async fn success_delegate_synchronization() {
             &vec![1],
             &user_delegatee,
             &governance_token,
-            &rule,
+            &scope,
         )
         .await;
 
@@ -221,7 +221,7 @@ async fn success_delegate_synchronization() {
         &user_delegator,
         &user_delegatee,
         &governance_token,
-        &rule,
+        &scope,
     )
     .await;
 

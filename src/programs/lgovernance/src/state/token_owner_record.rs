@@ -13,7 +13,7 @@ use solana_program::{
     pubkey::Pubkey, rent::Rent,
 };
 
-use super::delegation::rule_delegation_record_account::RuleDelegationRecordAccount;
+use super::delegation::scope_delegation_record_account::ScopeDelegationRecordAccount;
 
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
@@ -46,9 +46,9 @@ pub struct TokenOwnerRecordV2 {
     /// By default it's restricted to 1 outstanding Proposal per token owner
     pub outstanding_proposal_count: u8,
 
-    /// Delegated by a rule, i.e. this token owner account can't be used for voting except on transactions
-    /// that adhere to this rule
-    pub delegated_by_rule: Option<Pubkey>,
+    /// Delegated by a scope, i.e. this token owner account can't be used for voting except on transactions
+    /// that adhere to this scope
+    pub delegated_by_scope: Option<Pubkey>,
 
     /// Latest vote using the token owner record
     pub first_vote: Option<Pubkey>,
@@ -104,7 +104,7 @@ impl TokenOwnerRecordV2 {
                 unrelinquished_votes_count: 0,
                 total_votes_count: 0,
                 outstanding_proposal_count: 0,
-                delegated_by_rule: None, // this is not a delegation
+                delegated_by_scope: None, // this is not a delegation
                 first_vote: None,
                 latest_vote: None,
             };
@@ -126,7 +126,7 @@ impl TokenOwnerRecordV2 {
 
     pub fn create_empty_delegate<'a>(
         program_id: &Pubkey,
-        delegated_by_rule: &Pubkey,
+        delegated_by_scope: &Pubkey,
         rent: &Rent,
         token_owner_record_info: &AccountInfo<'a>,
         token_owner_record_bump_seed: u8,
@@ -139,7 +139,7 @@ impl TokenOwnerRecordV2 {
         let token_owner_record_address_seeds = get_token_owner_delegatee_record_address_seeds(
             governing_token_mint,
             &governing_token_owner_info.key,
-            delegated_by_rule,
+            delegated_by_scope,
             &bump_seeds,
         );
 
@@ -157,7 +157,7 @@ impl TokenOwnerRecordV2 {
                 unrelinquished_votes_count: 0,
                 total_votes_count: 0,
                 outstanding_proposal_count: 0,
-                delegated_by_rule: Some(*delegated_by_rule), // this is not a delegation
+                delegated_by_scope: Some(*delegated_by_scope), // this is not a delegation
                 first_vote: None,
                 latest_vote: None,
             };
@@ -182,7 +182,7 @@ impl TokenOwnerRecordV2 {
         token_owner_record_info: &AccountInfo<'a>,
         governing_token_owner: &Pubkey,
         governing_token_mint: &Pubkey,
-        delegated_by_rule: Option<&Pubkey>,
+        delegated_by_scope: Option<&Pubkey>,
         add_amount: u64,
     ) -> Result<(), ProgramError> {
         let mut token_owner_record_data = get_token_owner_record_data_for_delegation_activity(
@@ -190,7 +190,7 @@ impl TokenOwnerRecordV2 {
             token_owner_record_info,
             governing_token_owner,
             governing_token_mint,
-            delegated_by_rule,
+            delegated_by_scope,
         )?;
 
         token_owner_record_data.governing_token_deposit_amount = token_owner_record_data
@@ -207,7 +207,7 @@ impl TokenOwnerRecordV2 {
         token_owner_record_info: &AccountInfo<'a>,
         governing_token_owner: &Pubkey,
         governing_token_mint: &Pubkey,
-        delegated_by_rule: Option<&Pubkey>,
+        delegated_by_scope: Option<&Pubkey>,
         add_amount: u64,
     ) -> Result<(), ProgramError> {
         let mut token_owner_record_data = get_token_owner_record_data_for_delegation_activity(
@@ -215,7 +215,7 @@ impl TokenOwnerRecordV2 {
             token_owner_record_info,
             governing_token_owner,
             governing_token_mint,
-            delegated_by_rule,
+            delegated_by_scope,
         )?;
 
         token_owner_record_data.governing_token_deposit_amount = token_owner_record_data
@@ -368,13 +368,13 @@ pub fn get_token_owner_delegatee_record_address(
     program_id: &Pubkey,
     governing_token_mint: &Pubkey,
     governing_token_owner: &Pubkey,
-    rule: &Pubkey,
+    scope: &Pubkey,
 ) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[
             DELEGATEE_SEED,
             governing_token_mint.as_ref(),
-            rule.as_ref(),
+            scope.as_ref(),
             governing_token_owner.as_ref(),
         ],
         program_id,
@@ -385,13 +385,13 @@ pub fn get_token_owner_delegatee_record_address(
 pub fn get_token_owner_delegatee_record_address_seeds<'a>(
     governing_token_mint: &'a Pubkey,
     governing_token_owner: &'a Pubkey,
-    rule: &'a Pubkey,
+    scope: &'a Pubkey,
     bump_seed: &'a [u8],
 ) -> [&'a [u8]; 5] {
     [
         DELEGATEE_SEED,
         governing_token_mint.as_ref(),
-        rule.as_ref(),
+        scope.as_ref(),
         governing_token_owner.as_ref(),
         bump_seed,
     ]
@@ -410,7 +410,7 @@ pub fn get_token_owner_record_data_for_delegation_activity(
     token_owner_record_info: &AccountInfo,
     governing_token_owner: &Pubkey,
     governing_token_mint: &Pubkey,
-    delegated_by_rule: Option<&Pubkey>,
+    delegated_by_scope: Option<&Pubkey>,
 ) -> Result<TokenOwnerRecordV2, ProgramError> {
     let token_owner_record_data = get_token_owner_record_data(program_id, token_owner_record_info)?;
     if &token_owner_record_data.governing_token_mint != governing_token_mint {
@@ -420,14 +420,14 @@ pub fn get_token_owner_record_data_for_delegation_activity(
         return Err(GovernanceError::InvalidGoverningTokenOwnerForVoteRecord.into());
     }
     if match (
-        &token_owner_record_data.delegated_by_rule,
-        delegated_by_rule,
+        &token_owner_record_data.delegated_by_scope,
+        delegated_by_scope,
     ) {
         (Some(a), Some(b)) => a != b,
         (None, None) => true,
         _ => false,
     } {
-        return Err(GovernanceError::InvalidRuleVoteRecord.into());
+        return Err(GovernanceError::InvalidScopeVoteRecord.into());
     }
     Ok(token_owner_record_data)
 }
@@ -435,7 +435,7 @@ pub fn get_token_owner_record_data_for_delegation_activity(
 pub fn get_token_owner_record_data_for_delegation(
     program_id: &Pubkey,
     delegatee_token_owner_record_info: &AccountInfo,
-    rule_delegation_record: &RuleDelegationRecordAccount,
+    scope_delegation_record: &ScopeDelegationRecordAccount,
     delegator_governing_token_owner: &AccountInfo,
 ) -> Result<TokenOwnerRecordV2, ProgramError> {
     if !delegator_governing_token_owner.is_signer {
@@ -452,14 +452,14 @@ pub fn get_token_owner_record_data_for_delegation(
         return Err(GovernanceError::InvalidGoverningTokenOwnerForVoteRecord.into());
     }
     if match (
-        &token_owner_record_data.delegated_by_rule,
-        delegated_by_rule,
+        &token_owner_record_data.delegated_by_scope,
+        delegated_by_scope,
     ) {
         (Some(a), Some(b)) => a != b,
         (None, None) => true,
         _ => false,
     } {
-        return Err(GovernanceError::InvalidRuleVoteRecord.into());
+        return Err(GovernanceError::InvalidScopeVoteRecord.into());
     }
     Ok(token_owner_record_data)
 } */
@@ -544,7 +544,7 @@ mod test {
             unrelinquished_votes_count: 1,
             total_votes_count: 1,
             outstanding_proposal_count: 1,
-            delegated_by_rule: Some(Pubkey::new_unique()),
+            delegated_by_scope: Some(Pubkey::new_unique()),
             first_vote: None,
             latest_vote: None,
         };

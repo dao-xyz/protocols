@@ -21,15 +21,16 @@ use lgovernance::{
     find_treasury_token_account_address,
     instruction::{
         cast_vote, count_vote_max_weights, count_votes, create_delegatee, create_governance,
-        create_native_treasury, create_proposal, create_proposal_option, create_realm, create_rule,
-        create_token_owner_budget_record, delegate, delegate_history, deposit_governing_tokens,
-        execute_transaction, finalize_draft, insert_rule, insert_transaction, uncast_vote,
-        undelegate, undelegate_history, CreateProposalOptionType, SignedCreateProposal,
+        create_native_treasury, create_proposal, create_proposal_option, create_realm,
+        create_scope, create_token_owner_budget_record, delegate, delegate_history,
+        deposit_governing_tokens, execute_transaction, finalize_draft, insert_scope,
+        insert_transaction, uncast_vote, undelegate, undelegate_history, CreateProposalOptionType,
+        SignedCreateProposal,
     },
     state::{
         channel::ChannelSigner,
-        delegation::rule_delegation_record_account::{
-            get_rule_delegation_account_program_address, RuleDelegationRecordAccount,
+        delegation::scope_delegation_record_account::{
+            get_scope_delegation_account_program_address, ScopeDelegationRecordAccount,
         },
         enums::ProposalState,
         governance::{get_governance_address, GovernanceV2},
@@ -43,9 +44,9 @@ use lgovernance::{
             ProposalV2, VoteType,
         },
         realm::get_realm_mint_program_address,
-        rules::{
-            rule::{get_rule_program_address, MintWeight, Rule, RuleCondition, RuleConfig},
-            rule_create::CreateRule,
+        scopes::{
+            scope::{get_scope_program_address, MintWeight, Scope, ScopeCondition, ScopeConfig},
+            scope_create::CreateScope,
         },
         token_owner_budget_record::{
             get_token_owner_budget_record_address, TokenOwnerBudgetRecord,
@@ -354,7 +355,7 @@ impl TestUser {
         &self,
         bench: &mut ProgramTestBench,
         token: &TestToken,
-        rule: &Pubkey,
+        scope: &Pubkey,
     ) {
         bench
             .process_transaction(
@@ -362,7 +363,7 @@ impl TestUser {
                     &lgovernance::id(),
                     &self.keypair.pubkey(),
                     &bench.payer.pubkey(),
-                    &rule,
+                    &scope,
                     &token.mint,
                 )],
                 Some(&[&self.keypair]),
@@ -412,12 +413,12 @@ impl TestUser {
         try_from_slice_unchecked::<TokenOwnerRecordV2>(&account.data).unwrap()
     }
 
-    pub fn get_token_owner_delegate_record_address(&self, rule: &Pubkey, mint: &Pubkey) -> Pubkey {
+    pub fn get_token_owner_delegate_record_address(&self, scope: &Pubkey, mint: &Pubkey) -> Pubkey {
         get_token_owner_delegatee_record_address(
             &lgovernance::id(),
             mint,
             &self.keypair.pubkey(),
-            rule,
+            scope,
         )
         .0
     }
@@ -425,20 +426,20 @@ impl TestUser {
     pub async fn get_token_owner_delegate_record(
         &self,
         bench: &mut ProgramTestBench,
-        rule: &Pubkey,
+        scope: &Pubkey,
         mint: &Pubkey,
     ) -> TokenOwnerRecordV2 {
-        let address = self.get_token_owner_delegate_record_address(rule, mint);
+        let address = self.get_token_owner_delegate_record_address(scope, mint);
         let account = bench.get_account(&address).await.unwrap();
 
         try_from_slice_unchecked::<TokenOwnerRecordV2>(&account.data).unwrap()
     }
 
-    pub fn get_token_owner_budget_record_address(&self, mint: &Pubkey, rule: &Pubkey) -> Pubkey {
+    pub fn get_token_owner_budget_record_address(&self, mint: &Pubkey, scope: &Pubkey) -> Pubkey {
         get_token_owner_budget_record_address(
             &lgovernance::id(),
             &self.get_token_owner_record_address(mint),
-            rule,
+            scope,
         )
         .0
     }
@@ -447,9 +448,9 @@ impl TestUser {
         &self,
         bench: &mut ProgramTestBench,
         token: &TestToken,
-        rule: &Pubkey,
+        scope: &Pubkey,
     ) -> Option<TokenOwnerRecordV2> {
-        let address = self.get_token_owner_budget_record_address(&token.mint, rule);
+        let address = self.get_token_owner_budget_record_address(&token.mint, scope);
         if let Some(account) = bench.get_account(&address).await {
             Some(try_from_slice_unchecked::<TokenOwnerRecordV2>(&account.data).unwrap())
         } else {
@@ -461,14 +462,14 @@ impl TestUser {
         &self,
         bench: &mut ProgramTestBench,
         proposal: &TestProposal,
-        rule: &Pubkey,
+        scope: &Pubkey,
         token: &TestToken,
     ) -> Option<(Pubkey, VoteRecordV2)> {
         let address = get_vote_record_address(
             &lgovernance::id(),
             &proposal.proposal,
-            &self.get_token_owner_delegate_record_address(rule, &token.mint),
-            rule,
+            &self.get_token_owner_delegate_record_address(scope, &token.mint),
+            scope,
         )
         .0;
         if let Some(account) = bench.get_account(&address).await {
@@ -494,10 +495,10 @@ impl TestUser {
         &self,
         bench: &mut ProgramTestBench,
         token: &TestToken,
-        rule: &Pubkey,
+        scope: &Pubkey,
     ) -> Option<Pubkey> {
         let token_owner_record = self
-            .get_token_owner_delegate_record(bench, rule, &token.mint)
+            .get_token_owner_delegate_record(bench, scope, &token.mint)
             .await;
         token_owner_record.latest_vote
     }
@@ -506,7 +507,7 @@ impl TestUser {
         &self,
         bench: &mut ProgramTestBench,
         test_token: &TestToken,
-        rule: &Pubkey,
+        scope: &Pubkey,
     ) {
         bench
             .process_transaction(
@@ -514,7 +515,7 @@ impl TestUser {
                     &lgovernance::id(),
                     &bench.payer.pubkey(),
                     &self.get_token_owner_record_address(&test_token.mint),
-                    rule,
+                    scope,
                 )],
                 None,
             )
@@ -551,7 +552,7 @@ pub struct TestDelegation<'a> {
     from: &'a TestUser,
     to: &'a TestUser,
     token: &'a TestToken,
-    rule: Pubkey,
+    scope: Pubkey,
     delegation: Pubkey,
 }
 impl<'a> TestDelegation<'a> {
@@ -560,37 +561,37 @@ impl<'a> TestDelegation<'a> {
         from: &'a TestUser,
         to: &'a TestUser,
         token: &'a TestToken,
-        rule: &Pubkey,
+        scope: &Pubkey,
     ) -> TestDelegation<'a> {
         let from_token_record = from.get_token_owner_record_address(&token.mint);
-        let to_token_record = to.get_token_owner_delegate_record_address(rule, &token.mint);
+        let to_token_record = to.get_token_owner_delegate_record_address(scope, &token.mint);
         // Create budget
         if from
-            .get_token_owner_budget_record(bench, &token, &rule)
+            .get_token_owner_budget_record(bench, &token, &scope)
             .await
             .is_none()
         {
-            from.create_budget(bench, &token, &rule).await;
+            from.create_budget(bench, &token, &scope).await;
         }
 
         // Enable the delegatee
         if bench
-            .get_account(&to.get_token_owner_delegate_record_address(&rule, &token.mint))
+            .get_account(&to.get_token_owner_delegate_record_address(&scope, &token.mint))
             .await
             .is_none()
         {
-            to.create_delegatee(bench, &token, &rule).await;
+            to.create_delegatee(bench, &token, &scope).await;
         }
         TestDelegation {
             from,
             to,
             token: token,
-            rule: *rule,
-            delegation: get_rule_delegation_account_program_address(
+            scope: *scope,
+            delegation: get_scope_delegation_account_program_address(
                 &lgovernance::id(),
                 &from_token_record,
                 &to_token_record,
-                rule,
+                scope,
             )
             .0,
         }
@@ -605,13 +606,13 @@ impl<'a> TestDelegation<'a> {
                     &from_token_record,
                     &self
                         .from
-                        .get_token_owner_budget_record_address(&self.token.mint, &self.rule),
+                        .get_token_owner_budget_record_address(&self.token.mint, &self.scope),
                     &self.from.keypair.pubkey(),
                     &to_token_record,
                     &self.to.keypair.pubkey(),
                     &bench.payer.pubkey(),
                     amount,
-                    &self.rule,
+                    &self.scope,
                 )],
                 Some(&[&self.from.keypair]),
             )
@@ -627,17 +628,17 @@ impl<'a> TestDelegation<'a> {
             .process_transaction(
                 &[undelegate(
                     &lgovernance::id(),
-                    &get_rule_delegation_account_program_address(
+                    &get_scope_delegation_account_program_address(
                         &lgovernance::id(),
                         &from_token_record,
                         &to_token_record,
-                        &self.rule,
+                        &self.scope,
                     )
                     .0,
                     &from_token_record,
                     &self
                         .from
-                        .get_token_owner_budget_record_address(&self.token.mint, &self.rule),
+                        .get_token_owner_budget_record_address(&self.token.mint, &self.scope),
                     &self.from.keypair.pubkey(),
                     &to_token_record,
                     &self.to.keypair.pubkey(),
@@ -654,7 +655,7 @@ impl<'a> TestDelegation<'a> {
         let token_owner_record = self.get_delegator_token_owner_record_address();
         let delegation_record = self.get_delegation_record(bench).await.unwrap();
 
-        // Pick the rule delegation vote head. If missing we have already delegated votes for all active proposals
+        // Pick the scope delegation vote head. If missing we have already delegated votes for all active proposals
         // (since we delegated before any votes where casted by the delegatee)
         let vote_record_address = if let Some(vote_head) = &delegation_record.last_vote_head {
             *vote_head
@@ -692,7 +693,7 @@ impl<'a> TestDelegation<'a> {
                     &self.delegation,
                     &token_owner_record,
                     &self.from.keypair.pubkey(),
-                    &self.rule,
+                    &self.scope,
                 )],
                 Some(&[&self.from.keypair]),
             )
@@ -707,7 +708,7 @@ impl<'a> TestDelegation<'a> {
 
         let delegation_record = self.get_delegation_record(bench).await.unwrap();
 
-        // Pick the rule delegation vote head, or the first vote casted (that is relavent)
+        // Pick the scope delegation vote head, or the first vote casted (that is relavent)
         let (vote_record_address, previous_vote_record_address) =
             if let Some(vote_head) = &delegation_record.vote_head {
                 (*vote_head, None)
@@ -745,7 +746,7 @@ impl<'a> TestDelegation<'a> {
                     &self.delegation,
                     &token_owner_record,
                     &self.from.keypair.pubkey(),
-                    &self.rule,
+                    &self.scope,
                     previous_vote_record_address.as_ref(),
                 )],
                 Some(&[&self.from.keypair]),
@@ -773,7 +774,7 @@ impl<'a> TestDelegation<'a> {
 
     pub fn get_delegatee_token_owner_record_address(&self) -> Pubkey {
         self.to
-            .get_token_owner_delegate_record_address(&self.rule, &self.token.mint)
+            .get_token_owner_delegate_record_address(&self.scope, &self.token.mint)
     }
 
     pub async fn get_delegatee_token_owner_record(
@@ -793,10 +794,10 @@ impl<'a> TestDelegation<'a> {
     pub async fn get_delegation_record(
         &self,
         bench: &mut ProgramTestBench,
-    ) -> Option<RuleDelegationRecordAccount> {
+    ) -> Option<ScopeDelegationRecordAccount> {
         let account = bench.get_account(&self.delegation).await;
         if let Some(account) = account {
-            Some(try_from_slice_unchecked::<RuleDelegationRecordAccount>(&account.data).unwrap())
+            Some(try_from_slice_unchecked::<ScopeDelegationRecordAccount>(&account.data).unwrap())
         } else {
             None
         }
@@ -830,19 +831,19 @@ impl TestGovernance {
         }
     }
 
-    pub async fn create_rule(
+    pub async fn create_scope(
         &self,
         bench: &mut ProgramTestBench,
-        rule: RuleConfig,
+        scope: ScopeConfig,
         channel: &TestChannel,
     ) -> Pubkey {
         let id = Pubkey::new_unique();
-        let (rule_address, create_rule_address_bump_seed) =
-            get_rule_program_address(&lgovernance::id(), &id);
+        let (scope_address, create_scope_address_bump_seed) =
+            get_scope_program_address(&lgovernance::id(), &id);
 
         bench
             .process_transaction(
-                &[create_rule(
+                &[create_scope(
                     &lgovernance::id(),
                     &id,
                     &self.governance,
@@ -851,13 +852,13 @@ impl TestGovernance {
                         authority: channel.authority.pubkey(),
                         channel_path: vec![channel.channel],
                     }),
-                    &rule,
+                    &scope,
                 )],
                 Some(&[&channel.authority]),
             )
             .await
             .unwrap();
-        rule_address
+        scope_address
     }
 
     pub async fn get_governance_account(&self, bench: &mut ProgramTestBench) -> GovernanceV2 {
@@ -885,7 +886,7 @@ impl TestGovernance {
 pub struct TestProposal {
     pub proposal: Pubkey,
     pub proposal_transactions: HashMap<u16, Vec<Pubkey>>,
-    pub rules: Vec<Pubkey>,
+    pub scopes: Vec<Pubkey>,
     pub options: Vec<Pubkey>,
     pub instruction_index: u16,
 }
@@ -895,7 +896,7 @@ impl TestProposal {
         bench: &mut ProgramTestBench,
         proposal_index: u64,
         vote_type: VoteType,
-        rules: Vec<Pubkey>,
+        scopes: Vec<Pubkey>,
         governance: &TestGovernance,
         owner: &Keypair,
     ) -> Self {
@@ -912,13 +913,13 @@ impl TestProposal {
             &bench.payer.pubkey(),
             proposal_index,
             vote_type,
-            rules.len() as u8,
+            scopes.len() as u8,
             &ContentSource::String("Info".into()),
         )];
-        for rule in &rules {
-            instructions.push(insert_rule(
+        for scope in &scopes {
+            instructions.push(insert_scope(
                 &lgovernance::id(),
-                &rule,
+                &scope,
                 &proposal_address,
                 &owner.pubkey(),
                 &bench.payer.pubkey(),
@@ -933,7 +934,7 @@ impl TestProposal {
         Self {
             proposal: proposal_address,
             proposal_transactions: HashMap::new(),
-            rules,
+            scopes,
             instruction_index: 0,
             options: Vec::new(),
         }
@@ -947,12 +948,12 @@ impl TestProposal {
         governance_token: &TestToken,
         transfer_amount: u64,
     ) -> (TestProposal, Pubkey, WalletCookie) {
-        let rule = governance
-            .create_rule(
+        let scope = governance
+            .create_scope(
                 bench,
-                RuleConfig::get_single_mint_config(
+                ScopeConfig::get_single_mint_config(
                     &governance_token.mint,
-                    &Some(RuleCondition::ProgramId(system_program::id())),
+                    &Some(ScopeCondition::ProgramId(system_program::id())),
                     &None,
                     &None,
                 ),
@@ -964,7 +965,7 @@ impl TestProposal {
             bench,
             0,
             VoteType::SingleChoice,
-            vec![rule],
+            vec![scope],
             &governance,
             &owner.keypair,
         )
@@ -1003,7 +1004,7 @@ impl TestProposal {
                         transfer_amount,
                     )
                     .into(),
-                    rule,
+                    scope,
                 }],
                 &owner.keypair,
             )
@@ -1012,7 +1013,7 @@ impl TestProposal {
         proposal
             .finalize_draft(bench, &governance, &owner.keypair)
             .await;
-        (proposal, rule, recipent_wallet)
+        (proposal, scope, recipent_wallet)
     }
 
     pub async fn add_option(
@@ -1089,18 +1090,18 @@ impl TestProposal {
         governance: &TestGovernance,
         owner: &Keypair,
     ) {
-        let mut rule_accounts = Vec::new();
-        for rule in &self.rules {
-            let account = bench.get_account(rule).await.unwrap();
-            let rule_data = try_from_slice_unchecked::<Rule>(&account.data).unwrap();
-            rule_accounts.push(rule_data)
+        let mut scope_accounts = Vec::new();
+        for scope in &self.scopes {
+            let account = bench.get_account(scope).await.unwrap();
+            let scope_data = try_from_slice_unchecked::<Scope>(&account.data).unwrap();
+            scope_accounts.push(scope_data)
         }
-        let mut signed_rules = Vec::new();
-        for (rule, rule_data) in self.rules.iter().zip(rule_accounts) {
-            signed_rules.push((
-                *rule,
-                match rule_data.config.proposal_config.create_proposal_criteria {
-                    lgovernance::state::rules::rule::CreateProposalCriteria::AuthorityTag {
+        let mut signed_scopes = Vec::new();
+        for (scope, scope_data) in self.scopes.iter().zip(scope_accounts) {
+            signed_scopes.push((
+                *scope,
+                match scope_data.config.proposal_config.create_proposal_criteria {
+                    lgovernance::state::scopes::scope::CreateProposalCriteria::AuthorityTag {
                         authority,
                         tag,
                     } => {
@@ -1116,7 +1117,7 @@ impl TestProposal {
                             record: tag_record,
                         }
                     }
-                    lgovernance::state::rules::rule::CreateProposalCriteria::TokenOwner {
+                    lgovernance::state::scopes::scope::CreateProposalCriteria::TokenOwner {
                         mint,
                         ..
                     } => {
@@ -1140,7 +1141,7 @@ impl TestProposal {
             &owner.pubkey(),
             &self.proposal,
             &governance.governance,
-            &signed_rules,
+            &signed_scopes,
         )];
 
         bench
@@ -1166,13 +1167,13 @@ impl TestProposal {
             .collect::<Vec<_>>();
         return result;
     } */
-    /* pub async fn get_proposal_used_rules(&self, banks_client: &mut BanksClient) {
+    /* pub async fn get_proposal_used_scopes(&self, banks_client: &mut BanksClient) {
         let x = self.proposal_transactions.iter().map(|id| async {
             let transaction: ProposalTransactionV2 = try_from_slice_unchecked(
                 &banks_client.get_account(*id).await.unwrap().unwrap().data,
             )
             .unwrap();
-            return transaction.get_used_rules();
+            return transaction.get_used_scopes();
         });
 
         if let PostType::Proposal(proposal) = post.post_type {
@@ -1219,14 +1220,14 @@ impl TestProposal {
         vote: &Vote,
         owner: &TestUser,
         token: &TestToken,
-        rule: &Pubkey,
+        scope: &Pubkey,
     ) {
         if owner
-            .get_token_owner_budget_record(bench, &token, rule)
+            .get_token_owner_budget_record(bench, &token, scope)
             .await
             .is_none()
         {
-            owner.create_budget(bench, token, rule).await;
+            owner.create_budget(bench, token, scope).await;
         }
 
         let vote_options = self.get_vote_option(bench, vote).await;
@@ -1239,7 +1240,7 @@ impl TestProposal {
                     &self.proposal,
                     &owner.get_token_owner_record_address(&token.mint),
                     &owner.keypair.pubkey(),
-                    rule,
+                    scope,
                     &vote_options,
                     latest_vote.as_ref(),
                     false,
@@ -1256,11 +1257,11 @@ impl TestProposal {
         vote: &Vote,
         owner: &TestUser,
         token: &TestToken,
-        rule: &Pubkey,
+        scope: &Pubkey,
     ) {
         let vote_options = self.get_vote_option(bench, vote).await;
         let latest_vote = owner
-            .get_latest_vote_delegate_address(bench, &token, rule)
+            .get_latest_vote_delegate_address(bench, &token, scope)
             .await;
 
         bench
@@ -1269,9 +1270,9 @@ impl TestProposal {
                     &lgovernance::id(),
                     &bench.payer.pubkey(),
                     &self.proposal,
-                    &owner.get_token_owner_delegate_record_address(rule, &token.mint),
+                    &owner.get_token_owner_delegate_record_address(scope, &token.mint),
                     &owner.keypair.pubkey(),
-                    rule,
+                    scope,
                     &vote_options,
                     latest_vote.as_ref(),
                     true,
@@ -1288,7 +1289,7 @@ impl TestProposal {
         vote: Vote,
         owner: &TestUser,
         token: &TestToken,
-        rule: &Pubkey,
+        scope: &Pubkey,
         beneficiary: &Pubkey,
     ) {
         let mut vote_options = Vec::new();
@@ -1310,7 +1311,7 @@ impl TestProposal {
                     &owner.get_token_owner_record_address(&token.mint),
                     &owner.keypair.pubkey(),
                     &beneficiary,
-                    rule,
+                    scope,
                     &vote_options,
                 )],
                 Some(&[&owner.keypair]),
@@ -1388,16 +1389,17 @@ impl TestProposal {
     }
 
     pub async fn count_votes(&self, bench: &mut ProgramTestBench) {
-        let mut rule_mints = Vec::new();
+        let mut scope_mints = Vec::new();
         let proposal = self.get_proposal_account(bench).await;
-        for rule_weight in &proposal.rules_max_vote_weight {
-            let rule = try_from_slice_unchecked::<Rule>(
-                &bench.get_account(&rule_weight.rule).await.unwrap().data,
+        for scope_weight in &proposal.scopes_max_vote_weight {
+            let scope = try_from_slice_unchecked::<Scope>(
+                &bench.get_account(&scope_weight.scope).await.unwrap().data,
             )
             .unwrap();
-            rule_mints.push((
-                rule_weight.rule,
-                rule.config
+            scope_mints.push((
+                scope_weight.scope,
+                scope
+                    .config
                     .vote_config
                     .mint_weights
                     .iter()
@@ -1410,7 +1412,7 @@ impl TestProposal {
         let mut instructions = vec![count_vote_max_weights(
             &lgovernance::id(),
             &self.proposal,
-            &rule_mints,
+            &scope_mints,
         )];
 
         for option in &self.options {
@@ -1419,7 +1421,7 @@ impl TestProposal {
                 &self.proposal,
                 option,
                 proposal.deny_option.as_ref(),
-                &self.rules,
+                &self.scopes,
             ));
         }
 

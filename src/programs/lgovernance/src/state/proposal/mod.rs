@@ -22,8 +22,8 @@ use self::proposal_option::{get_proposal_option_data, ProposalOption};
 
 use super::enums::{InstructionExecutionFlags, ProposalState, VoteTipping};
 
-use super::rules::rule::{AcceptenceCriteria, Rule, RuleTimeConfig};
-use super::rules::rule_weight::RuleWeight;
+use super::scopes::scope::{AcceptenceCriteria, Scope, ScopeTimeConfig};
+use super::scopes::scope_weight::ScopeWeight;
 use super::vote_record::Vote;
 use proposal_transaction::ProposalTransactionV2;
 
@@ -68,13 +68,13 @@ pub enum VoteType {
 }
 
 #[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
-pub struct CommonRuleConfig {
+pub struct CommonScopeConfig {
     pub vote_tipping: VoteTipping,
-    pub time_config: RuleTimeConfig,
+    pub time_config: ScopeTimeConfig,
 }
 
-impl CommonRuleConfig {
-    pub fn set_strictest(&mut self, compare: &Rule) {
+impl CommonScopeConfig {
+    pub fn set_strictest(&mut self, compare: &Scope) {
         self.vote_tipping = self
             .vote_tipping
             .get_strictest(&compare.config.vote_config.vote_tipping);
@@ -107,8 +107,8 @@ pub struct ProposalV2 {
     /// Vote type
     pub vote_type: VoteType,
 
-    /// Common/strictest config for rules
-    /*    pub common_rule_config: CommonRuleConfig, */
+    /// Common/strictest config for scopes
+    /*    pub common_scope_config: CommonScopeConfig, */
 
     /// Number of available options
     pub options_count: u16,
@@ -119,11 +119,11 @@ pub struct ProposalV2 {
     /// Number of available options that has been vote counted for
     pub options_executed_count: u16,
 
-    /// Amount of rules expected
-    pub rules_count: u8,
+    /// Amount of scopes expected
+    pub scopes_count: u8,
 
-    /// All the rules used for the proposal
-    pub rules_max_vote_weight: Vec<RuleWeight>,
+    /// All the scopes used for the proposal
+    pub scopes_max_vote_weight: Vec<ScopeWeight>,
 
     /// Does deny option exist if this has some value
     pub deny_option: Option<Pubkey>,
@@ -138,7 +138,7 @@ pub struct ProposalV2 {
     pub strictest_criteria: AcceptenceCriteria,
 
     /// Strictest time config found
-    pub strictest_time_config: RuleTimeConfig, */
+    pub strictest_time_config: ScopeTimeConfig, */
     /// The total weight of the Proposal rejection votes
     /// If the proposal has no deny option then the weight is None
     /// Only proposals with the deny option can have executable instructions attached to them
@@ -303,7 +303,7 @@ impl ProposalV2 {
     /// Checks whether the voting time has ended for the proposal
     pub fn has_vote_time_ended(
         &self,
-        config: &RuleTimeConfig,
+        config: &ScopeTimeConfig,
         current_unix_timestamp: UnixTimestamp,
     ) -> bool {
         // Check if we passed vote_end_time determined by the configured max_voting_time period
@@ -317,7 +317,7 @@ impl ProposalV2 {
     /// Checks if Proposal can be finalized
     pub fn assert_can_finalize_vote(
         &self,
-        config: &RuleTimeConfig,
+        config: &ScopeTimeConfig,
         current_unix_timestamp: UnixTimestamp,
     ) -> Result<(), ProgramError> {
         self.assert_is_voting_state()
@@ -335,10 +335,10 @@ impl ProposalV2 {
     /// If Proposal is still within max_voting_time period then error is returned
     pub fn finalize_vote(
         &mut self,
-        rule_time_config: &RuleTimeConfig,
+        scope_time_config: &ScopeTimeConfig,
         current_unix_timestamp: UnixTimestamp,
     ) -> Result<(), ProgramError> {
-        self.assert_can_finalize_vote(rule_time_config, current_unix_timestamp)?;
+        self.assert_can_finalize_vote(scope_time_config, current_unix_timestamp)?;
         // TODO: set voting_completed_at based on the time when the voting ended and not when we finalized the proposal
         self.voting_completed_at = Some(current_unix_timestamp);
 
@@ -478,7 +478,7 @@ impl ProposalV2 {
     /* pub fn try_tip_vote(
         &mut self,
         max_voter_weight: u64,
-        config: &RuleVoteConfig,
+        config: &ScopeVoteConfig,
         current_unix_timestamp: UnixTimestamp,
     ) -> Result<bool, ProgramError> {
         if self.vote_type != VoteType::SingleChoice
@@ -570,7 +570,7 @@ impl ProposalV2 {
     /// Checks if Proposal can be canceled in the given state
     /* pub fn assert_can_cancel(
         &self,
-        config: &RuleTimeConfig,
+        config: &ScopeTimeConfig,
         current_unix_timestamp: UnixTimestamp,
     ) -> Result<(), ProgramError> {
         match self.state {
@@ -614,12 +614,12 @@ impl ProposalV2 {
         Ok(())
     }
 
-    /// Checks if Rules can be edited (inserted or removed) for the Proposal
-    pub fn assert_can_edit_rules(&self, creator_info: &AccountInfo) -> Result<(), ProgramError> {
+    /// Checks if scopes can be edited (inserted or removed) for the Proposal
+    pub fn assert_can_edit_scopes(&self, creator_info: &AccountInfo) -> Result<(), ProgramError> {
         self.assert_edit_authority(creator_info)?;
 
         if self.assert_is_draft_state().is_err() {
-            return Err(GovernanceError::InvalidStateCannotEditRules.into());
+            return Err(GovernanceError::InvalidStateCannotEditscopes.into());
         }
 
         Ok(())
@@ -776,8 +776,8 @@ impl ProposalV2 {
         amount: u64,
         add: bool,
         governing_token_mint: &Pubkey,
-        rule: &Pubkey,
-        rule_data: &Rule,
+        scope: &Pubkey,
+        scope_data: &Scope,
         proposal: &Pubkey,
         accounts_iter: &mut Iter<AccountInfo>,
     ) -> Result<Vec<u16>, ProgramError> {
@@ -787,13 +787,13 @@ impl ProposalV2 {
         msg!("BB");
 
         while let Ok(option_info) = option_info_next {
-            // Vote with rule weight
+            // Vote with scope weight
             // Check create vote recor
             msg!("::: {} {}", option_info.key, option_info.data_is_empty());
             let mut option_data = get_proposal_option_data(program_id, option_info, proposal)?;
             msg!("BBB");
 
-            option_data.update_weight(amount, add, governing_token_mint, rule, rule_data)?;
+            option_data.update_weight(amount, add, governing_token_mint, scope, scope_data)?;
             msg!("BBBB");
 
             option_data.serialize(&mut *option_info.data.borrow_mut())?;
@@ -930,7 +930,7 @@ mod test {
             name: "This is my name".to_string(),
 
             strictest_criteria: AcceptenceCriteria::Threshold(50),
-            strictest_time_config: RuleTimeConfig {
+            strictest_time_config: ScopeTimeConfig {
                 max_voting_time: 0,
                 min_transaction_hold_up_time: 0,
                 proposal_cool_off_time: 0,
@@ -1002,13 +1002,13 @@ mod test {
         proposal
     }
 
-    fn create_test_rule_config() -> RuleConfig {
-        RuleConfig {
+    fn create_test_scope_config() -> ScopeConfig {
+        ScopeConfig {
             criteria: AcceptenceCriteria::default(),
             vote_tipping: VoteTipping::Disabled,
             info: None,
             name: None,
-            rule_condition: None,
+            scope_condition: None,
             vote_weights: vec![],
         }
     }
@@ -1146,7 +1146,7 @@ mod test {
 
             // Arrange
             let mut proposal = create_test_proposal();
-            let rule_config = create_test_rule_config();
+            let scope_config = create_test_scope_config();
 
             // Act
             proposal.state = state;
@@ -1176,7 +1176,7 @@ mod test {
                 let mut proposal = create_test_proposal();
                 proposal.state = state;
 
-                let rule_config = create_test_rule_config();
+                let scope_config = create_test_scope_config();
 
                 // Act
                 let err = proposal.assert_can_cancel(&proposal.strictest_time_config,1).err().unwrap();
@@ -1416,8 +1416,8 @@ mod test {
 
             proposal.state = ProposalState::Voting;
 
-            let mut rule_config = create_test_rule_config();
-            rule_config.criteria =  AcceptenceCriteria::Threshold(test_case.vote_threshold_percentage);
+            let mut scope_config = create_test_scope_config();
+            scope_config.criteria =  AcceptenceCriteria::Threshold(test_case.vote_threshold_percentage);
 
             let current_timestamp = 15_i64;
 
@@ -1426,7 +1426,7 @@ mod test {
             let max_voter_weight = proposal.get_max_voter_weight_from_mint_supply(test_case.governing_token_supply).unwrap();
 
             // Act
-            proposal.try_tip_vote(max_voter_weight, &rule_config,current_timestamp).unwrap();
+            proposal.try_tip_vote(max_voter_weight, &scope_config,current_timestamp).unwrap();
 
             // Assert
             assert_eq!(proposal.state,test_case.expected_tipped_state,"CASE: {:?}",test_case);
@@ -1460,8 +1460,8 @@ mod test {
 
             proposal.state = ProposalState::Voting;
 
-            let mut rule_config = create_test_rule_config();
-            rule_config.criteria = AcceptenceCriteria::Threshold(test_case.vote_threshold_percentage);
+            let mut scope_config = create_test_scope_config();
+            scope_config.criteria = AcceptenceCriteria::Threshold(test_case.vote_threshold_percentage);
 
             let current_timestamp = 16_i64;
 
@@ -1469,7 +1469,7 @@ mod test {
             let max_voter_weight = proposal.get_max_voter_weight_from_mint_supply(test_case.governing_token_supply).unwrap();
 
             // Act
-            proposal.finalize_vote(max_voter_weight, &rule_config,current_timestamp).unwrap();
+            proposal.finalize_vote(max_voter_weight, &scope_config,current_timestamp).unwrap();
 
             // Assert
             assert_eq!(proposal.state,test_case.expected_finalized_state,"CASE: {:?}",test_case);
@@ -1520,9 +1520,9 @@ mod test {
             proposal.state = ProposalState::Voting;
 
 
-            let mut rule_config = create_test_rule_config();
+            let mut scope_config = create_test_scope_config();
             let  yes_vote_threshold_percentage = AcceptenceCriteria::Threshold(yes_vote_threshold_percentage);
-            rule_config.criteria = yes_vote_threshold_percentage.clone();
+            scope_config.criteria = yes_vote_threshold_percentage.clone();
 
             let current_timestamp = 15_i64;
 
@@ -1530,7 +1530,7 @@ mod test {
             let max_voter_weight = proposal.get_max_voter_weight_from_mint_supply(governing_token_supply).unwrap();
 
             // Act
-            proposal.try_tip_vote(max_voter_weight, &rule_config, current_timestamp).unwrap();
+            proposal.try_tip_vote(max_voter_weight, &scope_config, current_timestamp).unwrap();
 
             // Assert
             let yes_vote_threshold_count = get_min_vote_threshold_weight(&yes_vote_threshold_percentage,governing_token_supply).unwrap();
@@ -1564,10 +1564,10 @@ mod test {
             proposal.state = ProposalState::Voting;
 
 
-            let mut rule_config = create_test_rule_config();
+            let mut scope_config = create_test_scope_config();
             let  yes_vote_threshold_percentage = AcceptenceCriteria::Threshold(yes_vote_threshold_percentage);
 
-            rule_config.criteria = yes_vote_threshold_percentage.clone();
+            scope_config.criteria = yes_vote_threshold_percentage.clone();
 
             let current_timestamp = 16_i64;
 
@@ -1575,7 +1575,7 @@ mod test {
             let max_voter_weight = proposal.get_max_voter_weight_from_mint_supply(governing_token_supply).unwrap();
 
             // Act
-            proposal.finalize_vote(max_voter_weight, &rule_config,current_timestamp).unwrap();
+            proposal.finalize_vote(max_voter_weight, &scope_config,current_timestamp).unwrap();
 
             // Assert
             let no_vote_weight = proposal.deny_vote_weight.unwrap();
@@ -1601,8 +1601,8 @@ mod test {
 
         proposal.state = ProposalState::Voting;
 
-        let mut rule_config = create_test_rule_config();
-        rule_config.criteria = AcceptenceCriteria::Threshold(60);
+        let mut scope_config = create_test_scope_config();
+        scope_config.criteria = AcceptenceCriteria::Threshold(60);
 
         let current_timestamp = 15_i64;
 
@@ -1620,7 +1620,7 @@ mod test {
 
         // Act
         proposal
-            .try_tip_vote(max_voter_weight, &rule_config, current_timestamp)
+            .try_tip_vote(max_voter_weight, &scope_config, current_timestamp)
             .unwrap();
 
         // Assert
@@ -1633,15 +1633,15 @@ mod test {
         // Arrange
         let mut proposal = create_test_proposal();
         proposal.state = ProposalState::Voting;
-        let rule_config = create_test_rule_config();
+        let scope_config = create_test_scope_config();
 
-        let current_timestamp = proposal.voting_at.unwrap() + rule_config.max_voting_time as i64;
+        let current_timestamp = proposal.voting_at.unwrap() + scope_config.max_voting_time as i64;
 
         let max_voter_weight = proposal.get_max_voter_weight_from_mint_supply(100).unwrap();
 
         // Act
         let err = proposal
-            .finalize_vote(max_voter_weight, &rule_config, current_timestamp)
+            .finalize_vote(max_voter_weight, &scope_config, current_timestamp)
             .err()
             .unwrap();
 
@@ -1654,15 +1654,15 @@ mod test {
         // Arrange
         let mut proposal = create_test_proposal();
         proposal.state = ProposalState::Voting;
-        let rule_config = create_test_rule_config();
+        let scope_config = create_test_scope_config();
 
         let current_timestamp =
-            proposal.voting_at.unwrap() + rule_config.max_voting_time as i64 + 1;
+            proposal.voting_at.unwrap() + scope_config.max_voting_time as i64 + 1;
 
         let max_voter_weight = proposal.get_max_voter_weight_from_mint_supply(100).unwrap();
 
         // Act
-        let result = proposal.finalize_vote(max_voter_weight, &rule_config, current_timestamp);
+        let result = proposal.finalize_vote(max_voter_weight, &scope_config, current_timestamp);
 
         // Assert
         assert_eq!(result, Ok(()));
@@ -1673,14 +1673,14 @@ mod test {
         // Arrange
         let mut proposal = create_test_proposal();
         proposal.state = ProposalState::Voting;
-        let rule_config = create_test_rule_config();
+        let scope_config = create_test_scope_config();
 
         let current_timestamp =
-            proposal.voting_at.unwrap() + rule_config.max_voting_time as i64 + 1;
+            proposal.voting_at.unwrap() + scope_config.max_voting_time as i64 + 1;
 
         // Act
         let err = proposal
-            .assert_can_cast_vote(&rule_config, current_timestamp)
+            .assert_can_cast_vote(&scope_config, current_timestamp)
             .err()
             .unwrap();
 
@@ -1693,12 +1693,12 @@ mod test {
         // Arrange
         let mut proposal = create_test_proposal();
         proposal.state = ProposalState::Voting;
-        let rule_config = create_test_rule_config();
+        let scope_config = create_test_scope_config();
 
-        let current_timestamp = proposal.voting_at.unwrap() + rule_config.max_voting_time as i64;
+        let current_timestamp = proposal.voting_at.unwrap() + scope_config.max_voting_time as i64;
 
         // Act
-        let result = proposal.assert_can_cast_vote(&rule_config, current_timestamp);
+        let result = proposal.assert_can_cast_vote(&scope_config, current_timestamp);
 
         // Assert
         assert_eq!(result, Ok(()));

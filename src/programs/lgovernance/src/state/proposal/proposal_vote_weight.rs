@@ -6,14 +6,14 @@ use solana_program::{
 };
 
 use crate::{
-    accounts::AccountType, error::PostError, state::rules::rule_vote_weight::RuleVoteWeight,
+    accounts::AccountType, error::PostError, state::scopes::scope_vote_weight::ScopeVoteWeight,
 };
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
 pub struct ProposalVoteWeight {
     pub account_type: AccountType,
     pub proposal: Pubkey,
-    pub rule: Pubkey,
+    pub scope: Pubkey,
     pub option_index: u16,
     pub weight: u64,
 }
@@ -23,10 +23,10 @@ impl ProposalVoteWeight {
         &mut self,
         amount: u64,
         vote_mint: &Pubkey,
-        rule_vote_weight: &RuleVoteWeight,
+        scope_vote_weight: &ScopeVoteWeight,
     ) -> Result<(), ProgramError> {
-        if &rule_vote_weight.mint == vote_mint && rule_vote_weight.rule == self.rule {
-            self.weight = amount.checked_add(rule_vote_weight.weight).unwrap();
+        if &scope_vote_weight.mint == vote_mint && scope_vote_weight.scope == self.scope {
+            self.weight = amount.checked_add(scope_vote_weight.weight).unwrap();
             return Ok(());
         }
 
@@ -49,14 +49,14 @@ impl IsInitialized for ProposalVoteWeight {
 pub fn find_proposal_vote_weight_program_address(
     program_id: &Pubkey,
     proposal: &Pubkey,
-    rule_id: &Pubkey,
+    scope_id: &Pubkey,
     mint: &Pubkey,
     option_index: u8,
 ) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[
             proposal.as_ref(),
-            rule_id.as_ref(),
+            scope_id.as_ref(),
             mint.as_ref(),
             &[option_index],
         ],
@@ -65,11 +65,16 @@ pub fn find_proposal_vote_weight_program_address(
 }
 pub fn create_proposal_vote_weight_program_address_seeds<'a>(
     proposal: &'a Pubkey,
-    rule_id: &'a Pubkey,
+    scope_id: &'a Pubkey,
     option_index: &'a [u8; 2],
     bump_seed: &'a [u8; 1],
 ) -> [&'a [u8]; 4] {
-    return [proposal.as_ref(), rule_id.as_ref(), option_index, bump_seed];
+    return [
+        proposal.as_ref(),
+        scope_id.as_ref(),
+        option_index,
+        bump_seed,
+    ];
 }
 
 /// Deserializes Proposal vote weight account and checks channel and owner program
@@ -77,7 +82,7 @@ pub fn get_proposal_vote_weight_data(
     program_id: &Pubkey,
     proposal_vote_weight_info: &AccountInfo,
     proposal: &Pubkey,
-    rule: &Pubkey,
+    scope: &Pubkey,
     option_index: &u16,
 ) -> Result<ProposalVoteWeight, ProgramError> {
     let data = get_account_data::<ProposalVoteWeight>(program_id, proposal_vote_weight_info)?;
@@ -86,8 +91,8 @@ pub fn get_proposal_vote_weight_data(
         return Err(PostError::InvalidProposalForVoteWeight.into());
     }
 
-    if &data.rule == rule {
-        return Err(PostError::InvalidVoteRule.into());
+    if &data.scope == scope {
+        return Err(PostError::InvalidVotescope.into());
     }
 
     if &data.option_index == option_index {

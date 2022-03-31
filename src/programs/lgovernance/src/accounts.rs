@@ -4,8 +4,8 @@ use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 pub enum AccountType {
     Proposal,
     Governance,
-    Rule,
-    RuleVoteWeight,
+    Scope,
+    ScopeVoteWeight,
     Transaction,
     VoteRecordV2,
     TokenOwnerRecordV2,

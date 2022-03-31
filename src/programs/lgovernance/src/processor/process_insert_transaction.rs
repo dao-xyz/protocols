@@ -11,7 +11,7 @@ use crate::{
                 ProposalTransactionV2,
             },
         },
-        rules::rule::Rule,
+        scopes::scope::Scope,
     },
 };
 use std::cmp::Ordering;
@@ -54,28 +54,28 @@ pub fn process_insert_transaction(
 
     proposal_data.assert_can_edit_instructions(creator_info)?;
 
-    let mut rule_info = next_account_info(account_info_iter)?;
-    // Make sure that hold up time is ok by all the rules
+    let mut scope_info = next_account_info(account_info_iter)?;
+    // Make sure that hold up time is ok by all the scopes
     for instruction in &instructions {
-        let rule = &instruction.rule;
-        if rule != rule_info.key {
-            rule_info = next_account_info(account_info_iter)?;
-            if rule != rule_info.key {
+        let scope = &instruction.scope;
+        if scope != scope_info.key {
+            scope_info = next_account_info(account_info_iter)?;
+            if scope != scope_info.key {
                 return Err(ProgramError::InvalidAccountData);
             }
         }
-        let rule_data = get_account_data::<Rule>(program_id, rule_info)?;
-        if hold_up_time < rule_data.config.time_config.min_transaction_hold_up_time {
+        let scope_data = get_account_data::<Scope>(program_id, scope_info)?;
+        if hold_up_time < scope_data.config.time_config.min_transaction_hold_up_time {
             return Err(GovernanceError::TransactionHoldUpTimeBelowRequiredMin.into());
         }
-        rule_data.rule_applicable(&instruction.instruction_data)?;
+        scope_data.scope_applicable(&instruction.instruction_data)?;
 
         if !proposal_data
-            .rules_max_vote_weight
+            .scopes_max_vote_weight
             .iter()
-            .any(|rule_weight| &rule_weight.rule == rule)
+            .any(|scope_weight| &scope_weight.scope == scope)
         {
-            return Err(GovernanceError::InvalidVoteRule.into());
+            return Err(GovernanceError::InvalidVotescope.into());
         }
     }
     // CHECK AUTHORITY

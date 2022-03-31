@@ -5,7 +5,7 @@ use crate::{
     state::{
         enums::VoteTipping,
         governance::GovernanceV2,
-        proposal::{get_proposal_address_seeds, CommonRuleConfig},
+        proposal::{get_proposal_address_seeds, CommonScopeConfig},
     },
     state::{
         enums::{InstructionExecutionFlags, ProposalState},
@@ -35,7 +35,7 @@ pub fn process_create_proposal(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     vote_type: VoteType,
-    rules_count: u8,
+    scopes_count: u8,
     source: ContentSource,
     bump_seed: u8,
 ) -> ProgramResult {
@@ -91,8 +91,8 @@ pub fn process_create_proposal(
             options_count: 0,
             winning_options: Vec::new(),
             defeated_options: Vec::new(),
-            rules_count,
-            rules_max_vote_weight: Vec::new(),
+            scopes_count,
+            scopes_max_vote_weight: Vec::new(),
 
             source,
         },

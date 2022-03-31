@@ -10,7 +10,7 @@ use solana_program::{
 
 use crate::state::{
     channel::ChannelSigner,
-    delegation::rule_delegation_record_account::get_rule_delegation_account_program_address,
+    delegation::scope_delegation_record_account::get_scope_delegation_account_program_address,
     governance::get_governance_address,
     native_treasury::get_native_treasury_address,
     proposal::{
@@ -20,7 +20,7 @@ use crate::state::{
         VoteType,
     },
     realm::{get_realm_mint_authority_program_address, get_realm_mint_program_address},
-    rules::rule::{get_rule_program_address, RuleConfig},
+    scopes::scope::{get_scope_program_address, ScopeConfig},
     token_owner_budget_record::get_token_owner_budget_record_address,
     token_owner_record::{
         get_token_owner_delegatee_record_address, get_token_owner_record_address,
@@ -59,7 +59,7 @@ pub enum PostInstruction {
     // Create channel
     CreateProposal {
         vote_type: VoteType,
-        rules_count: u8,
+        scopes_count: u8,
         source: ContentSource,
         bump_seed: u8,
     },
@@ -72,7 +72,7 @@ pub enum PostInstruction {
     },
     DelegateHistory,
     UndelegateHistory,
-    InsertRule,
+    InsertScope,
     Vote {
         vote_record_bump_seed: u8,
     },
@@ -86,9 +86,9 @@ pub enum PostInstruction {
     CreateRealm {
         bump_seed: u8,
     },
-    CreateRule {
+    CreateScope {
         id: Pubkey,
-        config: RuleConfig,
+        config: ScopeConfig,
         bump_seed: u8,
     },
     CreateProposalOption {
@@ -105,7 +105,7 @@ pub enum PostInstruction {
         instructions: Vec<ConditionedInstruction>,
     },
     CreateDelegatee {
-        rule: Pubkey,
+        scope: Pubkey,
         governing_token_mint: Pubkey,
         token_owner_record_bump_seed: u8,
     },
@@ -114,7 +114,7 @@ pub enum PostInstruction {
         token_owner_record_bump_seed: u8,
     },
     CreateTokenOwnerBudgetRecord {
-        rule: Pubkey,
+        scope: Pubkey,
         token_owner_budget_record_bump_seed: u8,
     },
 
@@ -132,7 +132,7 @@ pub fn create_proposal(
     // Args
     proposal_index: u64,
     vote_type: VoteType,
-    rules_count: u8,
+    scopes_count: u8,
     source: &ContentSource,
 ) -> Instruction {
     let (proposal_address, proposal_bump_seed) =
@@ -151,7 +151,7 @@ pub fn create_proposal(
         data: (PostInstruction::CreateProposal {
             vote_type,
             source: source.clone(),
-            rules_count,
+            scopes_count,
             bump_seed: proposal_bump_seed,
         })
         .try_to_vec()
@@ -234,7 +234,7 @@ pub fn create_delegatee(
     governing_token_owner: &Pubkey,
     payer: &Pubkey,
     // Args
-    rule: &Pubkey,
+    scope: &Pubkey,
     governing_token_mint: &Pubkey,
 ) -> Instruction {
     let (token_owner_record_address, token_owner_record_bump_seed) =
@@ -242,7 +242,7 @@ pub fn create_delegatee(
             program_id,
             governing_token_mint,
             governing_token_owner,
-            rule,
+            scope,
         );
 
     let accounts = vec![
@@ -255,7 +255,7 @@ pub fn create_delegatee(
     let instruction = PostInstruction::CreateDelegatee {
         token_owner_record_bump_seed,
         governing_token_mint: *governing_token_mint,
-        rule: *rule,
+        scope: *scope,
     };
 
     Instruction {
@@ -292,13 +292,13 @@ pub fn insert_transaction(
         AccountMeta::new(system_program::id(), false),
         AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
     ];
-    let unique_rules = instructions
+    let unique_scopes = instructions
         .iter()
-        .map(|i| i.rule)
+        .map(|i| i.scope)
         .collect::<HashSet<Pubkey>>();
-    unique_rules
+    unique_scopes
         .iter()
-        .for_each(|rule| accounts.push(AccountMeta::new_readonly(*rule, false)));
+        .for_each(|scope| accounts.push(AccountMeta::new_readonly(*scope, false)));
 
     Instruction {
         program_id: *program_id,
@@ -314,24 +314,24 @@ pub fn insert_transaction(
     }
 }
 
-pub fn insert_rule(
+pub fn insert_scope(
     program_id: &Pubkey,
 
     // Accounts
-    rule: &Pubkey,
+    scope: &Pubkey,
     proposal: &Pubkey,
     creator: &Pubkey,
     payer: &Pubkey,
 ) -> Instruction {
     let accounts = vec![
-        AccountMeta::new_readonly(*rule, false),
+        AccountMeta::new_readonly(*scope, false),
         AccountMeta::new_readonly(*proposal, false),
         AccountMeta::new_readonly(*creator, true),
         AccountMeta::new_readonly(*payer, true),
     ];
     Instruction {
         program_id: *program_id,
-        data: PostInstruction::InsertRule.try_to_vec().unwrap(),
+        data: PostInstruction::InsertScope.try_to_vec().unwrap(),
         accounts,
     }
 }
@@ -374,15 +374,15 @@ pub fn finalize_draft(
     creator: &Pubkey,
     proposal: &Pubkey,
     governance: &Pubkey,
-    rules: &Vec<(Pubkey, SignedCreateProposal)>,
+    scopes: &Vec<(Pubkey, SignedCreateProposal)>,
 ) -> Instruction {
     let mut accounts = vec![
         AccountMeta::new(*proposal, false),
         AccountMeta::new(*governance, false),
         AccountMeta::new_readonly(*creator, true),
     ];
-    for (rule_address, signed_create_proposal) in rules {
-        accounts.push(AccountMeta::new_readonly(*rule_address, false));
+    for (scope_address, signed_create_proposal) in scopes {
+        accounts.push(AccountMeta::new_readonly(*scope_address, false));
         match signed_create_proposal {
             SignedCreateProposal::AuthorityTag { owner, record } => {
                 accounts.push(AccountMeta::new_readonly(*record, false));
@@ -411,20 +411,20 @@ pub fn cast_vote(
     proposal: &Pubkey,
     token_record: &Pubkey,
     governing_token_owner: &Pubkey,
-    rule: &Pubkey,
+    scope: &Pubkey,
     options: &Vec<Pubkey>,
     last_vote_record: Option<&Pubkey>,
     delegated: bool,
 ) -> Instruction {
     let (vote_record, vote_record_bump_seed) =
-        get_vote_record_address(program_id, proposal, &token_record, &rule);
+        get_vote_record_address(program_id, proposal, &token_record, &scope);
 
     let mut accounts = vec![
         AccountMeta::new(*proposal, false),
         AccountMeta::new(vote_record, false),
         AccountMeta::new(*token_record, false),
         AccountMeta::new_readonly(*governing_token_owner, true),
-        AccountMeta::new_readonly(*rule, false),
+        AccountMeta::new_readonly(*scope, false),
         AccountMeta::new(*payer, true),
         AccountMeta::new(system_program::id(), false),
     ];
@@ -434,7 +434,7 @@ pub fn cast_vote(
             // this because delegated token owner records
             // does not have budgets (i.e. delegated again)
             let (budget_record_address, _) =
-                get_token_owner_budget_record_address(program_id, token_record, rule);
+                get_token_owner_budget_record_address(program_id, token_record, scope);
             accounts.push(AccountMeta::new_readonly(budget_record_address, false));
         }
         true => {}
@@ -469,17 +469,17 @@ pub fn uncast_vote(
     beneficiary: &Pubkey,
 
     // Args
-    rule: &Pubkey,
+    scope: &Pubkey,
     options: &Vec<Pubkey>,
 ) -> Instruction {
-    let (vote_record, _) = get_vote_record_address(program_id, proposal, &token_record, &rule);
+    let (vote_record, _) = get_vote_record_address(program_id, proposal, &token_record, &scope);
 
     let mut accounts = vec![
         AccountMeta::new(*proposal, false),
         AccountMeta::new(vote_record, false),
         AccountMeta::new(*token_record, false),
         AccountMeta::new_readonly(*governing_token_owner, true),
-        AccountMeta::new_readonly(*rule, false),
+        AccountMeta::new_readonly(*scope, false),
         AccountMeta::new(*beneficiary, false),
     ];
 
@@ -497,10 +497,10 @@ pub fn create_token_owner_budget_record(
     program_id: &Pubkey,
     payer: &Pubkey,
     token_record: &Pubkey,
-    rule: &Pubkey,
+    scope: &Pubkey,
 ) -> Instruction {
     let (token_owner_budget_record, token_owner_budget_record_bump_seed) =
-        get_token_owner_budget_record_address(program_id, token_record, rule);
+        get_token_owner_budget_record_address(program_id, token_record, scope);
 
     let accounts = vec![
         AccountMeta::new_readonly(*token_record, false),
@@ -512,7 +512,7 @@ pub fn create_token_owner_budget_record(
     Instruction {
         program_id: *program_id,
         data: (PostInstruction::CreateTokenOwnerBudgetRecord {
-            rule: *rule,
+            scope: *scope,
             token_owner_budget_record_bump_seed,
         })
         .try_to_vec()
@@ -524,11 +524,11 @@ pub fn create_token_owner_budget_record(
 pub fn count_vote_max_weights(
     program_id: &Pubkey,
     proposal: &Pubkey,
-    rule_mints: &Vec<(Pubkey, Vec<Pubkey>)>,
+    scope_mints: &Vec<(Pubkey, Vec<Pubkey>)>,
 ) -> Instruction {
     let mut accounts = vec![AccountMeta::new(*proposal, false)];
-    for (rule, mints) in rule_mints {
-        accounts.push(AccountMeta::new_readonly(*rule, false));
+    for (scope, mints) in scope_mints {
+        accounts.push(AccountMeta::new_readonly(*scope, false));
         for mint in mints {
             accounts.push(AccountMeta::new_readonly(*mint, false))
         }
@@ -545,7 +545,7 @@ pub fn count_votes(
     proposal: &Pubkey,
     option: &Pubkey,
     deny_option: Option<&Pubkey>,
-    rules: &Vec<Pubkey>,
+    scopes: &Vec<Pubkey>,
 ) -> Instruction {
     let mut accounts = vec![
         AccountMeta::new(*proposal, false),
@@ -554,8 +554,8 @@ pub fn count_votes(
     if let Some(key) = deny_option {
         accounts.push(AccountMeta::new_readonly(*key, false));
     }
-    for rule in rules {
-        accounts.push(AccountMeta::new_readonly(*rule, false));
+    for scope in scopes {
+        accounts.push(AccountMeta::new_readonly(*scope, false));
     }
     Instruction {
         program_id: *program_id,
@@ -594,7 +594,7 @@ pub fn create_realm(
         accounts,
     }
 }
-pub fn create_rule(
+pub fn create_scope(
     program_id: &Pubkey,
     // Accounts
     id: &Pubkey,
@@ -603,12 +603,12 @@ pub fn create_rule(
 
     channel_signer: &Option<ChannelSigner>,
     // Args
-    config: &RuleConfig,
+    config: &ScopeConfig,
 ) -> Instruction {
-    let (create_rule_address, create_rule_address_bump_seed) =
-        get_rule_program_address(program_id, &id);
+    let (create_scope_address, create_scope_address_bump_seed) =
+        get_scope_program_address(program_id, &id);
     let mut accounts = vec![
-        AccountMeta::new(create_rule_address, false),
+        AccountMeta::new(create_scope_address, false),
         AccountMeta::new_readonly(*governance, !channel_signer.is_some()),
         AccountMeta::new(*payer, true),
         AccountMeta::new(system_program::id(), false),
@@ -623,10 +623,10 @@ pub fn create_rule(
 
     Instruction {
         program_id: *program_id,
-        data: (PostInstruction::CreateRule {
+        data: (PostInstruction::CreateScope {
             id: *id,
             config: config.clone(),
-            bump_seed: create_rule_address_bump_seed,
+            bump_seed: create_scope_address_bump_seed,
         })
         .try_to_vec()
         .unwrap(),
@@ -634,8 +634,8 @@ pub fn create_rule(
     }
 }
 /**
- * Execute post with most stringent rules
- *  (i.e. if execution treasury transfer, it will assume there exist a rule that defines exactly how that transaction can be performed)
+ * Execute post with most stringent scopes
+ *  (i.e. if execution treasury transfer, it will assume there exist a scope that defines exactly how that transaction can be performed)
  *
  */
 pub fn execute_transaction(
@@ -683,14 +683,14 @@ pub fn delegate(
 
     // Args
     amount: &u64,
-    rule: &Pubkey,
+    scope: &Pubkey,
 ) -> Instruction {
     let (delegation_record, delegation_record_bump_seed) =
-        get_rule_delegation_account_program_address(
+        get_scope_delegation_account_program_address(
             program_id,
             token_owner_record,
             delegatee_token_owner_record,
-            rule,
+            scope,
         );
 
     let accounts = vec![
@@ -759,8 +759,8 @@ pub fn sync_delegation(
     delegator_token_owner_record: &Pubkey,
     governing_token_owner_record: &Pubkey,
     delegatee_token_owner_record: &Pubkey,
-    rule: &Pubkey,
-    rule_delegation_record: &Pubkey,
+    scope: &Pubkey,
+    scope_delegation_record: &Pubkey,
     options: &Vec<Pubkey>,
 
     // Args
@@ -769,10 +769,10 @@ pub fn sync_delegation(
     let mut accounts = vec![
         AccountMeta::new(*proposal, false),
         AccountMeta::new(*vote_record, false),
-        AccountMeta::new(*rule_delegation_record, false),
+        AccountMeta::new(*scope_delegation_record, false),
         AccountMeta::new_readonly(*delegator_token_owner_record, false),
         AccountMeta::new_readonly(*governing_token_owner_record, true),
-        AccountMeta::new_readonly(*rule, false),
+        AccountMeta::new_readonly(*scope, false),
     ];
 
     for option in options {
@@ -798,19 +798,19 @@ pub fn delegate_history(
     vote_record: &Pubkey,
     proposal: &Pubkey,
     vote_options: &Vec<Pubkey>,
-    rule_delegation_record: &Pubkey,
+    scope_delegation_record: &Pubkey,
     delegator_or_delegatee_token_owner_record: &Pubkey,
     delegator_or_delegatee_governing_token_owner_record: &Pubkey,
-    rule: &Pubkey,
+    scope: &Pubkey,
     /* next_vote_record: Option<&Pubkey>, */ // Has to be some if
 ) -> Instruction {
     let mut accounts = vec![
         AccountMeta::new_readonly(*vote_record, false),
         AccountMeta::new(*proposal, false),
-        AccountMeta::new(*rule_delegation_record, false),
+        AccountMeta::new(*scope_delegation_record, false),
         AccountMeta::new_readonly(*delegator_or_delegatee_token_owner_record, false),
         AccountMeta::new_readonly(*delegator_or_delegatee_governing_token_owner_record, true),
-        AccountMeta::new_readonly(*rule, false),
+        AccountMeta::new_readonly(*scope, false),
     ];
     /*
     if let Some(key) = previous_vote_record {
@@ -835,19 +835,19 @@ pub fn undelegate_history(
     vote_record: &Pubkey,
     proposal: &Pubkey,
     options: &Vec<Pubkey>,
-    rule_delegation_record: &Pubkey,
+    scope_delegation_record: &Pubkey,
     delegator_or_delegatee_token_owner_record: &Pubkey,
     delegator_or_delegatee_governing_token_owner_record: &Pubkey,
-    rule: &Pubkey,
+    scope: &Pubkey,
     previous_vote_record: Option<&Pubkey>,
 ) -> Instruction {
     let mut accounts = vec![
         AccountMeta::new(*vote_record, false),
         AccountMeta::new(*proposal, false),
-        AccountMeta::new(*rule_delegation_record, false),
+        AccountMeta::new(*scope_delegation_record, false),
         AccountMeta::new_readonly(*delegator_or_delegatee_token_owner_record, false),
         AccountMeta::new_readonly(*delegator_or_delegatee_governing_token_owner_record, true),
-        AccountMeta::new_readonly(*rule, false),
+        AccountMeta::new_readonly(*scope, false),
     ];
 
     if let Some(key) = previous_vote_record {

@@ -3,7 +3,7 @@ use crate::{
     state::{
         enums::ProposalState,
         proposal::get_proposal_data,
-        rules::rule::get_rule_data_for_governance,
+        scopes::scope::get_scope_data_for_governance,
         token_owner_record::get_token_owner_record_data_for_owner,
         vote_record::{get_vote_record_data_for_proposal_and_token_owner, Vote, VoteRecordV2},
     },
@@ -24,9 +24,9 @@ pub fn process_uncast_vote(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
     let vote_record_info = next_account_info(accounts_iter)?;
     let token_owner_record_info = next_account_info(accounts_iter)?;
     let governing_token_owner_record_info = next_account_info(accounts_iter)?;
-    let rule_info = next_account_info(accounts_iter)?;
+    let scope_info = next_account_info(accounts_iter)?;
     let proposal = get_proposal_data(program_id, proposal_info)?;
-    let rule = get_rule_data_for_governance(program_id, rule_info, &proposal.governance)?;
+    let scope = get_scope_data_for_governance(program_id, scope_info, &proposal.governance)?;
 
     let mut token_owner_record_data = get_token_owner_record_data_for_owner(
         program_id,
@@ -49,7 +49,7 @@ pub fn process_uncast_vote(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
     // Note: If there is no tipping point the proposal can be still in Voting state but already past the configured max_voting_time
     //       It means it awaits manual finalization (FinalizeVote) and it should no longer be possible to withdraw the vote and we only release the tokens
     if proposal.state == ProposalState::Voting
-        && !proposal.has_vote_time_ended(&rule.config.time_config, clock.unix_timestamp)
+        && !proposal.has_vote_time_ended(&scope.config.time_config, clock.unix_timestamp)
     {
         msg!("A");
         let beneficiary_info = next_account_info(accounts_iter)?;
@@ -66,8 +66,8 @@ pub fn process_uncast_vote(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
             token_owner_record_data.governing_token_deposit_amount,
             false,
             &token_owner_record_data.governing_token_mint,
-            rule_info.key,
-            &rule,
+            scope_info.key,
+            &scope,
             proposal_info.key,
             accounts_iter,
         )?;

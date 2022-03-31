@@ -4,7 +4,7 @@ use crate::{
     error::GovernanceError,
     state::{
         enums::ProposalState, governance::get_governance_data,
-        proposal::get_proposal_data_for_creator, rules::rule::get_rule_data_for_governance,
+        proposal::get_proposal_data_for_creator, scopes::scope::get_scope_data_for_governance,
     },
 };
 use borsh::BorshSerialize;
@@ -30,8 +30,8 @@ pub fn process_finalize_draft(program_id: &Pubkey, accounts: &[AccountInfo]) -> 
 
     proposal_data.assert_can_finalize_draft(creator_info)?;
 
-    if proposal_data.rules_count != proposal_data.rules_max_vote_weight.len() as u8 {
-        return Err(GovernanceError::MissingRulesForProposal.into());
+    if proposal_data.scopes_count != proposal_data.scopes_max_vote_weight.len() as u8 {
+        return Err(GovernanceError::MissingscopesForProposal.into());
     }
     if &proposal_data.governance != governance_info.key {
         return Err(GovernanceError::InvalidGovernanceForProposal.into());
@@ -40,13 +40,14 @@ pub fn process_finalize_draft(program_id: &Pubkey, accounts: &[AccountInfo]) -> 
 
     let mut governance_data = get_governance_data(program_id, governance_info)?;
     msg!("XXX");
-    for rule_weight in &proposal_data.rules_max_vote_weight {
-        let rule_info = next_account_info(account_info_iter)?;
-        if rule_info.key != &rule_weight.rule {
-            return Err(GovernanceError::InvalidVoteRule.into());
+    for scope_weight in &proposal_data.scopes_max_vote_weight {
+        let scope_info = next_account_info(account_info_iter)?;
+        if scope_info.key != &scope_weight.scope {
+            return Err(GovernanceError::InvalidVotescope.into());
         }
-        let rule = get_rule_data_for_governance(program_id, rule_info, &proposal_data.governance)?;
-        rule.config.proposal_config.assert_can_create_proposal(
+        let scope =
+            get_scope_data_for_governance(program_id, scope_info, &proposal_data.governance)?;
+        scope.config.proposal_config.assert_can_create_proposal(
             program_id,
             &proposal_data,
             account_info_iter,
@@ -91,6 +92,6 @@ pub fn process_finalize_draft(program_id: &Pubkey, accounts: &[AccountInfo]) -> 
            governance_authority_info,
        )?;
     */
-    // check all rules conditions of creating a proposal are met
+    // check all scopes conditions of creating a proposal are met
     // SET state of proposal to verified
 }

@@ -11,7 +11,7 @@ fn time_since_epoch() -> u64 {
 }
 
 #[tokio::test]
-async fn approved_create_rule() {
+async fn approved_create_scope() {
     let program = program_test();
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
     let total_supply = 100;
@@ -47,9 +47,9 @@ async fn approved_create_rule() {
         .await;
 
     let _expires_in_sec = 1;
-    let rule_id = Pubkey::new_unique();
-    let (_custom_rule_address, _) =
-        find_create_rule_associated_program_address(&lpost::id(), &rule_id);
+    let scope_id = Pubkey::new_unique();
+    let (_custom_scope_address, _) =
+        find_create_scope_associated_program_address(&lpost::id(), &scope_id);
     let mut transaction_post = Transaction::new_with_payer(
         &[create_post_proposal(
             &lpost::id(),
@@ -70,13 +70,13 @@ async fn approved_create_rule() {
         .unwrap();
          */
     /* expires_at,
-    action: Action::ManageRule(VotingRuleUpdate::create(
-        CreateRule {
+    action: Action::ManageScope(VotingScopeUpdate::create(
+        CreateScope {
             channel: test_channel.channel,
-            name: Some("Some rule".into()),
+            name: Some("Some scope".into()),
             criteria: AcceptenceCriteria::default(),
             info: Some("info".into()),
-            id: rule_id,
+            id: scope_id,
             instruction_condition: InstructionConditional {},
             instruction_program_id: lpost::id(),
             vote_mint: governance_token.mint,
@@ -105,10 +105,10 @@ async fn approved_create_rule() {
     // assets post is approved
     assert_action_status(&mut banks_client, &test_post.post, &ActionStatus::Approved).await;
 
-    deserialize_action_rule_account(
+    deserialize_action_scope_account(
         &*banks_client
             .get_account(
-                find_create_rule_associated_program_address(
+                find_create_scope_associated_program_address(
                     &lpost::id(),
                     &action_type,
                     &test_channel.channel,
@@ -125,7 +125,7 @@ async fn approved_create_rule() {
 
 /*
 #[tokio::test]
-async fn rejected_create_rule() {
+async fn rejected_create_scope() {
     let program = program_test();
     let total_supply = 100;
     let (mut banks_client, payer, recent_blockhash) = program.start().await;
@@ -145,10 +145,10 @@ async fn rejected_create_rule() {
 
     let expires_in_sec = 1;
     let expires_at = time_since_epoch() + expires_in_sec;
-    let custom_rule_key = Pubkey::new_unique();
-    let (_custom_rule_address, _) = find_create_rule_associated_program_address(
+    let custom_scope_key = Pubkey::new_unique();
+    let (_custom_scope_address, _) = find_create_scope_associated_program_address(
         &lpost::id(),
-        &ActionType::CustomEvent(custom_rule_key),
+        &ActionType::CustomEvent(custom_scope_key),
         &test_channel.channel,
     );
 
@@ -162,11 +162,11 @@ async fn rejected_create_rule() {
             &test_post.hash,
             &CreatePostType::ActionPost {
                 expires_at,
-                action: Action::ManageRule(VotingRuleUpdate::create(
-                    CreateRule {
+                action: Action::ManageScope(VotingScopeUpdate::create(
+                    CreateScope {
                         channel: test_channel.channel,
                         name: Some("Custom event".into()),
-                        action: ActionType::CustomEvent(custom_rule_key),
+                        action: ActionType::CustomEvent(custom_scope_key),
                         criteria: AcceptenceCriteria::default(),
                         info: Some("info".into()),
                     },
