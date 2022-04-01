@@ -23,20 +23,50 @@ pub fn get_tag_program_address_seeds(username: &str) -> Vec<Vec<u8>> {
 pub fn get_tag_record_program_address(
     program_id: &Pubkey,
     tag: &Pubkey,
+    factory: &Pubkey,
     owner: &Pubkey,
-    authority: &Pubkey,
 ) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &[tag.as_ref(), owner.as_ref(), authority.as_ref()],
+        &[b"record", tag.as_ref(), factory.as_ref(), owner.as_ref()],
         program_id,
     )
 }
 
 pub fn get_tag_record_program_address_seeds<'a>(
     tag: &'a Pubkey,
+    factory: &'a Pubkey,
     owner: &'a Pubkey,
+    bump_seed: &'a [u8; 1],
+) -> [&'a [u8]; 5] {
+    [
+        b"record",
+        tag.as_ref(),
+        factory.as_ref(),
+        owner.as_ref(),
+        bump_seed,
+    ]
+}
+
+pub fn get_tag_record_factory_program_address(
+    program_id: &Pubkey,
+    tag: &Pubkey,
+    authority: &Pubkey,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[b"record_factory", tag.as_ref(), authority.as_ref()],
+        program_id,
+    )
+}
+
+pub fn get_tag_record_factory_program_address_seeds<'a>(
+    tag: &'a Pubkey,
     authority: &'a Pubkey,
     bump_seed: &'a [u8; 1],
 ) -> [&'a [u8]; 4] {
-    [tag.as_ref(), owner.as_ref(), authority.as_ref(), bump_seed]
+    [
+        b"record_factory",
+        tag.as_ref(),
+        authority.as_ref(),
+        bump_seed,
+    ]
 }

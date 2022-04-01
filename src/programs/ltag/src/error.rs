@@ -18,6 +18,10 @@ pub enum TagError {
     #[error("Invalid authority")]
     InvalidAuthority,
 
+    /// Invalid TagRecordFactory
+    #[error("Invalid TagRecordFactory")]
+    InvalidTagRecordFactory,
+
     /// Tag already exist
     #[error("Tag already exisst")]
     TagAlreadyExist,
@@ -26,9 +30,17 @@ pub enum TagError {
     #[error("Tag record already exist")]
     TagRecordAlreadyExist,
 
+    /// TagRecordFactory already exist
+    #[error("TagRecordFactory already exist")]
+    TagRecordFactoryAlreadyExist,
+
     /// Tag does not exist
     #[error("Tag does not exist")]
     TagDoesNotExist,
+
+    /// Invalid tag
+    #[error("Invalid tag")]
+    InvalidTag,
 }
 
 impl PrintProgramError for TagError {

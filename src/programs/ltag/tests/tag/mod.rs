@@ -1,5 +1,7 @@
-use ltag::state::{TagAccount, TagRecordAccount};
-use ltag::{get_tag_program_address, get_tag_record_program_address};
+use ltag::state::{TagAccount, TagRecordAccount, TagRecordFactoryAccount};
+use ltag::{
+    get_tag_program_address, get_tag_record_factory_program_address, get_tag_record_program_address,
+};
 use solana_program::borsh::try_from_slice_unchecked;
 use solana_program::hash::Hash;
 use solana_program_test::*;
@@ -13,6 +15,7 @@ pub async fn create_tag(
     payer: &Keypair,
     recent_blockhash: &Hash,
     tag: &str,
+    authority: &Keypair,
 ) -> Pubkey {
     // Create tag
     banks_client
@@ -20,10 +23,12 @@ pub async fn create_tag(
             &[ltag::instruction::create_tag(
                 &ltag::id(),
                 tag,
+                None,
+                &authority.pubkey(),
                 &payer.pubkey(),
             )],
             Some(&payer.pubkey()),
-            &[payer],
+            &[payer, authority],
             *recent_blockhash,
         ))
         .await
@@ -45,7 +50,8 @@ pub async fn create_tag_record(
     payer: &Keypair,
     recent_blockhash: &Hash,
     tag: &Pubkey,
-    owner: &Keypair,
+    owner: &Pubkey,
+    factory: &Pubkey,
     authority: &Keypair,
 ) -> Pubkey {
     // Create tag record
@@ -54,19 +60,19 @@ pub async fn create_tag_record(
             &[ltag::instruction::create_tag_record(
                 &ltag::id(),
                 tag,
-                &owner.pubkey(),
+                owner,
+                factory,
                 &authority.pubkey(),
                 &payer.pubkey(),
             )],
             Some(&payer.pubkey()),
-            &[payer, owner, authority],
+            &[payer, authority],
             *recent_blockhash,
         ))
         .await
         .unwrap();
 
-    let tag_record_address =
-        get_tag_record_program_address(&ltag::id(), tag, &owner.pubkey(), &authority.pubkey()).0;
+    let tag_record_address = get_tag_record_program_address(&ltag::id(), tag, factory, owner).0;
     let tag_record_account_info = banks_client
         .get_account(tag_record_address)
         .await
@@ -74,8 +80,8 @@ pub async fn create_tag_record(
         .expect("tag not found");
     let tag_record_account =
         try_from_slice_unchecked::<TagRecordAccount>(&tag_record_account_info.data).unwrap();
-    assert_eq!(&tag_record_account.authority, &authority.pubkey());
-    assert_eq!(&tag_record_account.owner, &owner.pubkey());
+    assert_eq!(&tag_record_account.factory, factory);
+    assert_eq!(&tag_record_account.owner, owner);
     assert_eq!(&tag_record_account.tag, tag);
     tag_record_address
 }
@@ -85,6 +91,7 @@ pub async fn delete_tag_record(
     payer: &Keypair,
     recent_blockhash: &Hash,
     tag_record: &Pubkey,
+    factory: &Pubkey,
     authority: &Keypair,
     owner: &Keypair,
     withdraw_destination: &Pubkey,
@@ -96,12 +103,13 @@ pub async fn delete_tag_record(
         .unwrap();
     banks_client
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ltag::instruction::delete_tag_record(
+            &[ltag::instruction::delete_tag_record_as_owner(
                 &ltag::id(),
                 tag_record,
+                &owner.pubkey(),
+                factory,
                 &authority.pubkey(),
                 withdraw_destination,
-                &owner.pubkey(),
             )],
             Some(&payer.pubkey()),
             &[payer, owner],
@@ -126,35 +134,114 @@ pub async fn delete_tag_record(
     assert!(balance_pre < balance_post); // Redeemed some lamports
 }
 
+pub async fn create_tag_record_factory(
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: &Hash,
+    tag: &Pubkey,
+    authority: &Keypair,
+) -> Pubkey {
+    // Create tag record
+    banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[ltag::instruction::create_tag_record_factory(
+                &ltag::id(),
+                tag,
+                &authority.pubkey(),
+                &payer.pubkey(),
+            )],
+            Some(&payer.pubkey()),
+            &[payer, authority],
+            *recent_blockhash,
+        ))
+        .await
+        .unwrap();
+
+    let tag_record_factory_address =
+        get_tag_record_factory_program_address(&ltag::id(), tag, &authority.pubkey()).0;
+    let tag_record_factory_account_info = banks_client
+        .get_account(tag_record_factory_address)
+        .await
+        .expect("get_tag_record_factory")
+        .expect("tag not found");
+    let tag_record_factory_account =
+        try_from_slice_unchecked::<TagRecordFactoryAccount>(&tag_record_factory_account_info.data)
+            .unwrap();
+    assert_eq!(&tag_record_factory_account.authority, &authority.pubkey());
+    assert_eq!(&tag_record_factory_account.outstanding_records, &0);
+    assert_eq!(&tag_record_factory_account.tag, tag);
+    tag_record_factory_address
+}
+
+async fn get_outstanding_records(banks_client: &mut BanksClient, factory: &Pubkey) -> u64 {
+    let tag_record_factory_account_info = banks_client
+        .get_account(*factory)
+        .await
+        .expect("get_tag_record_factory")
+        .expect("tag not found");
+    let tag_record_factory_account =
+        try_from_slice_unchecked::<TagRecordFactoryAccount>(&tag_record_factory_account_info.data)
+            .unwrap();
+    tag_record_factory_account.outstanding_records
+}
 #[tokio::test]
 async fn success() {
     let (mut banks_client, payer, recent_blockhash) = program_test().start().await;
     let tag = "name";
-    let tag = create_tag(&mut banks_client, &payer, &recent_blockhash, tag).await;
+    let tag_authority = Keypair::new();
+
+    let tag = create_tag(
+        &mut banks_client,
+        &payer,
+        &recent_blockhash,
+        tag,
+        &tag_authority,
+    )
+    .await;
 
     let owner = Keypair::new();
-    let authority = Keypair::new();
+    let factory_authority = Keypair::new();
+    let factory = create_tag_record_factory(
+        &mut banks_client,
+        &payer,
+        &recent_blockhash,
+        &tag,
+        &factory_authority,
+    )
+    .await;
 
     let tag_reccord = create_tag_record(
         &mut banks_client,
         &payer,
         &recent_blockhash,
         &tag,
-        &owner,
-        &authority,
+        &owner.pubkey(),
+        &factory,
+        &factory_authority,
     )
     .await;
+
+    assert_eq!(
+        get_outstanding_records(&mut banks_client, &factory).await,
+        1
+    );
 
     delete_tag_record(
         &mut banks_client,
         &payer,
         &recent_blockhash,
         &tag_reccord,
-        &authority,
+        &factory,
+        &factory_authority,
         &owner,
         &payer.pubkey(),
     )
     .await;
+
+    assert_eq!(
+        get_outstanding_records(&mut banks_client, &factory).await,
+        0
+    );
 }
 /*
 #[tokio::test]
