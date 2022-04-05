@@ -143,11 +143,15 @@ impl MaxSize for ProposalTransactionV2 {
             .instructions
             .iter()
             .map(|i| {
-                i.instruction_data.accounts.len() * 34 + i.instruction_data.data.len() + 40 + 8 + 32
+                32 + 4
+                    + i.instruction_data.accounts.len() * 34
+                    + 4
+                    + i.instruction_data.data.len()
+                    + 32
             })
             .sum::<usize>();
 
-        Some(instructions_size + 56)
+        Some(instructions_size + 1 + 32 + 2 + 2 + 4 + 4 + 1 + 8 + 1 + 8 + 1)
     }
 }
 
@@ -269,7 +273,7 @@ mod test {
             hold_up_time: 10,
             instructions: create_test_instruction_data(),
             executed_at: Some(100),
-            vote_result_collected_at: None,
+            vote_result_collected_at: Some(100),
             execution_status: TransactionExecutionStatus::Success,
         }
     }

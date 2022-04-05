@@ -4,13 +4,10 @@ use crate::{
     state::{
         proposal::get_proposal_data,
         scopes::scope::get_scope_data_for_governance,
-        token_owner_budget_record::{
-            get_token_owner_budget_record_data_for_token_record, TokenOwnerBudgetRecord,
-        },
-        token_owner_record::get_token_owner_record_data_for_owner,
+        vote_power_owner_record::get_vote_power_owner_record_data_for_owner,
         vote_record::{
-            get_vote_record_address_seeds, get_vote_record_data,
-            get_vote_record_data_for_proposal_and_token_owner, VoteRecordV2,
+            get_vote_record_address_seeds, get_vote_record_data_for_proposal_and_token_owner,
+            VoteRecordV2,
         },
     },
 };
@@ -33,38 +30,36 @@ pub fn process_cast_vote(
     let accounts_iter = &mut accounts.iter();
     let proposal_account_info = next_account_info(accounts_iter)?;
     let vote_record_info = next_account_info(accounts_iter)?;
-    let token_owner_record_info = next_account_info(accounts_iter)?;
-    let governing_token_owner_info = next_account_info(accounts_iter)?;
+    let vote_power_owner_record_info = next_account_info(accounts_iter)?;
+    let governing_owner_info = next_account_info(accounts_iter)?;
     let scope_info = next_account_info(accounts_iter)?;
     let payer_info = next_account_info(accounts_iter)?;
     let system_info = next_account_info(accounts_iter)?;
     let rent = Rent::get()?;
 
     // TODO: More granular check proposal data?
+    // TODO fix - Vote and delegate after voting???
     let proposal = get_proposal_data(program_id, proposal_account_info)?;
     let scope = get_scope_data_for_governance(program_id, scope_info, &proposal.governance)?;
 
-    msg!("X");
-    let mut token_owner_record_data = get_token_owner_record_data_for_owner(
+    let mut token_owner_record_data = get_vote_power_owner_record_data_for_owner(
         program_id,
-        token_owner_record_info,
-        governing_token_owner_info,
+        vote_power_owner_record_info,
+        governing_owner_info,
     )?;
-    msg!("XX");
 
-    let vote_weight = match token_owner_record_data.delegated_by_scope {
-        Some(_scope) => {
-            /*     let scope_delegation_record_info = next_account_info(accounts_iter)?;
-                       let mut scope_delegation_record_data =
-                           get_delegation_record_data_for_delegator_and_delegatee(
-                               program_id,
-                               scope_delegation_record_info,
-                               delegator_token_owner_record_info.key,
-                               &delegatee_token_owner_record,
-                           )?;
-            */
-            token_owner_record_data.governing_token_deposit_amount
-        }
+    if &token_owner_record_data.delegated_by_scope != scope_info.key {
+        return Err(GovernanceError::InvalidScopeVoteRecord.into());
+    }
+
+    /* let vote_weight = match token_owner_record_data.delegated_by_scope {
+        Some(_scope) => match &token_owner_record_data.source {
+            VotePowerSource::Token {
+                governing_token_deposit_amount,
+                ..
+            } => *governing_token_deposit_amount,
+            VotePowerSource::Tag { .. } => 1,
+        },
         None => {
             let token_owner_budget_record_info = next_account_info(accounts_iter)?;
             let token_owner_budget_record_data =
@@ -72,13 +67,17 @@ pub fn process_cast_vote(
                     program_id,
                     token_owner_budget_record_info,
                     &token_owner_record_data,
-                    token_owner_record_info,
-                    governing_token_owner_info,
+                    vote_power_owner_record_info,
+                    governing_owner_info,
                 )?;
             token_owner_budget_record_data.amount
         }
-    };
-
+    }; */
+    let vote_weight = token_owner_record_data.amount;
+    /* match &token_owner_record_data.source {
+        VoteSource::Token(governing_token_deposit_amount) => *governing_token_deposit_amount,
+        VoteSource::Tag { amount, .. } => *amount,
+    }; */
     msg!("XXX");
 
     // TODO: CHECK OWNER OF POST, CHECK MINTS,
@@ -100,7 +99,7 @@ pub fn process_cast_vote(
                 program_id,
                 last_vote_record_info,
                 proposal_account_info.key,
-                governing_token_owner_info,
+                governing_owner_info,
             )?;
             msg!("??");
             if last_vote_data.next_vote.is_some() {
@@ -113,13 +112,12 @@ pub fn process_cast_vote(
         } else {
             None
         };
-        msg!("XXX!");
 
         let vote = proposal.perform_voting(
             program_id,
             vote_weight,
             true,
-            &token_owner_record_data.governing_token_mint,
+            &token_owner_record_data.source,
             scope_info.key,
             &scope,
             proposal_account_info.key,
@@ -132,21 +130,22 @@ pub fn process_cast_vote(
         let vote_record_data = VoteRecordV2 {
             account_type: AccountType::VoteRecordV2,
             proposal: *proposal_account_info.key,
-            governing_token_owner: *governing_token_owner_info.key,
+            governing_owner: *governing_owner_info.key,
             vote,
+            vote_weight,
             scope: *scope_info.key,
             is_relinquished: false,
             previous_vote: last_vote_record_key, // move vote in top of the "stack"
             next_vote: None,
         };
-        msg!("SAVE!");
+
         create_and_serialize_account_verify_with_bump::<VoteRecordV2>(
             payer_info,
             vote_record_info,
             &vote_record_data,
             &get_vote_record_address_seeds(
                 proposal_account_info.key,
-                token_owner_record_info.key,
+                vote_power_owner_record_info.key,
                 scope_info.key,
                 &[vote_record_bump_seed],
             ),
@@ -154,7 +153,6 @@ pub fn process_cast_vote(
             system_info,
             &rent,
         )?;
-        msg!("SAVE DONE!");
     }
 
     // Update TokenOwnerRecord vote counts
@@ -174,7 +172,7 @@ pub fn process_cast_vote(
     }
     // Update propsal
     proposal.serialize(&mut *proposal_account_info.data.borrow_mut())?;
-    token_owner_record_data.serialize(&mut *token_owner_record_info.data.borrow_mut())?;
+    token_owner_record_data.serialize(&mut *vote_power_owner_record_info.data.borrow_mut())?;
 
     Ok(())
 }

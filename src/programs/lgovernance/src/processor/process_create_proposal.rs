@@ -1,16 +1,13 @@
 use crate::{
     accounts::AccountType,
     error::GovernanceError,
-    instruction::{create_proposal_option, CreateProposalOptionType},
     state::{
-        enums::VoteTipping,
         governance::GovernanceV2,
-        proposal::{get_proposal_address_seeds, CommonScopeConfig},
+        proposal::{get_proposal_address_seeds},
     },
     state::{
         enums::{InstructionExecutionFlags, ProposalState},
         proposal::{ProposalV2, VoteType},
-        token_owner_record::get_token_owner_record_data_for_owner,
     },
 };
 use shared::{
@@ -24,7 +21,6 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
     entrypoint::ProgramResult,
-    msg,
     program_error::ProgramError,
     pubkey::Pubkey,
     rent::Rent,

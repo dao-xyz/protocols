@@ -81,7 +81,7 @@ pub enum VoteTipping {
     /// Never tip the vote early.
     Disabled,
 }
-
+/*
 impl VoteTipping {
     pub fn get_strictest(&self, other: &Self) -> Self {
         match &self {
@@ -89,21 +89,21 @@ impl VoteTipping {
                 if other == &VoteTipping::Disabled {
                     return other.clone();
                 }
-                return self.clone();
+                self.clone()
             }
             Self::Early => {
                 if other != &VoteTipping::Early {
                     return other.clone();
                 }
-                return self.clone();
+                self.clone()
             }
 
             Self::Disabled => {
-                return self.clone();
+                self.clone()
             }
         }
     }
-}
+} */
 
 /// Transaction execution flags defining how instructions are executed for a Proposal
 #[repr(C)]

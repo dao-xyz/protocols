@@ -21,7 +21,6 @@ use shared::account::{create_and_serialize_account_signed, get_account_data};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    msg,
     program_error::ProgramError,
     pubkey::Pubkey,
     rent::Rent,
@@ -80,9 +79,9 @@ pub fn process_insert_transaction(
     }
     // CHECK AUTHORITY
     /*
-       let token_owner_record_data = get_token_owner_record_data_for_proposal_owner(
+       let token_owner_record_data = get_vote_power_owner_record_data_for_proposal_owner(
            program_id,
-           token_owner_record_info,
+           vote_power_owner_record_info,
            &proposal_data.token_owner_record,
        )?;
 

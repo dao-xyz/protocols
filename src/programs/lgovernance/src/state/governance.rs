@@ -1,12 +1,12 @@
 //! Governance Account
-use borsh::maybestd::io::Write;
+
 use shared::account::{get_account_data, MaxSize};
 
-use crate::{accounts::AccountType, state::enums::VoteTipping};
+use crate::accounts::AccountType;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_program::{
-    account_info::AccountInfo, borsh::try_from_slice_unchecked, program_error::ProgramError,
-    program_pack::IsInitialized, pubkey::Pubkey,
+    account_info::AccountInfo, program_error::ProgramError, program_pack::IsInitialized,
+    pubkey::Pubkey,
 };
 
 /// Governance Account
@@ -16,9 +16,8 @@ pub struct GovernanceV2 {
     /// Account type. It can be Uninitialized, Governance, ProgramGovernance, TokenGovernance or MintGovernance
     pub account_type: AccountType,
 
-    /// Goverannce associated channel
-    pub channel: Pubkey,
-
+    /// Seed for governance address
+    pub seed: Pubkey,
     /// Account governed by this Governance and/or PDA identity seed
     /// It can be Program account, Mint account, Token account or any other account
     ///
@@ -35,9 +34,16 @@ pub struct GovernanceV2 {
 
     /// The number of proposals in voting state in the Governance
     pub voting_proposal_count: u32,
+
+    /// Authory that can be used for signing without creating a proposal
+    pub optional_authority: Option<Pubkey>,
 }
 
-impl MaxSize for GovernanceV2 {}
+impl MaxSize for GovernanceV2 {
+    fn get_max_size(&self) -> Option<usize> {
+        Some(1 + 32 + 8 + 4 + 1 + 32)
+    }
+}
 
 impl IsInitialized for GovernanceV2 {
     fn is_initialized(&self) -> bool {
@@ -54,28 +60,28 @@ pub fn get_governance_data(
 }
 /// Returns Governance PDA seeds
 pub fn get_governance_address_seeds<'a>(
-    channel: &'a Pubkey,
+    seed: &'a Pubkey,
     // governed_account: &'a Pubkey,
     bump_seed: &'a [u8],
 ) -> [&'a [u8]; 3] {
     [
         b"account-governance",
-        channel.as_ref(),
+        seed.as_ref(),
         // governed_account.as_ref(),
         bump_seed,
     ]
 }
 
 /// Returns Governance PDA address
-pub fn get_governance_address<'a>(
+pub fn get_governance_address(
     program_id: &Pubkey,
-    channel: &Pubkey,
+    seed: &Pubkey,
     //  governed_account: &Pubkey,
 ) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[
             b"account-governance",
-            channel.as_ref(),
+            seed.as_ref(),
             // governed_account.as_ref(),
         ],
         program_id,

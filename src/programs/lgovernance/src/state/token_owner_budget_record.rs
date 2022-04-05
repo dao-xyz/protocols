@@ -1,26 +1,17 @@
 //! Token Owner Consumption Record Account
 //! Account for handling budgets that are affected by delegations by scope(s)
 
-use std::slice::Iter;
+use shared::account::{get_account_data, MaxSize};
 
-use shared::account::{create_and_serialize_account_signed, get_account_data, MaxSize};
-
-use crate::{accounts::AccountType, error::GovernanceError, tokens::spl_utils::get_token_balance};
+use crate::{accounts::AccountType, error::GovernanceError};
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_program::{
-    account_info::{next_account_info, AccountInfo},
-    msg,
-    program_error::ProgramError,
-    program_pack::IsInitialized,
+    account_info::AccountInfo, program_error::ProgramError, program_pack::IsInitialized,
     pubkey::Pubkey,
-    rent::Rent,
 };
 
-use super::token_owner_record::{
-    get_token_owner_delegatee_record_address, get_token_owner_delegatee_record_address_seeds,
-    get_token_owner_record_data_for_owner, TokenOwnerRecordV2,
-};
+use super::vote_power_origin_record::VotePowerOriginRecord;
 
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
@@ -44,9 +35,9 @@ impl TokenOwnerBudgetRecord {
     amount: u64,
     token_owner_budget_record: &mut TokenOwnerBudgetRecord,
     token_owner_budget_record_info: &AccountInfo<'a>, */
-    /*  token_owner_record: &TokenOwnerRecordV2,
-    token_owner_record_info: &AccountInfo<'a>,
-    governing_token_owner_info: &AccountInfo<'a>, */
+    /*  token_owner_record: &VotePowerOwnerRecord,
+    vote_power_owner_record_info: &AccountInfo<'a>,
+    governing_owner_info: &AccountInfo<'a>, */
     /*    ) -> Result<(), ProgramError> {
         token_owner_budget_record.amount = token_owner_budget_record
             .amount
@@ -68,9 +59,9 @@ impl TokenOwnerBudgetRecord {
     amount: u64,
     token_owner_budget_record: &mut TokenOwnerBudgetRecord, */
     /* token_owner_budget_record_info: &AccountInfo<'a>,
-    token_owner_record: &TokenOwnerRecordV2,
-     token_owner_record_info: &AccountInfo<'a>,
-     governing_token_owner_info: &AccountInfo<'a>, */
+    token_owner_record: &VotePowerOwnerRecord,
+     vote_power_owner_record_info: &AccountInfo<'a>,
+     governing_owner_info: &AccountInfo<'a>, */
     /*     ) -> Result<(), ProgramError> {
         token_owner_budget_record.amount = token_owner_budget_record
             .amount
@@ -116,13 +107,13 @@ pub fn assert_token_owner_budget_record_address<'a>(
 /// Returns TokenOwnerRecord PDA address
 pub fn get_token_owner_budget_record_address(
     program_id: &Pubkey,
-    token_owner_record: &Pubkey,
+    token_origin_record: &Pubkey,
     scope: &Pubkey,
 ) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[
             b"budget_record",
-            token_owner_record.as_ref(),
+            token_origin_record.as_ref(),
             scope.as_ref(),
         ],
         program_id,
@@ -131,13 +122,13 @@ pub fn get_token_owner_budget_record_address(
 
 /// Returns TokenOwnerRecord PDA seeds
 pub fn get_token_owner_budget_record_address_seeds<'a>(
-    token_owner_record: &'a Pubkey,
+    token_origin_record: &'a Pubkey,
     scope: &'a Pubkey,
     bump_seed: &'a [u8],
 ) -> [&'a [u8]; 4] {
     [
         b"budget_record",
-        token_owner_record.as_ref(),
+        token_origin_record.as_ref(),
         scope.as_ref(),
         bump_seed,
     ]
@@ -147,21 +138,21 @@ pub fn get_token_owner_budget_record_address_seeds<'a>(
 pub fn get_token_owner_budget_record_data_for_token_record(
     program_id: &Pubkey,
     token_owner_budget_record_info: &AccountInfo,
-    token_owner_record: &TokenOwnerRecordV2,
-    token_owner_record_info: &AccountInfo,
-    governing_token_owner_info: &AccountInfo,
+    token_origin_record: &VotePowerOriginRecord,
+    token_origin_record_info: &AccountInfo,
+    governing_owner_info: &AccountInfo,
 ) -> Result<TokenOwnerBudgetRecord, ProgramError> {
-    if !governing_token_owner_info.is_signer {
+    if !governing_owner_info.is_signer {
         return Err(GovernanceError::GoverningTokenOwnerMustSign.into());
     }
-    if &token_owner_record.governing_token_owner != governing_token_owner_info.key {
+    if &token_origin_record.governing_owner != governing_owner_info.key {
         return Err(GovernanceError::InvalidTokenOwner.into());
     }
 
     let token_owner_budget_record =
         get_account_data::<TokenOwnerBudgetRecord>(program_id, token_owner_budget_record_info)?;
 
-    if &token_owner_budget_record.token_owner_record != token_owner_record_info.key {
+    if &token_owner_budget_record.token_owner_record != token_origin_record_info.key {
         return Err(GovernanceError::InvalidTokenOwnerRecordAccountAddress.into());
     }
 

@@ -427,7 +427,7 @@ impl ProgramTestBench {
     #[allow(dead_code)]
     pub async fn advance_clock_by_min_timespan(
         &mut self,
-        context: &mut ProgramTestContext,
+        _context: &mut ProgramTestContext,
         time_span: u64,
     ) {
         let clock = self.get_clock().await;

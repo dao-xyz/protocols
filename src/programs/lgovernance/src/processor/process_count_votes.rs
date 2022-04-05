@@ -6,12 +6,14 @@ use crate::{
         proposal::{
             get_proposal_data, proposal_option::get_proposal_option_data, OptionVoteResult,
         },
-        scopes::scope::{get_scope_data, get_scope_data_for_governance},
+        scopes::scope::{get_scope_data, get_scope_data_for_governance, VotePowerUnit},
     },
     tokens::spl_utils::get_spl_token_mint_supply,
 };
 
 use borsh::BorshSerialize;
+use ltag::state::TagRecordFactoryAccount;
+use shared::account::get_account_data;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -143,21 +145,20 @@ pub fn process_count_votes(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
                                 .saturating_sub(option_vote_weight.weight),
                         ),
                         max_scope_weight.weight,
-                    ) {
-                        if proposal_option_data.vote_result == OptionVoteResult::None {
-                            proposal_option_data.vote_result = OptionVoteResult::Succeeded;
+                    ) && proposal_option_data.vote_result == OptionVoteResult::None
+                    {
+                        proposal_option_data.vote_result = OptionVoteResult::Succeeded;
 
-                            match &mut deny_option {
-                                Some((info, data)) => {
-                                    if data.vote_result == OptionVoteResult::None {
-                                        data.vote_result = OptionVoteResult::Defeated;
-                                        proposal.defeated_options.push(data.index);
-                                        data.serialize(&mut *info.data.borrow_mut())?;
-                                    }
+                        match &mut deny_option {
+                            Some((info, data)) => {
+                                if data.vote_result == OptionVoteResult::None {
+                                    data.vote_result = OptionVoteResult::Defeated;
+                                    proposal.defeated_options.push(data.index);
+                                    data.serialize(&mut *info.data.borrow_mut())?;
                                 }
-                                None => {}
-                            };
-                        }
+                            }
+                            None => {}
+                        };
                     }
                 }
                 VoteTipping::Early => {
@@ -165,10 +166,9 @@ pub fn process_count_votes(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
                         option_vote_weight.weight,
                         Some(deny_vote_weight),
                         max_scope_weight.weight,
-                    ) {
-                        if proposal_option_data.vote_result == OptionVoteResult::None {
-                            proposal_option_data.vote_result = OptionVoteResult::Succeeded;
-                        }
+                    ) && proposal_option_data.vote_result == OptionVoteResult::None
+                    {
+                        proposal_option_data.vote_result = OptionVoteResult::Succeeded;
                     }
                 }
             };
@@ -220,25 +220,23 @@ pub fn process_count_votes(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
                         ProposalState::Defeated,
                         current_unix_timestamp,
                     );
-                } else {
-                    if let Some((_, data)) = &deny_option {
-                        if proposal.winning_options[0] == data.index {
-                            proposal.set_completed_voting_state(
-                                ProposalState::Defeated,
-                                current_unix_timestamp,
-                            );
-                        } else {
-                            proposal.set_completed_voting_state(
-                                ProposalState::Succeeded,
-                                current_unix_timestamp,
-                            );
-                        }
+                } else if let Some((_, data)) = &deny_option {
+                    if proposal.winning_options[0] == data.index {
+                        proposal.set_completed_voting_state(
+                            ProposalState::Defeated,
+                            current_unix_timestamp,
+                        );
                     } else {
                         proposal.set_completed_voting_state(
                             ProposalState::Succeeded,
                             current_unix_timestamp,
                         );
                     }
+                } else {
+                    proposal.set_completed_voting_state(
+                        ProposalState::Succeeded,
+                        current_unix_timestamp,
+                    );
                 }
             }
             VoteType::MultiChoice {
@@ -312,16 +310,28 @@ pub fn process_count_max_vote_weights(
         let scope_data = get_scope_data(program_id, scope_info)?;
 
         let mut sum: u64 = 0;
-        for mint_weight in scope_data.config.vote_config.mint_weights {
-            let mint_info = next_account_info(accounts_iter)?;
+        for source_weight in scope_data.config.vote_config.source_weights {
+            let supply = match &source_weight.source {
+                VotePowerUnit::Tag { record_factory } => {
+                    let record_factory_info = next_account_info(accounts_iter)?;
 
-            if mint_info.key != &mint_weight.mint {
-                return Err(GovernanceError::InvalidVoteMint.into());
-            }
+                    if record_factory_info.key != record_factory {
+                        return Err(GovernanceError::InvalidVoteMint.into());
+                    }
+                    get_account_data::<TagRecordFactoryAccount>(&ltag::id(), record_factory_info)?
+                        .outstanding_records
+                }
+                VotePowerUnit::Mint(mint) => {
+                    let mint_info = next_account_info(accounts_iter)?;
 
-            let supply = get_spl_token_mint_supply(mint_info)?;
+                    if mint_info.key != mint {
+                        return Err(GovernanceError::InvalidVoteMint.into());
+                    }
+                    get_spl_token_mint_supply(mint_info)?
+                }
+            };
             sum = sum
-                .checked_add(supply.checked_mul(mint_weight.weight).unwrap())
+                .checked_add(supply.checked_mul(source_weight.weight).unwrap())
                 .unwrap();
         }
         vote_weight.weight = sum;

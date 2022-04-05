@@ -36,7 +36,7 @@ pub fn process_create_native_treasury(
 
     let rent = Rent::get()?;
 
-    assert_is_valid_account_of_types(&program_id, governance_info, is_governance_account_type)?;
+    assert_is_valid_account_of_types(program_id, governance_info, is_governance_account_type)?;
 
     let native_treasury_data = NativeTreasury {};
 

@@ -1,7 +1,7 @@
 use std::slice::Iter;
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use ltag::state::get_tag_record_data_with_authority_and_signed_owner;
+use ltag::state::get_tag_record_data_with_factory_and_signed_owner;
 use shared::{
     account::{get_account_data, MaxSize},
     content::ContentSource,
@@ -18,9 +18,8 @@ use crate::{
     error::GovernanceError,
     state::{
         proposal::{proposal_transaction::InstructionData, ProposalV2},
-        token_owner_record::get_token_owner_record_data_for_owner,
+        vote_power_owner_record::get_vote_power_owner_record_data_for_owner,
     },
-    tokens::spl_utils::get_spl_token_mint_supply,
 };
 
 use super::super::enums::VoteTipping;
@@ -75,9 +74,9 @@ pub struct InstructionConditional {
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub enum ScopeCondition {
+pub enum ScopeMatch {
     // For what program id?
-    None,
+    All,
     ProgramId(Pubkey),
     Granular {
         program_id: Pubkey,
@@ -97,6 +96,7 @@ pub struct ScopeTimeConfig {
     /// Note: This field is not implemented in the current version
     pub proposal_cool_off_time: u32,
 }
+/*
 impl ScopeTimeConfig {
     pub fn get_strictest(&self, other: &Self) -> Self {
         Self {
@@ -110,7 +110,7 @@ impl ScopeTimeConfig {
         }
     }
 }
-
+ */
 impl Default for ScopeTimeConfig {
     fn default() -> Self {
         Self {
@@ -120,17 +120,50 @@ impl Default for ScopeTimeConfig {
         }
     }
 }
+
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub struct MintWeight {
-    pub mint: Pubkey,
+pub enum VotePowerUnit {
+    Mint(Pubkey),
+    Tag { record_factory: Pubkey },
+}
+
+impl VotePowerUnit {
+    pub fn assert_compatible(&self, other: &Self) -> Result<(), ProgramError> {
+        match self {
+            Self::Mint(governing_token_mint) => {
+                if let Self::Mint(other_governing_token_mint) = other {
+                    if governing_token_mint == other_governing_token_mint {
+                        return Ok(());
+                    }
+                }
+            }
+            Self::Tag { record_factory, .. } => {
+                if let Self::Tag {
+                    record_factory: other_record_factory,
+                    ..
+                } = other
+                {
+                    if record_factory == other_record_factory {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        Err(GovernanceError::InvalidVotePowerSource.into())
+    }
+}
+
+#[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
+pub struct SourceWeight {
+    pub source: VotePowerUnit,
     pub weight: u64,
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
 pub struct ScopeVoteConfig {
-    pub scope_condition: Option<ScopeCondition>,
+    pub scope_condition: Option<ScopeMatch>,
     pub criteria: AcceptenceCriteria,
-    pub mint_weights: Vec<MintWeight>,
+    pub source_weights: Vec<SourceWeight>,
     /// Conditions under which a vote will complete early
     pub vote_tipping: VoteTipping,
 
@@ -147,42 +180,42 @@ impl ScopeProposalConfig {
     pub fn assert_can_create_proposal(
         &self,
         program_id: &Pubkey,
-        proposal: &ProposalV2,
+        _proposal: &ProposalV2,
         accounts: &mut Iter<AccountInfo>,
     ) -> Result<(), ProgramError> {
         match &self.create_proposal_criteria {
-            CreateProposalCriteria::AuthorityTag { authority, tag } => {
+            CreateProposalCriteria::Tag { record_factory } => {
                 let tag_record_info = next_account_info(accounts)?;
                 let tag_record_owner = next_account_info(accounts)?;
-                let tag_record_data = get_tag_record_data_with_authority_and_signed_owner(
+                let _tag_record_data = get_tag_record_data_with_factory_and_signed_owner(
                     &ltag::id(),
                     tag_record_info,
-                    authority,
+                    record_factory,
                     tag_record_owner,
                 )?;
-                if &tag_record_data.tag != tag {
-                    return Err(GovernanceError::InvalidTagRecord.into());
-                }
                 Ok(())
             }
-            CreateProposalCriteria::TokenOwner { amount, mint } => {
+            CreateProposalCriteria::Token { amount, mint } => {
                 let token_owner_record = next_account_info(accounts)?;
-                let governing_token_owner_info = next_account_info(accounts)?;
-
-                let token_owner_record_data = get_token_owner_record_data_for_owner(
+                let governing_owner_info = next_account_info(accounts)?;
+                let token_owner_record_data = get_vote_power_owner_record_data_for_owner(
                     program_id,
                     token_owner_record,
-                    governing_token_owner_info,
+                    governing_owner_info,
                 )?;
 
-                if &token_owner_record_data.governing_token_mint != mint {
-                    return Err(GovernanceError::InvalidGoverningMintForProposal.into());
-                }
+                if let VotePowerUnit::Mint(governing_token_mint) = &token_owner_record_data.source {
+                    if governing_token_mint != mint {
+                        return Err(GovernanceError::InvalidGoverningMintForProposal.into());
+                    }
 
-                if amount < &token_owner_record_data.governing_token_deposit_amount {
-                    return Err(GovernanceError::InvalidTokenBalance.into());
+                    if amount < &token_owner_record_data.amount {
+                        return Err(GovernanceError::InvalidTokenBalance.into());
+                    }
+                    Ok(())
+                } else {
+                    Err(GovernanceError::InvalidVotePowerSource.into())
                 }
-                Ok(())
             }
         }
     }
@@ -198,13 +231,13 @@ pub struct ScopeConfig {
 impl ScopeConfig {
     pub fn get_single_mint_config(
         governance_mint: &Pubkey,
-        scope_condition: &Option<ScopeCondition>,
+        scope_condition: &Option<ScopeMatch>,
         name: &Option<String>,
         info: &Option<ContentSource>,
     ) -> Self {
         Self {
             proposal_config: ScopeProposalConfig {
-                create_proposal_criteria: CreateProposalCriteria::TokenOwner {
+                create_proposal_criteria: CreateProposalCriteria::Token {
                     amount: 1,
                     mint: *governance_mint,
                 },
@@ -213,8 +246,37 @@ impl ScopeConfig {
             vote_config: ScopeVoteConfig {
                 criteria: AcceptenceCriteria::default(),
                 info: info.clone(),
-                mint_weights: vec![MintWeight {
-                    mint: *governance_mint,
+                source_weights: vec![SourceWeight {
+                    source: VotePowerUnit::Mint(*governance_mint),
+                    weight: 100,
+                }],
+                name: name.clone(),
+                scope_condition: scope_condition.clone(),
+                vote_tipping: VoteTipping::Strict,
+            },
+        }
+    }
+
+    pub fn get_single_tag_config(
+        record_factory: &Pubkey,
+        scope_condition: &Option<ScopeMatch>,
+        name: &Option<String>,
+        info: &Option<ContentSource>,
+    ) -> Self {
+        Self {
+            proposal_config: ScopeProposalConfig {
+                create_proposal_criteria: CreateProposalCriteria::Tag {
+                    record_factory: *record_factory,
+                },
+            },
+            time_config: ScopeTimeConfig::default(),
+            vote_config: ScopeVoteConfig {
+                criteria: AcceptenceCriteria::default(),
+                info: info.clone(),
+                source_weights: vec![SourceWeight {
+                    source: VotePowerUnit::Tag {
+                        record_factory: *record_factory,
+                    },
                     weight: 100,
                 }],
                 name: name.clone(),
@@ -226,8 +288,8 @@ impl ScopeConfig {
 }
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
 pub enum CreateProposalCriteria {
-    AuthorityTag { tag: Pubkey, authority: Pubkey },
-    TokenOwner { mint: Pubkey, amount: u64 },
+    Tag { record_factory: Pubkey },
+    Token { mint: Pubkey, amount: u64 },
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
@@ -257,14 +319,14 @@ impl Scope {
     pub fn scope_applicable(&self, instruction_data: &InstructionData) -> Result<(), ProgramError> {
         if let Some(config) = &self.config.vote_config.scope_condition {
             match config {
-                ScopeCondition::None => return Ok(()),
-                ScopeCondition::ProgramId(program_id) => {
+                ScopeMatch::All => return Ok(()),
+                ScopeMatch::ProgramId(program_id) => {
                     if program_id != &instruction_data.program_id {
                         return Err(GovernanceError::ScopeNotApplicableForInstruction.into());
                     }
                     return Ok(());
                 }
-                ScopeCondition::Granular {
+                ScopeMatch::Granular {
                     program_id,
                     instruction_condition,
                 } => {
@@ -324,23 +386,45 @@ pub fn get_scope_data(
 }
 
 impl ScopeVoteConfig {
-    pub fn max_vote_weight(
+    /*
+     pub fn max_vote_weight(
         &self,
         accounts_iter: &mut Iter<AccountInfo>,
     ) -> Result<u64, ProgramError> {
         let mut sum = 0_u64;
-        for mint_weight in &self.mint_weights {
-            let mint_info = next_account_info(accounts_iter)?;
-            if mint_info.key != &mint_weight.mint {
-                return Err(GovernanceError::InvalidVoteMint.into());
+        for source_weight in &self.source_weights {
+            match &source_weight.source {
+                VoteSource::Mint(mint) => {
+                    let mint_info = next_account_info(accounts_iter)?;
+                    if mint_info.key != mint {
+                        return Err(GovernanceError::InvalidVoteMint.into());
+                    }
+                    let supply = get_spl_token_mint_supply(mint_info)?;
+                    sum = sum
+                        .checked_add(supply.checked_mul(source_weight.weight).unwrap())
+                        .unwrap();
+                }
+                VoteSource::Tag { record_factory } => {
+                    let record_factory_info = next_account_info(accounts_iter)?;
+                    if record_factory_info.key != record_factory {
+                        return Err(GovernanceError::InvalidTagRecordFactory.into());
+                    }
+
+                    let tag_record_factory = get_account_data::<TagRecordFactoryAccount>(
+                        &ltag::id(),
+                        record_factory_info,
+                    )?;
+
+                    let supply = tag_record_factory.outstanding_records;
+                    sum = sum
+                        .checked_add(supply.checked_mul(source_weight.weight).unwrap())
+                        .unwrap();
+                }
             }
-            let supply = get_spl_token_mint_supply(mint_info)?;
-            sum = sum
-                .checked_add(supply.checked_mul(mint_weight.weight).unwrap())
-                .unwrap();
         }
         Ok(sum)
     }
+    */
     pub fn is_approved(
         &self,
         weight: u64,

@@ -1,13 +1,12 @@
 pub mod proposal_option;
 pub mod proposal_transaction;
 
-use std::slice::Iter;
-
 use borsh::maybestd::io::Write;
 use shared::account::{get_account_data, MaxSize};
 use shared::content::ContentSource;
 use solana_program::account_info::next_account_info;
 use solana_program::clock::{Slot, UnixTimestamp};
+use std::slice::Iter;
 
 use solana_program::msg;
 use solana_program::program_pack::IsInitialized;
@@ -22,7 +21,7 @@ use self::proposal_option::{get_proposal_option_data, ProposalOption};
 
 use super::enums::{InstructionExecutionFlags, ProposalState, VoteTipping};
 
-use super::scopes::scope::{AcceptenceCriteria, Scope, ScopeTimeConfig};
+use super::scopes::scope::{AcceptenceCriteria, Scope, ScopeTimeConfig, VotePowerUnit};
 use super::scopes::scope_weight::ScopeWeight;
 use super::vote_record::Vote;
 use proposal_transaction::ProposalTransactionV2;
@@ -73,14 +72,14 @@ pub struct CommonScopeConfig {
     pub time_config: ScopeTimeConfig,
 }
 
-impl CommonScopeConfig {
+/* impl CommonScopeConfig {
     pub fn set_strictest(&mut self, compare: &Scope) {
         self.vote_tipping = self
             .vote_tipping
             .get_strictest(&compare.config.vote_config.vote_tipping);
         self.time_config = self.time_config.get_strictest(&compare.config.time_config);
     }
-}
+} */
 
 /// Governance Proposal
 #[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
@@ -267,7 +266,7 @@ impl ProposalV2 {
         if &self.creator != creator.key {
             return Err(GovernanceError::InvalidCreatorForProposal.into());
         }
-        return Ok(());
+        Ok(())
     }
 
     /// Checks the Proposal is in Draft state
@@ -712,7 +711,7 @@ impl ProposalV2 {
             }
         } */
         msg!(" ?? {} ", vote.len());
-        if vote.len() == 0 {
+        if vote.is_empty() {
             return Err(GovernanceError::InvalidVote.into());
         }
 
@@ -775,27 +774,19 @@ impl ProposalV2 {
         program_id: &Pubkey,
         amount: u64,
         add: bool,
-        governing_token_mint: &Pubkey,
+        source: &VotePowerUnit,
         scope: &Pubkey,
         scope_data: &Scope,
         proposal: &Pubkey,
         accounts_iter: &mut Iter<AccountInfo>,
     ) -> Result<Vec<u16>, ProgramError> {
         let mut vote = Vec::new();
-        msg!("B");
         let mut option_info_next = next_account_info(accounts_iter);
-        msg!("BB");
 
         while let Ok(option_info) = option_info_next {
             // Vote with scope weight
-            // Check create vote recor
-            msg!("::: {} {}", option_info.key, option_info.data_is_empty());
             let mut option_data = get_proposal_option_data(program_id, option_info, proposal)?;
-            msg!("BBB");
-
-            option_data.update_weight(amount, add, governing_token_mint, scope, scope_data)?;
-            msg!("BBBB");
-
+            option_data.update_weight(amount, add, source, scope, scope_data)?;
             option_data.serialize(&mut *option_info.data.borrow_mut())?;
             option_info_next = next_account_info(accounts_iter);
             vote.push(option_data.index);

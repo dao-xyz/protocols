@@ -2,12 +2,15 @@ use super::OptionVoteResult;
 use crate::{
     accounts::AccountType,
     error::GovernanceError,
-    state::scopes::{scope::Scope, scope_weight::ScopeWeight},
+    state::scopes::{
+        scope::{Scope, VotePowerUnit},
+        scope_weight::ScopeWeight,
+    },
 };
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use shared::account::{get_account_data, MaxSize};
 use solana_program::{
-    account_info::AccountInfo, msg, program_error::ProgramError, program_pack::IsInitialized,
+    account_info::AccountInfo, program_error::ProgramError, program_pack::IsInitialized,
     pubkey::Pubkey,
 };
 
@@ -54,13 +57,54 @@ impl ProposalOption {
         &mut self,
         amount: u64,
         add: bool,
-        vote_mint: &Pubkey,
+        source: &VotePowerUnit,
         scope: &Pubkey,
         scope_data: &Scope,
     ) -> Result<(), ProgramError> {
         // Find mint weight
-        for scope_mint_weight in &scope_data.config.vote_config.mint_weights {
-            if &scope_mint_weight.mint == vote_mint {
+        for source_weight in &scope_data.config.vote_config.source_weights {
+            // Check if matching token or tag
+            match source {
+                VotePowerUnit::Mint(governing_token_mint) => {
+                    if let VotePowerUnit::Mint(other_mint) = &source_weight.source {
+                        if other_mint != governing_token_mint {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+                }
+                VotePowerUnit::Tag { record_factory, .. } => {
+                    if let VotePowerUnit::Tag {
+                        record_factory: other_record_factory,
+                    } = &source_weight.source
+                    {
+                        if other_record_factory != record_factory {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+                }
+            };
+            for vote_weight in &mut self.vote_weights {
+                if &vote_weight.scope == scope {
+                    // lets hope compiler is smart
+                    vote_weight.weight = match add {
+                        true => vote_weight
+                            .weight
+                            .checked_add(amount.checked_mul(source_weight.weight).unwrap())
+                            .unwrap(),
+                        false => vote_weight
+                            .weight
+                            .checked_sub(amount.checked_mul(source_weight.weight).unwrap())
+                            .unwrap(),
+                    };
+                    return Ok(());
+                }
+            }
+
+            /*  if &source_weight.mint == vote_mint {
                 // Find scope vote weight to modify
                 for vote_weight in &mut self.vote_weights {
                     if &vote_weight.scope == scope {
@@ -68,17 +112,17 @@ impl ProposalOption {
                         vote_weight.weight = match add {
                             true => vote_weight
                                 .weight
-                                .checked_add(amount.checked_mul(scope_mint_weight.weight).unwrap())
+                                .checked_add(amount.checked_mul(source_weight.weight).unwrap())
                                 .unwrap(),
                             false => vote_weight
                                 .weight
-                                .checked_sub(amount.checked_mul(scope_mint_weight.weight).unwrap())
+                                .checked_sub(amount.checked_mul(source_weight.weight).unwrap())
                                 .unwrap(),
                         };
                         return Ok(());
                     }
                 }
-            }
+            } */
         }
         Err(GovernanceError::InvalidVote.into())
     }

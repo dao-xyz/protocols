@@ -1,31 +1,21 @@
+use crate::governance::utils::TestTagRecordFactory;
 use crate::{governance::utils::TestDelegation, utils::program_test};
-use lgovernance::{
-    instruction::CreateProposalOptionType,
-    state::{
-        enums::ProposalState,
-        native_treasury::get_native_treasury_address,
-        proposal::{
-            proposal_option::ProposalOption, proposal_transaction::ConditionedInstruction, VoteType,
-        },
-        scopes::scope::{ScopeCondition, ScopeConfig},
-    },
-};
-use solana_program::{borsh::try_from_slice_unchecked, system_instruction, system_program};
+use lgovernance::state::enums::ProposalState;
+
+use lgovernance::state::scopes::scope::VotePowerUnit;
 use solana_program_test::*;
-use solana_sdk::signature::Keypair;
 
 use super::super::bench::ProgramTestBench;
-use super::utils::{TestChannel, TestGovernance, TestProposal, TestToken, TestUser};
+use super::utils::{TestGovernance, TestProposal, TestToken, TestUser, TestVotePowerSource};
 
 #[tokio::test]
-async fn success_delegate_simple() {
+async fn success_token_vote_after_delegate() {
     // Delegate before vote cast
     let mut bench = ProgramTestBench::start_new(program_test()).await;
 
     let user_delegatee = TestUser::new();
     let user_delegator = TestUser::new();
 
-    let channel = TestChannel::new(&mut bench, &user_delegatee, Keypair::new()).await;
     let governance_token = TestToken::new(&mut bench).await;
     governance_token
         .create_token_holder_account(&mut bench)
@@ -64,48 +54,53 @@ async fn success_delegate_simple() {
         .deposit_governance_tokens(&mut bench, 99, &governance_token)
         .await;
 
-    let mut governance =
-        TestGovernance::new(&mut bench, &channel.channel, &channel.authority).await;
+    let mut governance = TestGovernance::new(&mut bench).await;
     governance.with_native_treasury(&mut bench).await;
 
-    let (proposal, scope, _destination) = TestProposal::new_transfer_proposal(
+    let scope = governance
+        .create_scope_system(
+            &mut bench,
+            TestVotePowerSource::TestToken(&governance_token),
+        )
+        .await;
+
+    let vote_power_unit = VotePowerUnit::Mint(governance_token.mint);
+
+    // Enable delegatee to vote with owned tokens
+    let self_delegation = TestDelegation::new(
         &mut bench,
         &user_delegatee,
-        &channel,
-        &governance,
-        &governance_token,
-        1,
+        &user_delegatee,
+        &vote_power_unit,
+        &scope,
     )
     .await;
+    self_delegation.delegate(&mut bench, &1).await;
 
+    let (proposal, _destination) =
+        TestProposal::new_transfer_proposal(&mut bench, &user_delegatee, &scope, &governance, 1)
+            .await;
+
+    // Enable delegation
     let delegation = TestDelegation::new(
         &mut bench,
         &user_delegator,
         &user_delegatee,
-        &governance_token,
+        &vote_power_unit,
         &scope,
     )
     .await;
+
     // Delegate so that the delegatee now controls 51% of supply
     delegation.delegate(&mut bench, &50).await;
 
     // vote for the transaction option
     proposal
-        .vote(
-            &mut bench,
-            &vec![1],
-            &user_delegatee,
-            &governance_token,
-            &scope,
-        )
-        .await;
-
-    proposal
         .vote_with_delegate(
             &mut bench,
             &vec![1],
             &user_delegatee,
-            &governance_token,
+            &vote_power_unit,
             &scope,
         )
         .await;
@@ -123,7 +118,7 @@ async fn success_delegate_simple() {
 }
 
 #[tokio::test]
-async fn success_delegate_undelegate_with_synchronization() {
+async fn success_token_delegate_undelegate_with_synchronization() {
     // Delegate when vote already cast.
     // Call synchronization funcionality to update previously casted vote
     let mut bench = ProgramTestBench::start_new(program_test()).await;
@@ -131,7 +126,6 @@ async fn success_delegate_undelegate_with_synchronization() {
     let user_delegatee = TestUser::new();
     let user_delegator = TestUser::new();
 
-    let channel = TestChannel::new(&mut bench, &user_delegatee, Keypair::new()).await;
     let governance_token = TestToken::new(&mut bench).await;
     governance_token
         .create_token_holder_account(&mut bench)
@@ -170,27 +164,39 @@ async fn success_delegate_undelegate_with_synchronization() {
         .deposit_governance_tokens(&mut bench, 99, &governance_token)
         .await;
 
-    let mut governance =
-        TestGovernance::new(&mut bench, &channel.channel, &channel.authority).await;
+    let mut governance = TestGovernance::new(&mut bench).await;
     governance.with_native_treasury(&mut bench).await;
 
-    let (proposal, scope, _destination) = TestProposal::new_transfer_proposal(
+    let scope = governance
+        .create_scope_system(
+            &mut bench,
+            TestVotePowerSource::TestToken(&governance_token),
+        )
+        .await;
+    let vote_power_unit = VotePowerUnit::Mint(governance_token.mint);
+
+    // Enable some voting from the delegatee owned tokens
+    let self_delegation = TestDelegation::new(
         &mut bench,
         &user_delegatee,
-        &channel,
-        &governance,
-        &governance_token,
-        1,
+        &user_delegatee,
+        &vote_power_unit,
+        &scope,
     )
     .await;
+    self_delegation.delegate(&mut bench, &1).await;
+
+    let (proposal, _destination) =
+        TestProposal::new_transfer_proposal(&mut bench, &user_delegatee, &scope, &governance, 1)
+            .await;
 
     // vote for the transaction option
     proposal
-        .vote(
+        .vote_with_delegate(
             &mut bench,
             &vec![1],
             &user_delegatee,
-            &governance_token,
+            &vote_power_unit,
             &scope,
         )
         .await;
@@ -199,28 +205,11 @@ async fn success_delegate_undelegate_with_synchronization() {
 
     assert_eq!(proposal.get_state(&mut bench).await, ProposalState::Voting); // Not enought votes
 
-    user_delegatee
-        .create_delegatee(&mut bench, &governance_token, &scope)
-        .await;
-
-    // Vote with delegated tokens,
-    // even though we do not have any yet
-    // This in order to make the delegation later to update this vote
-    proposal
-        .vote_with_delegate(
-            &mut bench,
-            &vec![1],
-            &user_delegatee,
-            &governance_token,
-            &scope,
-        )
-        .await;
-
     let delegation = TestDelegation::new(
         &mut bench,
         &user_delegator,
         &user_delegatee,
-        &governance_token,
+        &vote_power_unit,
         &scope,
     )
     .await;
@@ -233,10 +222,7 @@ async fn success_delegate_undelegate_with_synchronization() {
         .await
         .unwrap();
 
-    assert_eq!(
-        delegatee_token_owner_record.governing_token_deposit_amount,
-        50
-    );
+    assert_eq!(delegatee_token_owner_record.amount, 51); // Delegatee + Delegator
     assert_eq!(
         delegation
             .get_delegation_record(&mut bench)
@@ -270,8 +256,8 @@ async fn success_delegate_undelegate_with_synchronization() {
             .get_delegatee_token_owner_record(&mut bench)
             .await
             .unwrap()
-            .governing_token_deposit_amount,
-        1
+            .amount,
+        2
     );
 
     delegation.undelegate(&mut bench, &1).await;
@@ -284,7 +270,128 @@ async fn success_delegate_undelegate_with_synchronization() {
             .get_delegatee_token_owner_record(&mut bench)
             .await
             .unwrap()
-            .governing_token_deposit_amount,
-        0
+            .amount,
+        1
+    );
+}
+
+#[tokio::test]
+async fn success_tag_delegate_undelegate_with_synchronization() {
+    // Delegate when vote already cast.
+    // Call synchronization funcionality to update previously casted vote
+    let mut bench = ProgramTestBench::start_new(program_test()).await;
+
+    let user_delegatee = TestUser::new();
+    let user_delegator = TestUser::new();
+
+    let tag_record_factory = TestTagRecordFactory::new(&mut bench).await;
+    let vote_power_unit = VotePowerUnit::Tag {
+        record_factory: tag_record_factory.factory,
+    };
+
+    tag_record_factory
+        .new_record(&mut bench, &user_delegatee)
+        .await;
+
+    user_delegatee
+        .deposit_governance_tag(&mut bench, &tag_record_factory)
+        .await;
+
+    tag_record_factory
+        .new_record(&mut bench, &user_delegator)
+        .await;
+
+    user_delegator
+        .deposit_governance_tag(&mut bench, &tag_record_factory)
+        .await;
+
+    let mut governance = TestGovernance::new(&mut bench).await;
+    governance.with_native_treasury(&mut bench).await;
+
+    let scope = governance
+        .create_scope_system(
+            &mut bench,
+            TestVotePowerSource::TestTagRecordFactory(&tag_record_factory),
+        )
+        .await;
+
+    // Enable some voting from the delegatee owned tokens
+    let self_delegation = TestDelegation::new(
+        &mut bench,
+        &user_delegatee,
+        &user_delegatee,
+        &vote_power_unit,
+        &scope,
+    )
+    .await;
+    self_delegation.delegate(&mut bench, &1).await;
+
+    let (proposal, _destination) =
+        TestProposal::new_transfer_proposal(&mut bench, &user_delegatee, &scope, &governance, 1)
+            .await;
+
+    // vote for the transaction option
+    proposal
+        .vote_with_delegate(
+            &mut bench,
+            &vec![1],
+            &user_delegatee,
+            &vote_power_unit,
+            &scope,
+        )
+        .await;
+
+    proposal.count_votes(&mut bench).await;
+
+    assert_eq!(proposal.get_state(&mut bench).await, ProposalState::Voting); // Not enought votes
+
+    let delegation = TestDelegation::new(
+        &mut bench,
+        &user_delegator,
+        &user_delegatee,
+        &vote_power_unit,
+        &scope,
+    )
+    .await;
+
+    // Delegate so that the delegatee now controls 51% of supply
+    delegation.delegate(&mut bench, &1).await;
+    delegation.delegate_history(&mut bench).await;
+    let delegatee_token_owner_record = delegation
+        .get_delegatee_token_owner_record(&mut bench)
+        .await
+        .unwrap();
+
+    assert_eq!(delegatee_token_owner_record.amount, 2); // Delegatee + Delegator
+    assert_eq!(
+        delegation
+            .get_delegation_record(&mut bench)
+            .await
+            .unwrap()
+            .amount,
+        1
+    );
+
+    proposal.count_votes(&mut bench).await;
+
+    assert_eq!(
+        proposal.get_state(&mut bench).await,
+        ProposalState::Succeeded
+    ); // Enough votes now since delegated
+
+    delegation.undelegate_history(&mut bench).await;
+
+    delegation.undelegate(&mut bench, &1).await;
+
+    // Delegation record should not exist anymore, since we autmatically dispose if no more tokens left
+    assert!(delegation.get_delegation_record(&mut bench).await.is_none());
+
+    assert_eq!(
+        delegation
+            .get_delegatee_token_owner_record(&mut bench)
+            .await
+            .unwrap()
+            .amount,
+        1
     );
 }

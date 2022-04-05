@@ -11,18 +11,12 @@ solana_program::declare_id!("GhhdZ7v99edo9v6XmitqEoKT5jev1mpCpVWim6bgKsh1");
 
 use solana_program::pubkey::Pubkey;
 
-use state::vote_record::Vote;
-
 /* use crate::tokens::spl_utils::{
     create_authority_program_address_seeds, create_mint_escrow_program_address_seeds,
     find_authority_program_address, find_mint_escrow_program_address, MINT_SEED,
 };
  */
 /// Seed for UPVOTE
-
-const scope: &[u8] = b"scope";
-
-const AUTHORITY: &[u8] = b"authority";
 
 const PROGRAM_AUTHORITY_SEED: &[u8] = b"p_authority";
 

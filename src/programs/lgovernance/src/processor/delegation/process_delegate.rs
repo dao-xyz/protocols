@@ -1,23 +1,15 @@
 //! Program state processor
 
-use crate::{
-    error::GovernanceError,
-    state::{
-        delegation::scope_delegation_record_account::ScopeDelegationRecordAccount,
-        token_owner_budget_record::{
-            get_token_owner_budget_record_data_for_token_record, TokenOwnerBudgetRecord,
-        },
-        token_owner_record::{
-            get_token_owner_record_data_for_delegation_activity,
-            get_token_owner_record_data_for_owner, TokenOwnerRecordV2,
-        },
-    },
+use crate::state::{
+    delegation::scope_delegation_record_account::ScopeDelegationRecordAccount,
+    token_owner_budget_record::get_token_owner_budget_record_data_for_token_record,
+    vote_power_origin_record::get_vote_power_origin_record_data_for_owner,
+    vote_power_owner_record::get_vote_power_owner_record_data_for_delegation_activity,
 };
 use borsh::BorshSerialize;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    msg,
     pubkey::Pubkey,
     rent::Rent,
     sysvar::Sysvar,
@@ -34,37 +26,38 @@ pub fn process_delegate(
 
     let delegation_record_info = next_account_info(accounts_iter)?;
 
-    let token_owner_record_info = next_account_info(accounts_iter)?;
+    let token_origin_record_info = next_account_info(accounts_iter)?;
     let token_owner_budget_record_info = next_account_info(accounts_iter)?;
-    let governing_token_owner_info = next_account_info(accounts_iter)?;
+    let governing_owner_info = next_account_info(accounts_iter)?;
 
-    let delegatee_token_owner_record_info = next_account_info(accounts_iter)?;
-    let delegatee_governing_token_owner_info = next_account_info(accounts_iter)?;
+    let delegatee_vote_power_owner_record_info = next_account_info(accounts_iter)?;
+    let delegatee_governing_owner_info = next_account_info(accounts_iter)?;
 
     let payer_info = next_account_info(accounts_iter)?;
     let system_info = next_account_info(accounts_iter)?;
     let rent = Rent::get()?;
 
     // Load token owner record
-    let token_owner_record = get_token_owner_record_data_for_owner(
+    let token_origin_record = get_vote_power_origin_record_data_for_owner(
         program_id,
-        token_owner_record_info,
-        governing_token_owner_info,
+        token_origin_record_info,
+        governing_owner_info,
     )?;
 
+    /*
     if token_owner_record.delegated_by_scope.is_some() {
         return Err(GovernanceError::DelegatingDelegateNotAllowed.into());
     }
 
     let governing_token_mint = &token_owner_record.governing_token_mint;
-
+    */
     // Update budget
     let mut token_owner_budget_record = get_token_owner_budget_record_data_for_token_record(
         program_id,
         token_owner_budget_record_info,
-        &token_owner_record,
-        token_owner_record_info,
-        governing_token_owner_info,
+        &token_origin_record,
+        token_origin_record_info,
+        governing_owner_info,
     )?;
     let scope = &token_owner_budget_record.scope;
 
@@ -77,20 +70,33 @@ pub fn process_delegate(
 
     // Load delegatee token owner record
     let mut delegatee_token_owner_record_data =
-        get_token_owner_record_data_for_delegation_activity(
+        get_vote_power_owner_record_data_for_delegation_activity(
             program_id,
-            delegatee_token_owner_record_info,
-            delegatee_governing_token_owner_info.key,
-            governing_token_mint,
-            Some(scope),
+            delegatee_vote_power_owner_record_info,
+            delegatee_governing_owner_info.key,
+            &token_origin_record.source,
+            scope,
         )?;
 
     // Modify the delegatee token owner record
-    delegatee_token_owner_record_data.governing_token_deposit_amount =
-        delegatee_token_owner_record_data
-            .governing_token_deposit_amount
-            .checked_add(amount)
-            .unwrap();
+    /*  match &mut delegatee_token_owner_record_data.source {
+        VoteSource::Token {
+            governing_token_deposit_amount,
+            ..
+        } => {
+            *governing_token_deposit_amount =
+                governing_token_deposit_amount.checked_add(amount).unwrap();
+        }
+        VoteSource::Tag {
+            amount: tag_amount, ..
+        } => {
+            *tag_amount = tag_amount.checked_add(amount).unwrap();
+        }
+    }; */
+    delegatee_token_owner_record_data.amount = delegatee_token_owner_record_data
+        .amount
+        .checked_add(amount)
+        .unwrap();
 
     // Create delegation record so we can undelegate at some point
     ScopeDelegationRecordAccount::delegate(
@@ -100,33 +106,33 @@ pub fn process_delegate(
         &rent,
         delegation_record_info,
         delegation_record_bump_seed,
-        &token_owner_record,
-        token_owner_record_info,
-        governing_token_owner_info,
+        &token_origin_record,
+        token_origin_record_info,
+        governing_owner_info,
         &delegatee_token_owner_record_data,
-        delegatee_token_owner_record_info,
+        delegatee_vote_power_owner_record_info,
         payer_info,
         system_info,
     )?;
 
     delegatee_token_owner_record_data
-        .serialize(&mut *delegatee_token_owner_record_info.data.borrow_mut())?;
+        .serialize(&mut *delegatee_vote_power_owner_record_info.data.borrow_mut())?;
 
     /*
-    TokenOwnerRecordV2::add_amount(
+    VotePowerOwnerRecord::add_amount(
         program_id,
-        delegatee_token_owner_record_info,
-        delegatee_governing_token_owner_info.key,
+        delegatee_vote_power_owner_record_info,
+        delegatee_governing_owner_info.key,
         &governing_token_mint,
         Some(scope),
         amount,
     )?; */
     // for all outstanding active votes, done by the delegatee_token_owner_record,
     // update cast vote info
-    /* if delegatee_token_owner_record_info.data_is_empty() {
-           let token_owner_record_data = TokenOwnerRecordV2 {
-               account_type: AccountType::TokenOwnerRecordV2,
-               governing_token_owner: delegatee.clone(),
+    /* if delegatee_vote_power_owner_record_info.data_is_empty() {
+           let token_owner_record_data = VotePowerOwnerRecord {
+               account_type: AccountType::VotePowerOwnerRecord,
+               governing_owner: delegatee.clone(),
                governing_token_deposit_amount: amount,
                governing_token_mint: *governing_token_mint_info.key,
                unrelinquished_votes_count: 0,
@@ -138,18 +144,18 @@ pub fn process_delegate(
 
            create_and_serialize_account_signed(
                payer_info,
-               delegatee_token_owner_record_info,
+               delegatee_vote_power_owner_record_info,
                &token_owner_record_data,
-               &delegatee_token_owner_record_address_seeds,
+               &delegatee_vote_power_owner_record_address_seeds,
                program_id,
                system_info,
                &rent,
            )?;
        } else {
-           let mut token_owner_record_data = get_token_owner_record_data_for_seeds(
+           let mut token_owner_record_data = get_vote_power_owner_record_data_for_seeds(
                program_id,
-               delegatee_token_owner_record_info,
-               &delegatee_token_owner_record_address_seeds,
+               delegatee_vote_power_owner_record_info,
+               &delegatee_vote_power_owner_record_address_seeds,
            )?;
 
            token_owner_record_data.governing_token_deposit_amount = token_owner_record_data
@@ -157,7 +163,7 @@ pub fn process_delegate(
                .checked_add(amount)
                .unwrap();
 
-           token_owner_record_data.serialize(&mut *token_owner_record_info.data.borrow_mut())?;
+           token_owner_record_data.serialize(&mut *vote_power_owner_record_info.data.borrow_mut())?;
        }
     */
     Ok(())

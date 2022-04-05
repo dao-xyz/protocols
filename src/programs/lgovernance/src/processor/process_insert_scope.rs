@@ -1,14 +1,9 @@
 use crate::state::{
-    enums::TransactionExecutionStatus,
     proposal::{
         get_proposal_data,
-        proposal_option::ProposalOptionType,
-        proposal_transaction::{
-            get_proposal_transaction_address_seeds, ConditionedInstruction, ProposalTransactionV2,
-        },
     },
     scopes::{
-        scope::{get_scope_data, Scope},
+        scope::{get_scope_data},
         scope_weight::ScopeWeight,
     },
 };
@@ -27,7 +22,7 @@ pub fn process_insert_scope(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pr
     let mut proposal_data = get_proposal_data(program_id, proposal_info)?;
     proposal_data.assert_can_edit_scopes(creator_info)?;
 
-    let scope_data = get_scope_data(program_id, scope_info)?;
+    let _scope_data = get_scope_data(program_id, scope_info)?;
 
     proposal_data.scopes_max_vote_weight.push(ScopeWeight {
         scope: *scope_info.key,

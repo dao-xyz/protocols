@@ -17,11 +17,13 @@ use crate::processor::{
     process_create_proposal::process_create_proposal,
     process_create_proposal_option::process_create_proposal_option,
     process_create_token_owner_budget_record::process_create_token_owner_budget_record,
+    process_deposit_governing_tag::process_deposit_governing_tag,
     process_execute_transaction::process_execute_transaction,
     process_finalize_draft::process_finalize_draft,
     process_insert_scope::process_insert_scope,
     process_scopes::process_create_scope,
     process_unvote::process_uncast_vote,
+    process_update_governance_authority::process_update_governance_authority,
     process_vote::process_cast_vote,
 };
 use solana_program::{
@@ -45,6 +47,7 @@ pub mod process_create_proposal;
 pub mod process_create_proposal_option;
 pub mod process_create_realm;
 pub mod process_create_token_owner_budget_record;
+pub mod process_deposit_governing_tag;
 pub mod process_deposit_governing_tokens;
 pub mod process_execute_transaction;
 pub mod process_finalize_draft;
@@ -52,6 +55,7 @@ pub mod process_insert_scope;
 pub mod process_insert_transaction;
 pub mod process_scopes;
 pub mod process_unvote;
+pub mod process_update_governance_authority;
 pub mod process_vote;
 
 pub struct Processor {}
@@ -494,20 +498,36 @@ impl Processor {
             }
             PostInstruction::DepositGoverningTokens {
                 amount,
-                token_owner_record_bump_seed,
+                token_origin_record_bump_seed,
             } => {
                 msg!("Instruction: Deposit governing tokens");
                 process_deposit_governing_tokens(
                     program_id,
                     accounts,
                     amount,
-                    token_owner_record_bump_seed,
+                    token_origin_record_bump_seed,
                 )
             }
 
-            PostInstruction::CreateGovernance { bump_seed } => {
+            PostInstruction::DepositGoverningTag {
+                token_origin_record_bump_seed,
+            } => {
+                msg!("Instruction: Deposit governing tag");
+                process_deposit_governing_tag(program_id, accounts, token_origin_record_bump_seed)
+            }
+
+            PostInstruction::CreateGovernance {
+                initial_authority,
+                seed,
+                bump_seed,
+            } => {
                 msg!("Instruction: Create governance");
-                process_create_governance(program_id, accounts, bump_seed)
+                process_create_governance(program_id, accounts, initial_authority, seed, bump_seed)
+            }
+
+            PostInstruction::UpdateGovernanceAuthority { new_authority } => {
+                msg!("Instruction: Update governance authority");
+                process_update_governance_authority(program_id, accounts, new_authority)
             }
 
             PostInstruction::FinalizeDraft => {
@@ -543,7 +563,7 @@ impl Processor {
 
             PostInstruction::CreateDelegatee {
                 token_owner_record_bump_seed,
-                governing_token_mint,
+                vote_power_unit,
                 scope,
             } => {
                 msg!("Instruction: Create delegate");
@@ -551,7 +571,7 @@ impl Processor {
                     program_id,
                     accounts,
                     scope,
-                    governing_token_mint,
+                    vote_power_unit,
                     token_owner_record_bump_seed,
                 )
             }

@@ -478,6 +478,10 @@ pub enum GovernanceError {
     #[error("Invalid authority for channel")]
     InvalidAuthorityForChannel,
 
+    /// Invalid authority for governance
+    #[error("Invalid authority for governance")]
+    InvalidAuthorityForGovernance,
+
     /// Invalid creator for proposal
     #[error("Invalid creator for proposal")]
     InvalidCreatorForProposal,
@@ -537,6 +541,18 @@ pub enum GovernanceError {
     /// InvalidSyncDirection
     #[error("InvalidSyncDirection")]
     InvalidSyncDirection,
+
+    // InvalidTagRecordFactory
+    #[error("InvalidTagRecordFactory")]
+    InvalidTagRecordFactory,
+
+    // InvalidVotePowerSource
+    #[error("InvalidVotePowerSource")]
+    InvalidVotePowerSource,
+
+    // VotePowerOriginRecordAlreadyExist
+    #[error("VotePowerOriginRecordAlreadyExist")]
+    VotePowerOriginRecordAlreadyExist,
 }
 impl PrintProgramError for GovernanceError {
     fn print<E>(&self) {

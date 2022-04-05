@@ -1,11 +1,3 @@
-use std::borrow::Borrow;
-
-use bincode::deserialize;
-use solana_program::{
-    clock::{Clock, UnixTimestamp},
-    pubkey::Pubkey,
-    sysvar,
-};
 use solana_program_test::*;
 
 pub fn program_test() -> ProgramTest {
@@ -14,11 +6,11 @@ pub fn program_test() -> ProgramTest {
         lgovernance::id(),
         processor!(lgovernance::processor::Processor::process),
     );
-    program.add_program(
+    /*  program.add_program(
         "lchannel",
         lchannel::id(),
         processor!(ltag::processor::Processor::process),
-    );
+    ); */
     program.add_program(
         "ltag",
         ltag::id(),

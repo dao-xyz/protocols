@@ -1,7 +1,7 @@
 //! Program state processor
 
 use borsh::BorshSerialize;
-use shared::account::get_account_data;
+
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -78,7 +78,7 @@ pub fn process_execute_transaction(
     let mut signers_seeds: Vec<&[&[u8]]> = vec![];
 
     let bump_seeds = [bump_seed];
-    let governance_seeds = get_governance_address_seeds(&governance_data.channel, &bump_seeds);
+    let governance_seeds = get_governance_address_seeds(&governance_data.seed, &bump_seeds);
     signers_seeds.push(&governance_seeds);
 
     // Sign the transaction using the governance treasury PDA if required by the instruction

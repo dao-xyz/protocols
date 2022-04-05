@@ -1234,25 +1234,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
-name = "lchannel"
-version = "0.0.1"
-dependencies = [
- "arrayref",
- "bincode",
- "borsh 0.9.3",
- "borsh-derive 0.9.3",
- "ltag",
- "num-derive",
- "num-traits",
- "shared",
- "solana-program",
- "spl-associated-token-account",
- "spl-math",
- "spl-token",
- "thiserror",
-]
-
-[[package]]
 name = "lgovernance"
 version = "0.0.1"
 dependencies = [
@@ -1261,7 +1242,6 @@ dependencies = [
  "bincode",
  "borsh 0.9.3",
  "borsh-derive 0.9.3",
- "lchannel",
  "ltag",
  "num-derive",
  "num-traits",

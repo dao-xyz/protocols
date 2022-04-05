@@ -17,7 +17,7 @@ spl-token = { version = "3.2",  features = [ "no-entrypoint" ]  }
 spl-math = { version = "0.1", features = [ "no-entrypoint" ] }
 spl-associated-token-account = { version = "1.0.3", features = [ "no-entrypoint" ] }
 ltag = { version = "0.0.1", path="../ltag", features = [ "no-entrypoint" ] }
-lchannel = { version = "0.0.1", path="../lchannel", features = [ "no-entrypoint" ] }
+
 
 shared = { version = "0.0.1", path = "../shared" }
 

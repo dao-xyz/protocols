@@ -12,7 +12,6 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
     entrypoint::ProgramResult,
-    msg,
     pubkey::Pubkey,
     sysvar::Sysvar,
 };
@@ -24,9 +23,7 @@ pub fn process_finalize_draft(program_id: &Pubkey, accounts: &[AccountInfo]) -> 
     let proposal_info = next_account_info(account_info_iter)?;
     let governance_info = next_account_info(account_info_iter)?;
     let creator_info = next_account_info(account_info_iter)?;
-
     let mut proposal_data = get_proposal_data_for_creator(program_id, proposal_info, creator_info)?;
-    msg!("X");
 
     proposal_data.assert_can_finalize_draft(creator_info)?;
 
@@ -36,10 +33,8 @@ pub fn process_finalize_draft(program_id: &Pubkey, accounts: &[AccountInfo]) -> 
     if &proposal_data.governance != governance_info.key {
         return Err(GovernanceError::InvalidGovernanceForProposal.into());
     }
-    msg!("XX");
 
     let mut governance_data = get_governance_data(program_id, governance_info)?;
-    msg!("XXX");
     for scope_weight in &proposal_data.scopes_max_vote_weight {
         let scope_info = next_account_info(account_info_iter)?;
         if scope_info.key != &scope_weight.scope {
@@ -47,13 +42,13 @@ pub fn process_finalize_draft(program_id: &Pubkey, accounts: &[AccountInfo]) -> 
         }
         let scope =
             get_scope_data_for_governance(program_id, scope_info, &proposal_data.governance)?;
+
         scope.config.proposal_config.assert_can_create_proposal(
             program_id,
             &proposal_data,
             account_info_iter,
         )?;
     }
-    msg!("XXXX");
 
     let clock = Clock::get()?;
 
@@ -86,7 +81,7 @@ pub fn process_finalize_draft(program_id: &Pubkey, accounts: &[AccountInfo]) -> 
     proposal_owner_record_data
         .assert_token_owner_or_delegate_is_signer(governance_authority_info)?;
 
-    let mut proposal_owner_record_data = get_token_owner_record_data_for_owner(
+    let mut proposal_owner_record_data = get_vote_power_owner_record_data_for_owner(
            program_id,
            proposal_owner_record_info,
            governance_authority_info,

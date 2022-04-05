@@ -1,10 +1,10 @@
 use crate::{
     error::GovernanceError,
     state::{
-        delegation::scope_delegation_record_account::get_delegation_record_data_for_delegator_or_delegatee,
+        delegation::scope_delegation_record_account::get_delegation_record_data_for_delegator_and_delegatee,
         proposal::get_proposal_data,
         scopes::scope::get_scope_data_for_governance,
-        token_owner_record::get_token_owner_record_data_for_owner,
+        vote_power_origin_record::get_vote_power_origin_record_data_for_owner,
         vote_record::{get_vote_record_address, get_vote_record_data},
     },
 };
@@ -14,6 +14,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -27,29 +28,49 @@ pub fn process_undelegate_history(program_id: &Pubkey, accounts: &[AccountInfo])
     let vote_record_info = next_account_info(accounts_iter)?;
     let proposal_account_info = next_account_info(accounts_iter)?;
     let scope_delegation_record_info = next_account_info(accounts_iter)?;
-    let delegator_or_delegatee_token_owner_record_info = next_account_info(accounts_iter)?;
-    let delegator_or_delegatee_governing_token_owner_info = next_account_info(accounts_iter)?;
+    let delegator_token_origin_record_info = next_account_info(accounts_iter)?;
+    let delegator_governing_owner_info = next_account_info(accounts_iter)?;
+    let delegatee_vote_power_owner_record_info = next_account_info(accounts_iter)?;
+    let delegatee_governing_owner_info = next_account_info(accounts_iter)?;
     let scope_info = next_account_info(accounts_iter)?;
 
-    // TODO: More granular check proposal data?
     let proposal = get_proposal_data(program_id, proposal_account_info)?;
+
+    // Delegator or delegatee has to sign
+    if !delegator_governing_owner_info.is_signer && !delegatee_governing_owner_info.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    let mut scope_delegation_record_data = get_delegation_record_data_for_delegator_and_delegatee(
+        program_id,
+        scope_delegation_record_info,
+        delegator_token_origin_record_info,
+        delegatee_vote_power_owner_record_info,
+    )?;
+
+    let delegator_token_origin_record_data = get_vote_power_origin_record_data_for_owner(
+        program_id,
+        delegator_token_origin_record_info,
+        delegator_governing_owner_info,
+    )?;
+
     let scope = get_scope_data_for_governance(program_id, scope_info, &proposal.governance)?;
 
     /*
      */
-    /*  let delegatee_token_owner_record_info: &AccountInfo =
-    match delegator_or_delegatee_token_owner_record_info.key
+    /*  let delegatee_vote_power_owner_record_info: &AccountInfo =
+    match delegator_or_delegatee_vote_power_owner_record_info.key
         == &scope_delegation_record_data.delegatee_token_owner_record
     {
-        true => Ok(delegator_or_delegatee_token_owner_record_info),
+        true => Ok(delegator_or_delegatee_vote_power_owner_record_info),
         false => {
-            let delegatee_token_owner_record_info = next_account_info(accounts_iter)?;
-            if delegatee_token_owner_record_info.key
+            let delegatee_vote_power_owner_record_info = next_account_info(accounts_iter)?;
+            if delegatee_vote_power_owner_record_info.key
                 != &scope_delegation_record_data.delegatee_token_owner_record
             {
                 Err(GovernanceError::InvalidTokenOwnerRecordAccountAddress.into())
             } else {
-                Ok(delegatee_token_owner_record_info)
+                Ok(delegatee_vote_power_owner_record_info)
             }
         }
     }
@@ -57,17 +78,17 @@ pub fn process_undelegate_history(program_id: &Pubkey, accounts: &[AccountInfo])
 
     // Make sure governing token owner is signer of the delegator token owner record info
 
-    let mut scope_delegation_record_data = get_delegation_record_data_for_delegator_or_delegatee(
+    /* let mut scope_delegation_record_data = get_delegation_record_data_for_delegator_or_delegatee(
         program_id,
         scope_delegation_record_info,
-        delegator_or_delegatee_token_owner_record_info,
+        delegator_or_delegatee_vote_power_owner_record_info,
     )?;
 
-    let token_owner_record_data = get_token_owner_record_data_for_owner(
+    let token_owner_record_data = get_vote_power_owner_record_data_for_owner(
         program_id,
-        delegator_or_delegatee_token_owner_record_info,
-        delegator_or_delegatee_governing_token_owner_info,
-    )?;
+        delegator_or_delegatee_vote_power_owner_record_info,
+        delegator_or_delegatee_governing_owner_info,
+    )?; */
     // let delegatee_token_owner_record = &scope_delegation_record_data.delegatee_token_owner_record;
 
     if !vote_record_info.data_is_empty() {
@@ -113,7 +134,7 @@ pub fn process_undelegate_history(program_id: &Pubkey, accounts: &[AccountInfo])
             program_id,
             scope_delegation_record_data.amount,
             false,
-            &token_owner_record_data.governing_token_mint,
+            &delegator_token_origin_record_data.source,
             scope_info.key,
             &scope,
             proposal_account_info.key,
@@ -133,7 +154,7 @@ pub fn process_undelegate_history(program_id: &Pubkey, accounts: &[AccountInfo])
 
     // Update propsal
     proposal.serialize(&mut *proposal_account_info.data.borrow_mut())?;
-    //token_owner_record_data.serialize(&mut *token_owner_record_info.data.borrow_mut())?;
+    //token_owner_record_data.serialize(&mut *vote_power_owner_record_info.data.borrow_mut())?;
 
     Ok(())
 }

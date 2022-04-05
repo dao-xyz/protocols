@@ -58,7 +58,7 @@ pub struct VoteRecordV2 {
 
     /// The user who casted this vote
     /// This is the Governing Token Owner who deposited governing tokens into the Realm
-    pub governing_token_owner: Pubkey,
+    pub governing_owner: Pubkey,
 
     /// The voting has been made through this scope
     pub scope: Pubkey,
@@ -68,6 +68,9 @@ pub struct VoteRecordV2 {
 
     /// Voter's vote
     pub vote: Vote,
+
+    /// Voter's weight
+    pub vote_weight: u64,
 }
 
 impl MaxSize for VoteRecordV2 {}
@@ -119,7 +122,7 @@ pub fn get_vote_record_data_for_proposal_and_token_owner(
     program_id: &Pubkey,
     vote_record_info: &AccountInfo,
     proposal: &Pubkey,
-    governing_token_owner: &AccountInfo,
+    governing_owner: &AccountInfo,
 ) -> Result<VoteRecordV2, ProgramError> {
     let vote_record_data = get_vote_record_data(program_id, vote_record_info)?;
 
@@ -127,11 +130,11 @@ pub fn get_vote_record_data_for_proposal_and_token_owner(
         return Err(GovernanceError::InvalidProposalForVoterRecord.into());
     }
 
-    if &vote_record_data.governing_token_owner != governing_token_owner.key {
+    if &vote_record_data.governing_owner != governing_owner.key {
         return Err(GovernanceError::InvalidGoverningTokenOwnerForVoteRecord.into());
     }
 
-    if !governing_token_owner.is_signer {
+    if !governing_owner.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
@@ -143,7 +146,7 @@ pub fn get_vote_record_data_for_proposal_and_unsigned_token_owner(
     program_id: &Pubkey,
     vote_record_info: &AccountInfo,
     proposal: &Pubkey,
-    governing_token_owner: &Pubkey,
+    governing_owner: &Pubkey,
 ) -> Result<VoteRecordV2, ProgramError> {
     let vote_record_data = get_vote_record_data(program_id, vote_record_info)?;
 
@@ -151,7 +154,7 @@ pub fn get_vote_record_data_for_proposal_and_unsigned_token_owner(
         return Err(GovernanceError::InvalidProposalForVoterRecord.into());
     }
 
-    if &vote_record_data.governing_token_owner != governing_token_owner {
+    if &vote_record_data.governing_owner != governing_owner {
         return Err(GovernanceError::InvalidGoverningTokenOwnerForVoteRecord.into());
     }
 

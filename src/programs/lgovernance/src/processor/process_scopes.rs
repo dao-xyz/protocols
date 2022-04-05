@@ -1,17 +1,12 @@
 use crate::{
     accounts::AccountType,
+    error::GovernanceError,
     state::{
         governance::GovernanceV2,
-        scopes::scope::{
-            get_scope_program_address_seeds, Scope, ScopeConfig, ScopeProposalConfig,
-            ScopeTimeConfig, ScopeVoteConfig,
-        },
+        scopes::scope::{get_scope_program_address_seeds, Scope, ScopeConfig},
     },
 };
-use lchannel::state::ChannelAccount;
-use shared::account::{
-    check_account_owner, check_system_program, create_and_serialize_account_verify_with_bump,
-};
+use shared::account::{check_system_program, create_and_serialize_account_verify_with_bump};
 
 use shared::account::get_account_data;
 use solana_program::{
@@ -39,7 +34,7 @@ pub fn process_create_scope(
     let governance_data = get_account_data::<GovernanceV2>(program_id, governance_info)?;
     if !governance_info.is_signer {
         // Load channel, or parent(s) and check authority
-        let channel_authority_info = next_account_info(accounts_iter)?;
+        /*  let channel_authority_info = next_account_info(accounts_iter)?;
         if !channel_authority_info.is_signer {
             return Err(ProgramError::MissingRequiredSignature);
         }
@@ -65,6 +60,20 @@ pub fn process_create_scope(
         }
         if &channel.authority != channel_authority_info.key {
             return Err(ProgramError::InvalidAccountData);
+        } */
+
+        if let Some(option_authority) = &governance_data.optional_authority {
+            let authority_info = next_account_info(accounts_iter)?;
+
+            if option_authority != authority_info.key {
+                return Err(GovernanceError::InvalidAuthorityForGovernance.into());
+            }
+
+            if !authority_info.is_signer {
+                return Err(ProgramError::MissingRequiredSignature);
+            }
+        } else {
+            return Err(ProgramError::MissingRequiredSignature);
         }
     }
 

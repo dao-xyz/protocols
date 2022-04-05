@@ -12,12 +12,11 @@ use crate::{
 };
 
 use shared::account::{
-    create_and_serialize_account_signed, create_and_serialize_account_verify_with_bump,
+    create_and_serialize_account_verify_with_bump,
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    msg,
     pubkey::Pubkey,
     rent::Rent,
     sysvar::Sysvar,

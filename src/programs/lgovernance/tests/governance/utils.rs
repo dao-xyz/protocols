@@ -1,34 +1,27 @@
-use std::{
-    collections::{HashMap, HashSet},
-    iter::Map,
-    ops::RangeBounds,
-};
+use std::collections::{HashMap, HashSet};
 
 use super::super::bench::ProgramTestBench;
 use crate::bench::WalletCookie;
-use lchannel::{
-    instruction::create_channel,
-    state::{find_channel_program_address, ActivityAuthority, ChannelAccount},
+
+use ltag::{
+    get_tag_program_address, get_tag_record_factory_program_address, get_tag_record_program_address,
 };
-use ltag::get_tag_record_program_address;
 use shared::content::ContentSource;
 use solana_program::{
-    borsh::try_from_slice_unchecked, hash::Hash, instruction::AccountMeta, program_pack::Pack,
+    borsh::try_from_slice_unchecked, instruction::AccountMeta, program_pack::Pack,
     system_instruction, system_program,
 };
 
 use lgovernance::{
-    find_treasury_token_account_address,
     instruction::{
         cast_vote, count_vote_max_weights, count_votes, create_delegatee, create_governance,
         create_native_treasury, create_proposal, create_proposal_option, create_realm,
         create_scope, create_token_owner_budget_record, delegate, delegate_history,
-        deposit_governing_tokens, execute_transaction, finalize_draft, insert_scope,
-        insert_transaction, uncast_vote, undelegate, undelegate_history, CreateProposalOptionType,
-        SignedCreateProposal,
+        deposit_governing_tag, deposit_governing_tokens, execute_transaction, finalize_draft,
+        insert_scope, insert_transaction, uncast_vote, undelegate, undelegate_history,
+        update_governance_authority, CreateProposalOptionType, SignedCreateProposal,
     },
     state::{
-        channel::ChannelSigner,
         delegation::scope_delegation_record_account::{
             get_scope_delegation_account_program_address, ScopeDelegationRecordAccount,
         },
@@ -44,27 +37,22 @@ use lgovernance::{
             ProposalV2, VoteType,
         },
         realm::get_realm_mint_program_address,
-        scopes::{
-            scope::{get_scope_program_address, MintWeight, Scope, ScopeCondition, ScopeConfig},
-            scope_create::CreateScope,
-        },
-        token_owner_budget_record::{
-            get_token_owner_budget_record_address, TokenOwnerBudgetRecord,
-        },
-        token_owner_record::{
-            get_token_owner_delegatee_record_address, get_token_owner_record_address,
-            TokenOwnerRecordV2,
-        },
+        scopes::scope::{get_scope_program_address, Scope, ScopeConfig, ScopeMatch, VotePowerUnit},
+        token_owner_budget_record::get_token_owner_budget_record_address,
+        vote_power_origin_record::get_vote_power_origin_record_address,
+        vote_power_owner_record::{get_vote_power_owner_record_address, VotePowerOwnerRecord},
         vote_record::{get_vote_record_address, Vote, VoteRecordV2},
     },
 };
 
 use solana_program_test::*;
-use solana_sdk::{
-    pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction,
-    transport::TransportError,
-};
+use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 use spl_associated_token_account::{create_associated_token_account, get_associated_token_address};
+
+pub enum TestVotePowerSource<'a> {
+    TestToken(&'a TestToken),
+    TestTagRecordFactory(&'a TestTagRecordFactory),
+}
 
 pub async fn get_token_balance(banks_client: &mut BanksClient, token: &Pubkey) -> u64 {
     let token_account = banks_client.get_account(*token).await.unwrap().unwrap();
@@ -206,7 +194,7 @@ pub async fn create_and_verify_user(
     assert_eq!(user.name, username);
     user_account_address
 } */
-
+/*
 pub async fn create_and_verify_channel(
     bench: &mut ProgramTestBench,
     channel_name: &str,
@@ -244,7 +232,7 @@ pub async fn create_and_verify_channel(
 
     assert_eq!(channel_account.name.as_str(), channel_name);
     Ok(channel_address_pda)
-}
+} */
 
 /* pub async fn ensure_utility_token_balance(
     banks_client: &mut BanksClient,
@@ -311,25 +299,80 @@ pub async fn create_and_verify_channel(
     assert_eq!(expected_balance, balance);
 } */
 
+pub struct TestTagRecordFactory {
+    pub tag: Pubkey,
+    pub factory: Pubkey,
+    pub authority: Keypair,
+}
+
+impl TestTagRecordFactory {
+    pub async fn new(bench: &mut ProgramTestBench) -> Self {
+        let authority = Keypair::new();
+        let tag = Pubkey::new_unique().to_string();
+        bench
+            .process_transaction(
+                &[ltag::instruction::create_tag(
+                    &ltag::id(),
+                    tag.as_ref(),
+                    None,
+                    &authority.pubkey(),
+                    &bench.payer.pubkey(),
+                )],
+                Some(&[&authority]),
+            )
+            .await
+            .unwrap();
+
+        let tag_address = get_tag_program_address(&ltag::id(), tag.as_ref()).0;
+        bench
+            .process_transaction(
+                &[ltag::instruction::create_tag_record_factory(
+                    &ltag::id(),
+                    &tag_address,
+                    &authority.pubkey(),
+                    &bench.payer.pubkey(),
+                )],
+                Some(&[&authority]),
+            )
+            .await
+            .unwrap();
+
+        let tag_record_factory_address =
+            get_tag_record_factory_program_address(&ltag::id(), &tag_address, &authority.pubkey())
+                .0;
+        Self {
+            tag: tag_address,
+            factory: tag_record_factory_address,
+            authority,
+        }
+    }
+
+    pub async fn new_record(&self, bench: &mut ProgramTestBench, owner: &TestUser) {
+        bench
+            .process_transaction(
+                &[ltag::instruction::create_tag_record(
+                    &ltag::id(),
+                    &self.tag,
+                    &owner.keypair.pubkey(),
+                    &self.factory,
+                    &self.authority.pubkey(),
+                    &bench.payer.pubkey(),
+                )],
+                Some(&[&self.authority]),
+            )
+            .await
+            .unwrap();
+    }
+}
+
 pub struct TestUser {
     pub keypair: Keypair,
 }
 
 impl TestUser {
-    pub fn new(/*  banks_client: &mut BanksClient,
-        recent_blockhash: &Hash, */) -> Self {
-        /*  let user = create_and_verify_user(
-        let username = Pubkey::new_unique().to_string();
-            banks_client,
-            payer,
-            recent_blockhash,
-            username.as_str(),
-            "profile",
-        )
-        .await; */
-
+    pub fn new() -> Self {
         Self {
-            keypair: Keypair::new(), /* user, */
+            keypair: Keypair::new(),
         }
     }
 
@@ -354,7 +397,7 @@ impl TestUser {
     pub async fn create_delegatee(
         &self,
         bench: &mut ProgramTestBench,
-        token: &TestToken,
+        source: &VotePowerUnit,
         scope: &Pubkey,
     ) {
         bench
@@ -363,8 +406,8 @@ impl TestUser {
                     &lgovernance::id(),
                     &self.keypair.pubkey(),
                     &bench.payer.pubkey(),
-                    &scope,
-                    &token.mint,
+                    scope,
+                    source,
                 )],
                 Some(&[&self.keypair]),
             )
@@ -374,6 +417,15 @@ impl TestUser {
 
     pub fn get_associated_token_account_address(&self, token: &TestToken) -> Pubkey {
         get_associated_token_address(&self.keypair.pubkey(), &token.mint)
+    }
+
+    pub fn get_tag_record_address(&self, tag_record_factory: &TestTagRecordFactory) -> Pubkey {
+        get_tag_record_program_address(
+            &ltag::id(),
+            &tag_record_factory.factory,
+            &self.keypair.pubkey(),
+        )
+        .0
     }
 
     pub async fn deposit_governance_tokens(
@@ -398,25 +450,49 @@ impl TestUser {
             .await
             .unwrap();
     }
-    pub fn get_token_owner_record_address(&self, mint: &Pubkey) -> Pubkey {
-        get_token_owner_record_address(&lgovernance::id(), mint, &self.keypair.pubkey()).0
+    pub async fn deposit_governance_tag(
+        &self,
+        bench: &mut ProgramTestBench,
+        tag_record_factory: &TestTagRecordFactory,
+    ) {
+        bench
+            .process_transaction(
+                &[deposit_governing_tag(
+                    &lgovernance::id(),
+                    &self.get_tag_record_address(tag_record_factory),
+                    &self.keypair.pubkey(),
+                    &tag_record_factory.factory,
+                    &bench.payer.pubkey(),
+                )],
+                Some(&[&self.keypair]),
+            )
+            .await
+            .unwrap();
+    }
+
+    pub fn get_vote_power_origin_record_address(&self, source: &VotePowerUnit) -> Pubkey {
+        get_vote_power_origin_record_address(&lgovernance::id(), source, &self.keypair.pubkey()).0
     }
 
     pub async fn get_token_owner_record(
         &self,
         bench: &mut ProgramTestBench,
-        mint: &Pubkey,
-    ) -> TokenOwnerRecordV2 {
-        let address = self.get_token_owner_record_address(mint);
+        source: &VotePowerUnit,
+    ) -> VotePowerOwnerRecord {
+        let address = self.get_vote_power_origin_record_address(source);
         let account = bench.get_account(&address).await.unwrap();
 
-        try_from_slice_unchecked::<TokenOwnerRecordV2>(&account.data).unwrap()
+        try_from_slice_unchecked::<VotePowerOwnerRecord>(&account.data).unwrap()
     }
 
-    pub fn get_token_owner_delegate_record_address(&self, scope: &Pubkey, mint: &Pubkey) -> Pubkey {
-        get_token_owner_delegatee_record_address(
+    pub fn get_token_owner_delegate_record_address(
+        &self,
+        scope: &Pubkey,
+        source: &VotePowerUnit,
+    ) -> Pubkey {
+        get_vote_power_owner_record_address(
             &lgovernance::id(),
-            mint,
+            source,
             &self.keypair.pubkey(),
             scope,
         )
@@ -427,18 +503,22 @@ impl TestUser {
         &self,
         bench: &mut ProgramTestBench,
         scope: &Pubkey,
-        mint: &Pubkey,
-    ) -> TokenOwnerRecordV2 {
-        let address = self.get_token_owner_delegate_record_address(scope, mint);
+        source: &VotePowerUnit,
+    ) -> VotePowerOwnerRecord {
+        let address = self.get_token_owner_delegate_record_address(scope, source);
         let account = bench.get_account(&address).await.unwrap();
 
-        try_from_slice_unchecked::<TokenOwnerRecordV2>(&account.data).unwrap()
+        try_from_slice_unchecked::<VotePowerOwnerRecord>(&account.data).unwrap()
     }
 
-    pub fn get_token_owner_budget_record_address(&self, mint: &Pubkey, scope: &Pubkey) -> Pubkey {
+    pub fn get_token_owner_budget_record_address(
+        &self,
+        source: &VotePowerUnit,
+        scope: &Pubkey,
+    ) -> Pubkey {
         get_token_owner_budget_record_address(
             &lgovernance::id(),
-            &self.get_token_owner_record_address(mint),
+            &self.get_vote_power_origin_record_address(source),
             scope,
         )
         .0
@@ -447,12 +527,12 @@ impl TestUser {
     pub async fn get_token_owner_budget_record(
         &self,
         bench: &mut ProgramTestBench,
-        token: &TestToken,
+        source: &VotePowerUnit,
         scope: &Pubkey,
-    ) -> Option<TokenOwnerRecordV2> {
-        let address = self.get_token_owner_budget_record_address(&token.mint, scope);
+    ) -> Option<VotePowerOwnerRecord> {
+        let address = self.get_token_owner_budget_record_address(source, scope);
         if let Some(account) = bench.get_account(&address).await {
-            Some(try_from_slice_unchecked::<TokenOwnerRecordV2>(&account.data).unwrap())
+            Some(try_from_slice_unchecked::<VotePowerOwnerRecord>(&account.data).unwrap())
         } else {
             None
         }
@@ -462,13 +542,13 @@ impl TestUser {
         &self,
         bench: &mut ProgramTestBench,
         proposal: &TestProposal,
+        source: &VotePowerUnit,
         scope: &Pubkey,
-        token: &TestToken,
     ) -> Option<(Pubkey, VoteRecordV2)> {
         let address = get_vote_record_address(
             &lgovernance::id(),
             &proposal.proposal,
-            &self.get_token_owner_delegate_record_address(scope, &token.mint),
+            &self.get_token_owner_delegate_record_address(scope, source),
             scope,
         )
         .0;
@@ -485,20 +565,20 @@ impl TestUser {
     pub async fn get_latest_vote_address(
         &self,
         bench: &mut ProgramTestBench,
-        token: &TestToken,
+        source: &VotePowerUnit,
     ) -> Option<Pubkey> {
-        let token_owner_record = self.get_token_owner_record(bench, &token.mint).await;
+        let token_owner_record = self.get_token_owner_record(bench, source).await;
         token_owner_record.latest_vote
     }
 
     pub async fn get_latest_vote_delegate_address(
         &self,
         bench: &mut ProgramTestBench,
-        token: &TestToken,
+        source: &VotePowerUnit,
         scope: &Pubkey,
     ) -> Option<Pubkey> {
         let token_owner_record = self
-            .get_token_owner_delegate_record(bench, scope, &token.mint)
+            .get_token_owner_delegate_record(bench, scope, source)
             .await;
         token_owner_record.latest_vote
     }
@@ -506,7 +586,7 @@ impl TestUser {
     pub async fn create_budget(
         &self,
         bench: &mut ProgramTestBench,
-        test_token: &TestToken,
+        source: &VotePowerUnit,
         scope: &Pubkey,
     ) {
         bench
@@ -514,7 +594,7 @@ impl TestUser {
                 &[create_token_owner_budget_record(
                     &lgovernance::id(),
                     &bench.payer.pubkey(),
-                    &self.get_token_owner_record_address(&test_token.mint),
+                    &self.get_vote_power_origin_record_address(source),
                     scope,
                 )],
                 None,
@@ -551,7 +631,7 @@ impl TestUser {
 pub struct TestDelegation<'a> {
     from: &'a TestUser,
     to: &'a TestUser,
-    token: &'a TestToken,
+    source: &'a VotePowerUnit,
     scope: Pubkey,
     delegation: Pubkey,
 }
@@ -560,32 +640,32 @@ impl<'a> TestDelegation<'a> {
         bench: &mut ProgramTestBench,
         from: &'a TestUser,
         to: &'a TestUser,
-        token: &'a TestToken,
+        source: &'a VotePowerUnit,
         scope: &Pubkey,
     ) -> TestDelegation<'a> {
-        let from_token_record = from.get_token_owner_record_address(&token.mint);
-        let to_token_record = to.get_token_owner_delegate_record_address(scope, &token.mint);
+        let from_token_record = from.get_vote_power_origin_record_address(source);
+        let to_token_record = to.get_token_owner_delegate_record_address(scope, source);
         // Create budget
         if from
-            .get_token_owner_budget_record(bench, &token, &scope)
+            .get_token_owner_budget_record(bench, source, scope)
             .await
             .is_none()
         {
-            from.create_budget(bench, &token, &scope).await;
+            from.create_budget(bench, source, scope).await;
         }
 
         // Enable the delegatee
         if bench
-            .get_account(&to.get_token_owner_delegate_record_address(&scope, &token.mint))
+            .get_account(&to.get_token_owner_delegate_record_address(scope, source))
             .await
             .is_none()
         {
-            to.create_delegatee(bench, &token, &scope).await;
+            to.create_delegatee(bench, source, scope).await;
         }
         TestDelegation {
             from,
             to,
-            token: token,
+            source,
             scope: *scope,
             delegation: get_scope_delegation_account_program_address(
                 &lgovernance::id(),
@@ -597,8 +677,8 @@ impl<'a> TestDelegation<'a> {
         }
     }
     pub async fn delegate(&self, bench: &mut ProgramTestBench, amount: &u64) {
-        let from_token_record = self.get_delegator_token_owner_record_address();
-        let to_token_record = self.get_delegatee_token_owner_record_address();
+        let from_token_record = self.get_delegator_token_origin_record_address();
+        let to_token_record = self.get_delegatee_vote_power_owner_record_address();
         bench
             .process_transaction(
                 &[delegate(
@@ -606,7 +686,7 @@ impl<'a> TestDelegation<'a> {
                     &from_token_record,
                     &self
                         .from
-                        .get_token_owner_budget_record_address(&self.token.mint, &self.scope),
+                        .get_token_owner_budget_record_address(self.source, &self.scope),
                     &self.from.keypair.pubkey(),
                     &to_token_record,
                     &self.to.keypair.pubkey(),
@@ -622,8 +702,8 @@ impl<'a> TestDelegation<'a> {
 
     pub async fn undelegate(&self, bench: &mut ProgramTestBench, amount: &u64) {
         // Undelegate
-        let from_token_record = self.get_delegator_token_owner_record_address();
-        let to_token_record = self.get_delegatee_token_owner_record_address();
+        let from_token_record = self.get_delegator_token_origin_record_address();
+        let to_token_record = self.get_delegatee_vote_power_owner_record_address();
         bench
             .process_transaction(
                 &[undelegate(
@@ -638,7 +718,7 @@ impl<'a> TestDelegation<'a> {
                     &from_token_record,
                     &self
                         .from
-                        .get_token_owner_budget_record_address(&self.token.mint, &self.scope),
+                        .get_token_owner_budget_record_address(self.source, &self.scope),
                     &self.from.keypair.pubkey(),
                     &to_token_record,
                     &self.to.keypair.pubkey(),
@@ -652,8 +732,14 @@ impl<'a> TestDelegation<'a> {
     }
 
     pub async fn delegate_history(&self, bench: &mut ProgramTestBench) {
-        let token_owner_record = self.get_delegator_token_owner_record_address();
+        let token_origin_record = self.get_delegator_token_origin_record_address();
         let delegation_record = self.get_delegation_record(bench).await.unwrap();
+        let delegatee_token_owner_record = self.get_delegatee_vote_power_owner_record_address();
+        let delegatee_token_governing_owner = self
+            .get_delegatee_token_owner_record(bench)
+            .await
+            .unwrap()
+            .governing_owner;
 
         // Pick the scope delegation vote head. If missing we have already delegated votes for all active proposals
         // (since we delegated before any votes where casted by the delegatee)
@@ -691,9 +777,12 @@ impl<'a> TestDelegation<'a> {
                     &vote_record.proposal,
                     &vote_options,
                     &self.delegation,
-                    &token_owner_record,
+                    &token_origin_record,
                     &self.from.keypair.pubkey(),
+                    &delegatee_token_owner_record,
+                    &delegatee_token_governing_owner,
                     &self.scope,
+                    true,
                 )],
                 Some(&[&self.from.keypair]),
             )
@@ -702,11 +791,14 @@ impl<'a> TestDelegation<'a> {
     }
 
     pub async fn undelegate_history(&self, bench: &mut ProgramTestBench) {
-        let token_owner_record = self.get_delegator_token_owner_record_address();
+        let token_owner_record = self.get_delegator_token_origin_record_address();
         let delegatee_token_owner_record =
             self.get_delegatee_token_owner_record(bench).await.unwrap();
 
         let delegation_record = self.get_delegation_record(bench).await.unwrap();
+        let delegatee_vote_power_owner_record_address =
+            self.get_delegatee_vote_power_owner_record_address();
+        let delegatee_token_governing_owner = delegatee_token_owner_record.governing_owner;
 
         // Pick the scope delegation vote head, or the first vote casted (that is relavent)
         let (vote_record_address, previous_vote_record_address) =
@@ -714,7 +806,7 @@ impl<'a> TestDelegation<'a> {
                 (*vote_head, None)
             } else if let Some(previous_vote_head) = &delegation_record.last_vote_head {
                 let previous_vote_record = try_from_slice_unchecked::<VoteRecordV2>(
-                    &bench.get_account(&previous_vote_head).await.unwrap().data,
+                    &bench.get_account(previous_vote_head).await.unwrap().data,
                 )
                 .unwrap();
                 (
@@ -746,8 +838,11 @@ impl<'a> TestDelegation<'a> {
                     &self.delegation,
                     &token_owner_record,
                     &self.from.keypair.pubkey(),
+                    &delegatee_vote_power_owner_record_address,
+                    &delegatee_token_governing_owner,
                     &self.scope,
                     previous_vote_record_address.as_ref(),
+                    true,
                 )],
                 Some(&[&self.from.keypair]),
             )
@@ -755,37 +850,37 @@ impl<'a> TestDelegation<'a> {
             .unwrap();
     }
 
-    pub fn get_delegator_token_owner_record_address(&self) -> Pubkey {
-        self.from.get_token_owner_record_address(&self.token.mint)
+    pub fn get_delegator_token_origin_record_address(&self) -> Pubkey {
+        self.from.get_vote_power_origin_record_address(self.source)
     }
-    pub async fn get_delegator_token_owner_record(
+    pub async fn get_delegator_token_origin_record(
         &self,
         bench: &mut ProgramTestBench,
-    ) -> Option<TokenOwnerRecordV2> {
+    ) -> Option<VotePowerOwnerRecord> {
         let account = bench
-            .get_account(&self.get_delegator_token_owner_record_address())
+            .get_account(&self.get_delegator_token_origin_record_address())
             .await;
         if let Some(account) = account {
-            Some(try_from_slice_unchecked::<TokenOwnerRecordV2>(&account.data).unwrap())
+            Some(try_from_slice_unchecked::<VotePowerOwnerRecord>(&account.data).unwrap())
         } else {
             None
         }
     }
 
-    pub fn get_delegatee_token_owner_record_address(&self) -> Pubkey {
+    pub fn get_delegatee_vote_power_owner_record_address(&self) -> Pubkey {
         self.to
-            .get_token_owner_delegate_record_address(&self.scope, &self.token.mint)
+            .get_token_owner_delegate_record_address(&self.scope, self.source)
     }
 
     pub async fn get_delegatee_token_owner_record(
         &self,
         bench: &mut ProgramTestBench,
-    ) -> Option<TokenOwnerRecordV2> {
+    ) -> Option<VotePowerOwnerRecord> {
         let account = bench
-            .get_account(&self.get_delegatee_token_owner_record_address())
+            .get_account(&self.get_delegatee_vote_power_owner_record_address())
             .await;
         if let Some(account) = account {
-            Some(try_from_slice_unchecked::<TokenOwnerRecordV2>(&account.data).unwrap())
+            Some(try_from_slice_unchecked::<VotePowerOwnerRecord>(&account.data).unwrap())
         } else {
             None
         }
@@ -805,40 +900,56 @@ impl<'a> TestDelegation<'a> {
 }
 pub struct TestGovernance {
     pub governance: Pubkey,
+    pub temporary_authority: Keypair,
+    pub seed: Pubkey,
 }
-
 impl TestGovernance {
-    pub async fn new(
-        bench: &mut ProgramTestBench,
-        channel: &Pubkey,
-        channel_authority: &Keypair,
-    ) -> Self {
+    pub async fn new(bench: &mut ProgramTestBench) -> TestGovernance {
+        let temporary_authority = Keypair::new();
+        let seed = Pubkey::new_unique();
         bench
             .process_transaction(
                 &[create_governance(
                     &lgovernance::id(),
-                    channel,
-                    &channel_authority.pubkey(),
+                    &seed,
+                    &temporary_authority.pubkey(),
                     &bench.payer.pubkey(),
                 )],
-                Some(&[channel_authority]),
+                None,
             )
             .await
             .unwrap();
-        let governande_address = get_governance_address(&lgovernance::id(), channel).0;
+        let governande_address = get_governance_address(&lgovernance::id(), &seed).0;
         Self {
             governance: governande_address,
+            temporary_authority,
+            seed,
         }
     }
 
-    pub async fn create_scope(
+    pub async fn update_governance_authority(
         &self,
         bench: &mut ProgramTestBench,
-        scope: ScopeConfig,
-        channel: &TestChannel,
-    ) -> Pubkey {
+        new_authority: Option<Pubkey>,
+    ) {
+        let account = self.get_governance_account(bench).await;
+        bench
+            .process_transaction(
+                &[update_governance_authority(
+                    &lgovernance::id(),
+                    &self.governance,
+                    account.optional_authority.as_ref(),
+                    new_authority,
+                )],
+                Some(&[&self.temporary_authority]),
+            )
+            .await
+            .unwrap();
+    }
+
+    pub async fn create_scope(&self, bench: &mut ProgramTestBench, scope: ScopeConfig) -> Pubkey {
         let id = Pubkey::new_unique();
-        let (scope_address, create_scope_address_bump_seed) =
+        let (scope_address, _create_scope_address_bump_seed) =
             get_scope_program_address(&lgovernance::id(), &id);
 
         bench
@@ -848,23 +959,51 @@ impl TestGovernance {
                     &id,
                     &self.governance,
                     &bench.payer.pubkey(),
-                    &Some(ChannelSigner {
-                        authority: channel.authority.pubkey(),
-                        channel_path: vec![channel.channel],
-                    }),
+                    &Some(self.temporary_authority.pubkey()),
                     &scope,
                 )],
-                Some(&[&channel.authority]),
+                Some(&[&self.temporary_authority]),
             )
             .await
             .unwrap();
         scope_address
     }
 
+    pub async fn create_scope_system<'b>(
+        &self,
+        bench: &mut ProgramTestBench,
+        criteria_from: TestVotePowerSource<'b>,
+    ) -> Pubkey {
+        let scope = self
+            .create_scope(
+                bench,
+                match criteria_from {
+                    TestVotePowerSource::TestToken(test_token) => {
+                        ScopeConfig::get_single_mint_config(
+                            &test_token.mint,
+                            &Some(ScopeMatch::ProgramId(system_program::id())),
+                            &None,
+                            &None,
+                        )
+                    }
+                    TestVotePowerSource::TestTagRecordFactory(tag_record_factory) => {
+                        ScopeConfig::get_single_tag_config(
+                            &tag_record_factory.factory,
+                            &Some(ScopeMatch::ProgramId(system_program::id())),
+                            &None,
+                            &None,
+                        )
+                    }
+                },
+            )
+            .await;
+        scope
+    }
+
     pub async fn get_governance_account(&self, bench: &mut ProgramTestBench) -> GovernanceV2 {
         let account = bench.get_account(&self.governance).await.unwrap();
-        let governance = try_from_slice_unchecked::<GovernanceV2>(&account.data).unwrap();
-        return governance;
+
+        try_from_slice_unchecked::<GovernanceV2>(&account.data).unwrap()
     }
 
     #[allow(dead_code)]
@@ -919,7 +1058,7 @@ impl TestProposal {
         for scope in &scopes {
             instructions.push(insert_scope(
                 &lgovernance::id(),
-                &scope,
+                scope,
                 &proposal_address,
                 &owner.pubkey(),
                 &bench.payer.pubkey(),
@@ -927,7 +1066,7 @@ impl TestProposal {
         }
 
         bench
-            .process_transaction(&instructions, Some(&[&owner]))
+            .process_transaction(&instructions, Some(&[owner]))
             .await
             .unwrap();
 
@@ -943,30 +1082,16 @@ impl TestProposal {
     pub async fn new_transfer_proposal(
         bench: &mut ProgramTestBench,
         owner: &TestUser,
-        channel: &TestChannel,
+        scope: &Pubkey,
         governance: &TestGovernance,
-        governance_token: &TestToken,
         transfer_amount: u64,
-    ) -> (TestProposal, Pubkey, WalletCookie) {
-        let scope = governance
-            .create_scope(
-                bench,
-                ScopeConfig::get_single_mint_config(
-                    &governance_token.mint,
-                    &Some(ScopeCondition::ProgramId(system_program::id())),
-                    &None,
-                    &None,
-                ),
-                &channel,
-            )
-            .await;
-
+    ) -> (TestProposal, WalletCookie) {
         let mut proposal = TestProposal::new(
             bench,
             0,
             VoteType::SingleChoice,
-            vec![scope],
-            &governance,
+            vec![*scope],
+            governance,
             &owner.keypair,
         )
         .await;
@@ -1004,16 +1129,16 @@ impl TestProposal {
                         transfer_amount,
                     )
                     .into(),
-                    scope,
+                    scope: *scope,
                 }],
                 &owner.keypair,
             )
             .await;
 
         proposal
-            .finalize_draft(bench, &governance, &owner.keypair)
+            .finalize_draft(bench, governance, &owner.keypair)
             .await;
-        (proposal, scope, recipent_wallet)
+        (proposal, recipent_wallet)
     }
 
     pub async fn add_option(
@@ -1039,7 +1164,7 @@ impl TestProposal {
         .0;
 
         bench
-            .process_transaction(&instructions, Some(&[&owner]))
+            .process_transaction(&instructions, Some(&[owner]))
             .await
             .unwrap();
 
@@ -1055,9 +1180,9 @@ impl TestProposal {
         instructions: Vec<ConditionedInstruction>,
         owner: &Keypair,
     ) {
-        if !self.proposal_transactions.contains_key(&option_index) {
-            self.proposal_transactions.insert(option_index, Vec::new());
-        }
+        self.proposal_transactions
+            .entry(option_index)
+            .or_insert_with(Vec::new);
         let option_instructions = self.proposal_transactions.get_mut(&option_index).unwrap();
         let instructions = [insert_transaction(
             &lgovernance::id(),
@@ -1079,7 +1204,7 @@ impl TestProposal {
         option_instructions.push(instruction_key);
 
         bench
-            .process_transaction(&instructions, Some(&[&owner]))
+            .process_transaction(&instructions, Some(&[owner]))
             .await
             .unwrap();
     }
@@ -1101,34 +1226,34 @@ impl TestProposal {
             signed_scopes.push((
                 *scope,
                 match scope_data.config.proposal_config.create_proposal_criteria {
-                    lgovernance::state::scopes::scope::CreateProposalCriteria::AuthorityTag {
-                        authority,
-                        tag,
+                    lgovernance::state::scopes::scope::CreateProposalCriteria::Tag {
+                        record_factory,
                     } => {
                         let tag_record = get_tag_record_program_address(
                             &ltag::id(),
-                            &tag,
+                            &record_factory,
                             &owner.pubkey(),
-                            &authority,
                         )
                         .0;
-                        SignedCreateProposal::AuthorityTag {
+
+                        SignedCreateProposal::Tag {
                             owner: owner.pubkey(),
                             record: tag_record,
                         }
                     }
-                    lgovernance::state::scopes::scope::CreateProposalCriteria::TokenOwner {
+                    lgovernance::state::scopes::scope::CreateProposalCriteria::Token {
                         mint,
                         ..
                     } => {
-                        let record = get_token_owner_record_address(
+                        let record = get_vote_power_owner_record_address(
                             &lgovernance::id(),
-                            &mint,
+                            &VotePowerUnit::Mint(mint),
                             &owner.pubkey(),
+                            scope,
                         )
                         .0;
-                        SignedCreateProposal::TokenOwner {
-                            governing_token_owner: owner.pubkey(),
+                        SignedCreateProposal::Token {
+                            governing_owner: owner.pubkey(),
                             owner_record: record,
                         }
                     }
@@ -1145,7 +1270,7 @@ impl TestProposal {
         )];
 
         bench
-            .process_transaction(&instructions, Some(&[&owner]))
+            .process_transaction(&instructions, Some(&[owner]))
             .await
             .unwrap();
     }
@@ -1182,7 +1307,7 @@ impl TestProposal {
         return None;
     } */
 
-    pub async fn get_vote_option(&self, bench: &mut ProgramTestBench, vote: &Vote) -> Vec<Pubkey> {
+    pub async fn get_vote_option(&self, _bench: &mut ProgramTestBench, vote: &Vote) -> Vec<Pubkey> {
         let mut vote_options = Vec::new();
         for index in vote {
             let option = get_proposal_option_program_address(
@@ -1197,7 +1322,7 @@ impl TestProposal {
     }
 
     pub async fn get_vote_option_for_proposal(
-        bench: &mut ProgramTestBench,
+        _bench: &mut ProgramTestBench,
         proposal: &Pubkey,
         vote: &Vote,
     ) -> Vec<Pubkey> {
@@ -1214,54 +1339,54 @@ impl TestProposal {
         vote_options
     }
 
-    pub async fn vote(
-        &self,
-        bench: &mut ProgramTestBench,
-        vote: &Vote,
-        owner: &TestUser,
-        token: &TestToken,
-        scope: &Pubkey,
-    ) {
-        if owner
-            .get_token_owner_budget_record(bench, &token, scope)
-            .await
-            .is_none()
-        {
-            owner.create_budget(bench, token, scope).await;
-        }
+    /*   pub async fn vote(
+           &self,
+           bench: &mut ProgramTestBench,
+           vote: &Vote,
+           owner: &TestUser,
+           source: &VoteSource,
+           scope: &Pubkey,
+       ) {
+           if owner
+               .get_token_owner_budget_record(bench, source, scope)
+               .await
+               .is_none()
+           {
+               owner.create_budget(bench, source, scope).await;
+           }
 
-        let vote_options = self.get_vote_option(bench, vote).await;
-        let latest_vote = owner.get_latest_vote_address(bench, &token).await;
-        bench
-            .process_transaction(
-                &[cast_vote(
-                    &lgovernance::id(),
-                    &bench.payer.pubkey(),
-                    &self.proposal,
-                    &owner.get_token_owner_record_address(&token.mint),
-                    &owner.keypair.pubkey(),
-                    scope,
-                    &vote_options,
-                    latest_vote.as_ref(),
-                    false,
-                )],
-                Some(&[&owner.keypair]),
-            )
-            .await
-            .unwrap();
-    }
-
+           let vote_options = self.get_vote_option(bench, vote).await;
+           let latest_vote = owner.get_latest_vote_address(bench, source).await;
+           bench
+               .process_transaction(
+                   &[cast_vote(
+                       &lgovernance::id(),
+                       &bench.payer.pubkey(),
+                       &self.proposal,
+                       &owner.get_vote_power_origin_record_address(source),
+                       &owner.keypair.pubkey(),
+                       scope,
+                       &vote_options,
+                       latest_vote.as_ref(),
+                       false,
+                   )],
+                   Some(&[&owner.keypair]),
+               )
+               .await
+               .unwrap();
+       }
+    */
     pub async fn vote_with_delegate(
         &self,
         bench: &mut ProgramTestBench,
         vote: &Vote,
         owner: &TestUser,
-        token: &TestToken,
+        source: &VotePowerUnit,
         scope: &Pubkey,
     ) {
         let vote_options = self.get_vote_option(bench, vote).await;
         let latest_vote = owner
-            .get_latest_vote_delegate_address(bench, &token, scope)
+            .get_latest_vote_delegate_address(bench, source, scope)
             .await;
 
         bench
@@ -1270,7 +1395,7 @@ impl TestProposal {
                     &lgovernance::id(),
                     &bench.payer.pubkey(),
                     &self.proposal,
-                    &owner.get_token_owner_delegate_record_address(scope, &token.mint),
+                    &owner.get_token_owner_delegate_record_address(scope, source),
                     &owner.keypair.pubkey(),
                     scope,
                     &vote_options,
@@ -1282,7 +1407,43 @@ impl TestProposal {
             .await
             .unwrap();
     }
+    pub async fn unvote_with_delegate(
+        &self,
+        bench: &mut ProgramTestBench,
+        vote: Vote,
+        owner: &TestUser,
+        source: &VotePowerUnit,
+        scope: &Pubkey,
+        beneficiary: &Pubkey,
+    ) {
+        let mut vote_options = Vec::new();
+        for index in &vote {
+            let option = get_proposal_option_program_address(
+                &lgovernance::id(),
+                &self.proposal,
+                &index.to_le_bytes(),
+            )
+            .0;
+            vote_options.push(option);
+        }
 
+        bench
+            .process_transaction(
+                &[uncast_vote(
+                    &lgovernance::id(),
+                    &self.proposal,
+                    &owner.get_token_owner_delegate_record_address(scope, source),
+                    &owner.keypair.pubkey(),
+                    beneficiary,
+                    scope,
+                    &vote_options,
+                )],
+                Some(&[&owner.keypair]),
+            )
+            .await
+            .unwrap();
+    }
+    /*
     pub async fn unvote(
         &self,
         bench: &mut ProgramTestBench,
@@ -1308,9 +1469,9 @@ impl TestProposal {
                 &[uncast_vote(
                     &lgovernance::id(),
                     &self.proposal,
-                    &owner.get_token_owner_record_address(&token.mint),
+                    &owner.get_vote_power_origin_record_address(&token.mint),
                     &owner.keypair.pubkey(),
-                    &beneficiary,
+                    beneficiary,
                     scope,
                     &vote_options,
                 )],
@@ -1319,15 +1480,19 @@ impl TestProposal {
             .await
             .unwrap();
     }
+    */
 
     pub async fn execute_transactions(
         &self,
         bench: &mut ProgramTestBench,
-        channel: &Pubkey,
         option_index: u16,
         /*  instruction_accounts: &[AccountMeta], */
     ) {
         let governance = self.get_proposal_account(bench).await.governance;
+        let governance_account = try_from_slice_unchecked::<GovernanceV2>(
+            &bench.get_account(&governance).await.unwrap().data,
+        )
+        .unwrap();
         let native_treasury = get_native_treasury_address(&lgovernance::id(), &governance);
         let transactions = self.proposal_transactions.get(&option_index).unwrap();
         for (i, transaction) in transactions.iter().enumerate() {
@@ -1370,7 +1535,6 @@ impl TestProposal {
                 .process_transaction(
                     &[execute_transaction(
                         &lgovernance::id(),
-                        channel,
                         &self.proposal,
                         transaction,
                         &get_proposal_option_program_address(
@@ -1379,6 +1543,7 @@ impl TestProposal {
                             &option_index.to_le_bytes(),
                         )
                         .0,
+                        governance_account.seed,
                         &account_metas, // ?????
                     )],
                     None,
@@ -1389,22 +1554,22 @@ impl TestProposal {
     }
 
     pub async fn count_votes(&self, bench: &mut ProgramTestBench) {
-        let mut scope_mints = Vec::new();
+        let mut scope_sources = Vec::new();
         let proposal = self.get_proposal_account(bench).await;
         for scope_weight in &proposal.scopes_max_vote_weight {
             let scope = try_from_slice_unchecked::<Scope>(
                 &bench.get_account(&scope_weight.scope).await.unwrap().data,
             )
             .unwrap();
-            scope_mints.push((
+            scope_sources.push((
                 scope_weight.scope,
                 scope
                     .config
                     .vote_config
-                    .mint_weights
+                    .source_weights
                     .iter()
-                    .map(|weight| weight.mint)
-                    .collect::<Vec<Pubkey>>(),
+                    .map(|weight| weight.source.clone())
+                    .collect::<Vec<VotePowerUnit>>(),
             ))
         }
 
@@ -1412,7 +1577,7 @@ impl TestProposal {
         let mut instructions = vec![count_vote_max_weights(
             &lgovernance::id(),
             &self.proposal,
-            &scope_mints,
+            &scope_sources,
         )];
 
         for option in &self.options {
@@ -1567,7 +1732,7 @@ impl TestToken {
         token_account_keypair.pubkey()
     } */
 }
-
+/*
 pub struct TestChannel {
     pub channel: Pubkey,
     pub authority: Keypair,
@@ -1590,10 +1755,7 @@ impl TestChannel {
         .await
         .unwrap();
 
-        Self {
-            channel,
-            authority: authority,
-        }
+        Self { channel, authority }
     }
 
     pub async fn get_channel_account(&self, banks_client: &mut BanksClient) -> ChannelAccount {
@@ -1606,7 +1768,7 @@ impl TestChannel {
                 .data,
         )
         .unwrap();
-        return channel;
+        channel
     }
 
     pub fn get_treasury_address(&self, mint: &Pubkey) -> Pubkey {
@@ -1636,7 +1798,7 @@ impl TestChannel {
         .unwrap()
     }
 }
-
+ */
 /* pub async fn initialize(
        &self,
        banks_client: &mut BanksClient,

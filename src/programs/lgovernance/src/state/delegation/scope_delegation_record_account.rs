@@ -10,13 +10,16 @@ use solana_program::{
 use crate::{
     accounts::AccountType,
     error::GovernanceError,
-    state::token_owner_record::{get_token_owner_record_data, TokenOwnerRecordV2},
+    state::{
+        vote_power_origin_record::VotePowerOriginRecord,
+        vote_power_owner_record::VotePowerOwnerRecord,
+    },
 };
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
 pub struct ScopeDelegationRecordAccount {
     pub account_type: AccountType,
-    pub delegator_token_owner_record: Pubkey,
+    pub delegator_token_origin_record: Pubkey,
     pub delegatee_token_owner_record: Pubkey,
     pub amount: u64,
 
@@ -49,11 +52,11 @@ impl ScopeDelegationRecordAccount {
         rent: &Rent,
         scope_delegation_record_info: &AccountInfo<'a>,
         scope_delegation_record_bump_seed: u8,
-        token_owner_record: &TokenOwnerRecordV2,
-        token_owner_record_info: &AccountInfo<'a>,
-        governing_token_owner_info: &AccountInfo<'a>,
-        delegatee_token_owner_record: &TokenOwnerRecordV2,
-        delegatee_token_owner_record_info: &AccountInfo<'a>,
+        token_origin_record: &VotePowerOriginRecord,
+        token_origin_record_info: &AccountInfo<'a>,
+        governing_owner_info: &AccountInfo<'a>,
+        delegatee_token_owner_record: &VotePowerOwnerRecord,
+        delegatee_vote_power_owner_record_info: &AccountInfo<'a>,
         payer_info: &AccountInfo<'a>,
         system_info: &AccountInfo<'a>,
     ) -> Result<(), ProgramError> {
@@ -63,9 +66,9 @@ impl ScopeDelegationRecordAccount {
         if scope_delegation_record_info.data_is_empty() {
             let bump_seeds = [scope_delegation_record_bump_seed];
             let seeds = get_scope_delegation_account_program_address_seeds(
-                token_owner_record_info.key,
-                delegatee_token_owner_record_info.key,
-                &scope,
+                token_origin_record_info.key,
+                delegatee_vote_power_owner_record_info.key,
+                scope,
                 &bump_seeds,
             );
 
@@ -75,24 +78,24 @@ impl ScopeDelegationRecordAccount {
                 &ScopeDelegationRecordAccount {
                     account_type: AccountType::DelegationRecord,
                     amount,
-                    delegator_token_owner_record: *token_owner_record_info.key,
-                    delegatee_token_owner_record: *delegatee_token_owner_record_info.key,
+                    delegator_token_origin_record: *token_origin_record_info.key,
+                    delegatee_token_owner_record: *delegatee_vote_power_owner_record_info.key,
                     vote_head: None,
                     last_vote_head: delegatee_token_owner_record.latest_vote,
                 },
                 &seeds,
                 program_id,
                 system_info,
-                &rent,
+                rent,
             )?;
         } else {
             let mut scope_delegation_record = get_scope_delegation_record_data(
                 program_id,
                 scope_delegation_record_info,
-                token_owner_record,
-                token_owner_record_info,
-                governing_token_owner_info,
-                delegatee_token_owner_record_info,
+                token_origin_record,
+                token_origin_record_info,
+                governing_owner_info,
+                delegatee_vote_power_owner_record_info,
             )?;
 
             // check the state (so we can update)
@@ -119,26 +122,26 @@ impl ScopeDelegationRecordAccount {
         program_id: &Pubkey,
         amount: u64,
         scope_delegation_record_info: &AccountInfo<'a>,
-        token_owner_record: &TokenOwnerRecordV2,
-        token_owner_record_info: &AccountInfo<'a>,
-        governing_token_owner_info: &AccountInfo<'a>,
-        delegatee_token_owner_record: &TokenOwnerRecordV2,
-        delegatee_token_owner_record_info: &AccountInfo<'a>,
+        token_origin_record: &VotePowerOriginRecord,
+        token_origin_record_info: &AccountInfo<'a>,
+        governing_owner_info: &AccountInfo<'a>,
+        delegatee_token_owner_record: &VotePowerOwnerRecord,
+        delegatee_vote_power_owner_record_info: &AccountInfo<'a>,
         beneficiary_info: &AccountInfo<'a>,
     ) -> Result<(), ProgramError> {
         // TODO check delegation owner redcord mint
         let mut scope_delegation_record = get_scope_delegation_record_data(
             program_id,
             scope_delegation_record_info,
-            token_owner_record,
-            token_owner_record_info,
-            governing_token_owner_info,
-            delegatee_token_owner_record_info,
+            token_origin_record,
+            token_origin_record_info,
+            governing_owner_info,
+            delegatee_vote_power_owner_record_info,
         )?;
 
         // check the state (so we can update)
         if scope_delegation_record.vote_head.is_some()
-            || &delegatee_token_owner_record.latest_vote != &scope_delegation_record.last_vote_head
+            || delegatee_token_owner_record.latest_vote != scope_delegation_record.last_vote_head
         {
             return Err(GovernanceError::InvalidDelegationStateForUpdates.into());
         }
@@ -156,15 +159,16 @@ impl ScopeDelegationRecordAccount {
     }
 }
 
-pub fn get_delegation_record_data_for_delegator_or_delegatee(
+pub fn get_delegation_record_data_for_delegator_and_delegatee(
     program_id: &Pubkey,
     scope_delegation_record_info: &AccountInfo,
-    delegator_or_delegatee_token_owner_record: &AccountInfo,
+    delegator_token_origin_record: &AccountInfo,
+    delegatee_token_owner_record: &AccountInfo,
 ) -> Result<ScopeDelegationRecordAccount, ProgramError> {
     let data =
         get_account_data::<ScopeDelegationRecordAccount>(program_id, scope_delegation_record_info)?;
-    if &data.delegator_token_owner_record != delegator_or_delegatee_token_owner_record.key
-        && &data.delegatee_token_owner_record != delegator_or_delegatee_token_owner_record.key
+    if &data.delegator_token_origin_record != delegator_token_origin_record.key
+        || &data.delegatee_token_owner_record != delegatee_token_owner_record.key
     {
         return Err(GovernanceError::InvalidTokenOwnerRecordAccountAddress.into());
     }
@@ -207,15 +211,15 @@ pub fn get_scope_delegation_account_program_address_seeds<'a>(
 pub fn get_scope_delegation_record_data(
     program_id: &Pubkey,
     delegation_record_info: &AccountInfo,
-    token_owner_record: &TokenOwnerRecordV2,
-    token_owner_record_info: &AccountInfo,
-    governing_token_owner_info: &AccountInfo,
-    delegatee_token_owner_record_info: &AccountInfo,
+    token_origin_record: &VotePowerOriginRecord,
+    token_origin_record_info: &AccountInfo,
+    governing_owner_info: &AccountInfo,
+    delegatee_vote_power_owner_record_info: &AccountInfo,
 ) -> Result<ScopeDelegationRecordAccount, ProgramError> {
-    if !governing_token_owner_info.is_signer {
+    if !governing_owner_info.is_signer {
         return Err(GovernanceError::GoverningTokenOwnerMustSign.into());
     }
-    if &token_owner_record.governing_token_owner != governing_token_owner_info.key {
+    if &token_origin_record.governing_owner != governing_owner_info.key {
         return Err(GovernanceError::InvalidTokenOwner.into());
     }
 
@@ -224,10 +228,11 @@ pub fn get_scope_delegation_record_data(
         get_account_data::<ScopeDelegationRecordAccount>(program_id, delegation_record_info)?;
     msg!("YY");
 
-    if &scope_delegation_data.delegator_token_owner_record != token_owner_record_info.key {
+    if &scope_delegation_data.delegator_token_origin_record != token_origin_record_info.key {
         return Err(GovernanceError::InvalidTokenOwnerRecordAccountAddress.into());
     }
-    if &scope_delegation_data.delegatee_token_owner_record != delegatee_token_owner_record_info.key
+    if &scope_delegation_data.delegatee_token_owner_record
+        != delegatee_vote_power_owner_record_info.key
     {
         return Err(GovernanceError::InvalidTokenOwnerRecordAccountAddress.into());
     }
