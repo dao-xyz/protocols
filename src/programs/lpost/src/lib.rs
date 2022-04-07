@@ -7,30 +7,7 @@ pub mod shared;
 pub mod state;
 pub mod tokens;
 solana_program::declare_id!("A55r8UJDa2jTWVzDBhpzTcBPqSx2zcdZeh7Qxxqp8Sbb");
-use solana_program::pubkey::Pubkey;
-
 use state::vote_record::Vote;
-
-use crate::tokens::spl_utils::{
-    MINT_SEED,
-};
-
-/// Seed for UPVOTE
-const USER: &[u8] = b"user";
-
-/// Seed for UPVOTE
-const UPVOTE: &[u8] = b"up";
-
-/// Seed for downvote
-const DOWNVOTE: &[u8] = b"down";
-
-/// Seed for MINT
-const MINT: &[u8] = b"mint";
-
-// Seed for stats
-const STATS: &[u8] = b"stats";
-
-const AUTHORITY: &[u8] = b"authority";
 
 /*
 #[derive(Copy, Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
@@ -111,14 +88,14 @@ pub fn create_post_mint_program_account<'a>(
     Ok(())
 }
  */
-pub fn find_post_program_address(program_id: &Pubkey, hash: &[u8; 32]) -> (Pubkey, u8) {
+/* pub fn find_post_program_address(program_id: &Pubkey, hash: &[u8; 32]) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[hash], program_id)
 }
 
 /// Find address for the token upvote mint for the post account
 pub fn find_post_upvote_mint_program_address(program_id: &Pubkey, post: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[MINT_SEED, UPVOTE, &post.to_bytes()], program_id)
-}
+} */
 /*
 /// Create post mint upvote program address
 pub fn create_post_upvote_mint_program_address_seeds<'a>(

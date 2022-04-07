@@ -1,37 +1,40 @@
 use ltag::{
-    get_tag_program_address, get_tag_record_program_address,
-    state::{TagAccount, TagRecordAccount},
+    get_tag_program_address, get_tag_record_factory_program_address, get_tag_record_program_address,
 };
 use shared::content::ContentSource;
 use solana_program::{
-    borsh::try_from_slice_unchecked, hash::Hash, program_pack::Pack, system_instruction,
+    borsh::try_from_slice_unchecked, hash::Hash, program_error::ProgramError, program_pack::Pack,
+    system_instruction,
 };
 
-use lchannel::{
-    instruction::create_channel,
-    state::{find_channel_program_address, ActivityAuthority, ChannelAccount},
-};
-use lpost::{
+use lsocial::{
     instruction::{
-        cast_vote, create_post, uncast_vote, CreateVoteConfig, SigningActivityAuthority,
+        cast_vote, create_post, uncast_vote, update_info, CreateVoteConfig, SignedAuthority,
+        SignedAuthorityCondition,
     },
     state::{
-        post::{PostAccount, PostContent},
+        channel_authority::{
+            get_channel_authority_address, AuthorityCondition, AuthorityType, ChannelAuthority,
+        },
+        post::{get_post_program_address, PostAccount, PostContent},
         vote_record::Vote,
     },
 };
-/* use luser::{
-    find_user_account_program_address, instruction::create_user_transaction,
-    state::deserialize_user_account,
-}; */
+use lsocial::{
+    instruction::{create_channel, create_channel_authority},
+    state::channel::{get_channel_program_address, ChannelAccount},
+};
+
 use solana_program_test::*;
 use solana_sdk::{
     pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction,
     transport::TransportError,
 };
 use spl_associated_token_account::{create_associated_token_account, get_associated_token_address};
+
+use crate::bench::{clone_keypair, ProgramTestBench};
 pub fn deserialize_channel_account(data: &[u8]) -> std::io::Result<ChannelAccount> {
-    let account: ChannelAccount = try_from_slice_unchecked(data)?;
+    let account = try_from_slice_unchecked::<ChannelAccount>(data)?;
     Ok(account)
 }
 
@@ -44,7 +47,7 @@ pub async fn get_token_balance(banks_client: &mut BanksClient, token: &Pubkey) -
 
 pub fn create_post_hash() -> (Pubkey, [u8; 32]) {
     let hash = Pubkey::new_unique().to_bytes();
-    (Pubkey::find_program_address(&[&hash], &lpost::id()).0, hash)
+    (get_post_program_address(&lsocial::id(), &hash).0, hash)
 }
 
 pub async fn create_mint_from_keypair(
@@ -121,308 +124,310 @@ pub async fn assert_token_balance(banks_client: &mut BanksClient, account: &Pubk
         amount
     );
 }
-
-pub async fn create_tag(
-    banks_client: &mut BanksClient,
-    payer: &Keypair,
-    recent_blockhash: &Hash,
-    tag: &str,
-) -> Pubkey {
-    // Create tag
-    banks_client
-        .process_transaction(Transaction::new_signed_with_payer(
-            &[ltag::instruction::create_tag(
-                &ltag::id(),
-                tag,
-                &payer.pubkey(),
-            )],
-            Some(&payer.pubkey()),
-            &[payer],
-            *recent_blockhash,
-        ))
-        .await
-        .unwrap();
-
-    let tag_address = get_tag_program_address(&ltag::id(), tag).0;
-    let tag_account_info = banks_client
-        .get_account(tag_address)
-        .await
-        .expect("get_tag")
-        .expect("tag not found");
-    let tag_account = try_from_slice_unchecked::<TagAccount>(&tag_account_info.data).unwrap();
-    assert_eq!(tag_account.tag, tag);
-    tag_address
+pub struct TestTagRecordFactory {
+    pub tag: Pubkey,
+    pub factory: Pubkey,
+    pub authority: Keypair,
 }
 
-pub async fn create_tag_record(
-    banks_client: &mut BanksClient,
-    payer: &Keypair,
-    recent_blockhash: &Hash,
-    tag: &Pubkey,
-    owner: &Keypair,
-    authority: &Keypair,
-) -> Pubkey {
-    // Create tag record
-    banks_client
-        .process_transaction(Transaction::new_signed_with_payer(
-            &[ltag::instruction::create_tag_record(
-                &ltag::id(),
-                tag,
-                &owner.pubkey(),
-                &authority.pubkey(),
-                &payer.pubkey(),
-            )],
-            Some(&payer.pubkey()),
-            &[payer, owner, authority],
-            *recent_blockhash,
-        ))
-        .await
-        .unwrap();
+impl TestTagRecordFactory {
+    pub async fn new(bench: &mut ProgramTestBench) -> Self {
+        let authority = Keypair::new();
+        let tag = Pubkey::new_unique().to_string();
+        bench
+            .process_transaction(
+                &[ltag::instruction::create_tag(
+                    &ltag::id(),
+                    tag.as_ref(),
+                    None,
+                    &authority.pubkey(),
+                    &bench.payer.pubkey(),
+                )],
+                Some(&[&authority]),
+            )
+            .await
+            .unwrap();
 
-    let tag_record_address =
-        get_tag_record_program_address(&ltag::id(), tag, &owner.pubkey(), &authority.pubkey()).0;
-    let tag_record_account_info = banks_client
-        .get_account(tag_record_address)
-        .await
-        .expect("get_tag_record")
-        .expect("tag not found");
-    let tag_record_account =
-        try_from_slice_unchecked::<TagRecordAccount>(&tag_record_account_info.data).unwrap();
-    assert_eq!(&tag_record_account.authority, &authority.pubkey());
-    assert_eq!(&tag_record_account.owner, &owner.pubkey());
-    assert_eq!(&tag_record_account.tag, tag);
-    tag_record_address
-}
+        let tag_address = get_tag_program_address(&ltag::id(), tag.as_ref()).0;
+        bench
+            .process_transaction(
+                &[ltag::instruction::create_tag_record_factory(
+                    &ltag::id(),
+                    &tag_address,
+                    &authority.pubkey(),
+                    &bench.payer.pubkey(),
+                )],
+                Some(&[&authority]),
+            )
+            .await
+            .unwrap();
 
-/* pub async fn create_and_verify_user(
-    banks_client: &mut BanksClient,
-    payer: &Keypair,
-    recent_blockhash: &Hash,
-    username: &str,
-    profile: &str,
-) -> Pubkey {
-    // Create user
-    banks_client
-        .process_transaction(Transaction::new_signed_with_payer(
-            &[create_user_transaction(
-                &luser::id(),
-                username,
-                Some(profile.into()),
-                &payer.pubkey(),
-            )],
-            Some(&payer.pubkey()),
-            &[payer],
-            *recent_blockhash,
-        ))
-        .await
-        .unwrap();
-
-    // Verify username name
-    let user_account_address = find_user_account_program_address(&luser::id(), username).0;
-    let user_account_info = banks_client
-        .get_account(user_account_address)
-        .await
-        .expect("get_user")
-        .expect("user not found");
-    let user = deserialize_user_account(&user_account_info.data).unwrap();
-    assert_eq!(user.name, username);
-    user_account_address
-} */
-
-pub async fn create_and_verify_channel(
-    channel_name: &str,
-    activity_authority: &ActivityAuthority,
-    link: Option<ContentSource>,
-    banks_client: &mut BanksClient,
-    payer: &Keypair,
-    recent_blockhash: &Hash,
-) -> Result<(Pubkey, Keypair), TransportError> {
-    let (channel_address_pda, _bump) =
-        find_channel_program_address(&lchannel::id(), channel_name).unwrap();
-
-    let authority = Keypair::new();
-    let mut transaction_create = Transaction::new_with_payer(
-        &[create_channel(
-            &lchannel::id(),
-            channel_name,
-            &payer.pubkey(),
-            &authority.pubkey(),
-            None,
-            activity_authority,
-            link,
-            &payer.pubkey(),
-        )],
-        Some(&payer.pubkey()),
-    );
-    transaction_create.sign(&[payer, &authority], *recent_blockhash);
-    banks_client.process_transaction(transaction_create).await?;
-
-    // Verify channel name
-    let channel_account_info = banks_client
-        .get_account(channel_address_pda)
-        .await
-        .expect("get_account")
-        .expect("channel_account not found");
-    let channel_account = deserialize_channel_account(&channel_account_info.data).unwrap();
-
-    assert_eq!(channel_account.name.as_str(), channel_name);
-    Ok((channel_address_pda, authority))
-}
-
-/* pub async fn ensure_utility_token_balance(
-    banks_client: &mut BanksClient,
-    payer: &Keypair,
-    recent_blockhash: &Hash,
-    expected_balance: u64,
-) {
-    if expected_balance == 0 {
-        return;
-    }
-
-    let mut stake_pool_accounts =
-        super::super::super::stake_pool::helpers::StakePoolAccounts::new();
-    stake_pool_accounts.sol_deposit_fee = Fee {
-        numerator: 0,
-        denominator: 1,
-    };
-
-    stake_pool_accounts
-        .initialize_stake_pool(banks_client, payer, recent_blockhash, 1)
-        .await
-        .unwrap();
-
-    // Create token account to hold utility tokens
-    let mut transaction = Transaction::new_with_payer(
-        &[create_associated_token_account(
-            &payer.pubkey(),
-            &payer.pubkey(),
-            &stake_pool_accounts.pool_mint,
-        )],
-        Some(&payer.pubkey()),
-    );
-    transaction.sign(&[payer], *recent_blockhash);
-    banks_client.process_transaction(transaction).await.unwrap();
-
-    let associated_token_address =
-        get_associated_token_address(&payer.pubkey(), &stake_pool_accounts.pool_mint);
-
-    // Make deposit to stake pool to create utility tokens
-    assert!(stake_pool_accounts
-        .deposit_sol(
-            banks_client,
-            payer,
-            recent_blockhash,
-            &associated_token_address,
-            expected_balance,
-            None,
-        )
-        .await
-        .is_none());
-    let associated_account = banks_client
-        .get_account(associated_token_address)
-        .await
-        .expect("get_account")
-        .expect("associated_account not none");
-    assert_eq!(
-        associated_account.data.len(),
-        spl_token::state::Account::LEN
-    );
-    let balance = spl_token::state::Account::unpack(&*associated_account.data)
-        .unwrap()
-        .amount;
-
-    assert_eq!(expected_balance, balance);
-} */
-
-/*
-pub struct TestUser {
-    pub payer: Pubkey,
-    pub user: Pubkey,
-}
-
-impl TestUser {
-    pub async fn new(
-        banks_client: &mut BanksClient,
-        payer: &Keypair,
-        recent_blockhash: &Hash,
-    ) -> Self {
-        let username = Pubkey::new_unique().to_string();
-        let user = create_and_verify_user(
-            banks_client,
-            payer,
-            recent_blockhash,
-            username.as_str(),
-            "profile",
-        )
-        .await;
-
+        let tag_record_factory_address =
+            get_tag_record_factory_program_address(&ltag::id(), &tag_address, &authority.pubkey())
+                .0;
         Self {
-            payer: payer.pubkey(),
-            user,
+            tag: tag_address,
+            factory: tag_record_factory_address,
+            authority,
         }
     }
 
-    /*  pub fn upvote_token_account(&self, post: &TestPost) -> Pubkey {
-        get_associated_token_address(&self.payer, &post.upvote_mint)
+    pub async fn new_record(&self, bench: &mut ProgramTestBench, owner: &TestUser) {
+        bench
+            .process_transaction(
+                &[ltag::instruction::create_tag_record(
+                    &ltag::id(),
+                    &self.tag,
+                    &owner.keypair.pubkey(),
+                    &self.factory,
+                    &self.authority.pubkey(),
+                    &bench.payer.pubkey(),
+                )],
+                Some(&[&self.authority]),
+            )
+            .await
+            .unwrap();
+    }
+}
+
+pub struct TestAuthority {
+    pub key: Pubkey,
+}
+pub struct TestSignedAuthority<'a> {
+    pub signer: &'a Keypair,
+    pub authority: SignedAuthority,
+}
+impl TestAuthority {
+    pub async fn new<'a>(
+        bench: &mut ProgramTestBench,
+        channel: &TestChannel,
+        authority_types: &Vec<AuthorityType>,
+        condition: &AuthorityCondition,
+        signing_authority: &TestSignedAuthority<'a>,
+    ) -> Self {
+        let seed = Pubkey::new_unique();
+        bench
+            .process_transaction(
+                &[create_channel_authority(
+                    &lsocial::id(),
+                    &channel.channel,
+                    &bench.payer.pubkey(),
+                    authority_types,
+                    condition,
+                    &seed,
+                    &signing_authority.authority,
+                )],
+                Some(&[signing_authority.signer]),
+            )
+            .await
+            .unwrap();
+
+        Self {
+            key: get_channel_authority_address(&lsocial::id(), &channel.channel, &seed).0,
+        }
     }
 
-    pub fn downvote_token_account(&self, post: &TestPost) -> Pubkey {
-        get_associated_token_address(&self.payer, &post.downvote_mint)
+    pub async fn get_channel_authority_account(
+        &self,
+        bench: &mut ProgramTestBench,
+    ) -> ChannelAuthority {
+        let account = bench.get_account(&self.key).await.unwrap();
+        try_from_slice_unchecked::<ChannelAuthority>(&account.data).unwrap()
+    }
+    pub async fn get_signing_authority<'a>(
+        &self,
+        bench: &mut ProgramTestBench,
+        user: &'a TestUser,
+    ) -> TestSignedAuthority<'a> {
+        let account = self.get_channel_authority_account(bench).await;
+        let condition = match account.condition {
+            AuthorityCondition::None => SignedAuthorityCondition::None,
+            AuthorityCondition::Pubkey(key) => SignedAuthorityCondition::Pubkey(key),
+            AuthorityCondition::Tag { record_factory } => {
+                let record = user.get_tag_record_address(&record_factory);
+                SignedAuthorityCondition::Tag {
+                    record_factory,
+                    record,
+                    owner: user.keypair.pubkey(),
+                }
+            }
+        };
+        TestSignedAuthority {
+            signer: &user.keypair,
+            authority: SignedAuthority {
+                channel_authority: self.key,
+                condition,
+            },
+        }
+    }
+}
+
+pub struct TestChannel {
+    pub channel: Pubkey,
+}
+
+impl TestChannel {
+    pub async fn new<'a>(
+        bench: &mut ProgramTestBench,
+        admin: &TestUser,
+        info: Option<ContentSource>,
+        parent: Option<&TestChannel>,
+        activity_authority: Option<&TestSignedAuthority<'a>>,
+    ) -> (Self, TestAuthority) {
+        let channel_name = Pubkey::new_unique().to_string();
+        let (channel_address_pda, _bump) =
+            get_channel_program_address(&lsocial::id(), channel_name.as_ref()).unwrap();
+        let channel_authority_seed = Pubkey::new_unique();
+        let mut signers = vec![clone_keypair(&admin.keypair)];
+        if let Some(activity_authority) = activity_authority {
+            signers.push(clone_keypair(activity_authority.signer));
+        }
+
+        bench
+            .process_transaction(
+                &[create_channel(
+                    &lsocial::id(),
+                    parent.map(|p| p.channel),
+                    &admin.keypair.pubkey(),
+                    &admin.keypair.pubkey(),
+                    &bench.payer.pubkey(),
+                    channel_name.as_ref(),
+                    info,
+                    &channel_authority_seed,
+                    activity_authority.map(|x| &x.authority),
+                )],
+                Some(&signers.iter().collect::<Vec<&Keypair>>()),
+            )
+            .await
+            .unwrap();
+
+        (
+            Self {
+                channel: channel_address_pda,
+            },
+            TestAuthority {
+                key: get_channel_authority_address(
+                    &lsocial::id(),
+                    &channel_address_pda,
+                    &channel_authority_seed,
+                )
+                .0,
+            },
+        )
+    }
+
+    pub async fn get_channel_account(&self, bench: &mut ProgramTestBench) -> ChannelAccount {
+        let channel = try_from_slice_unchecked::<ChannelAccount>(
+            &*bench.get_account(&self.channel).await.unwrap().data,
+        )
+        .unwrap();
+        channel
+    }
+
+    pub async fn update_info<'a>(
+        &self,
+        bench: &mut ProgramTestBench,
+        new_info: Option<ContentSource>,
+        activity_authority: &TestSignedAuthority<'a>,
+    ) {
+        bench
+            .process_transaction(
+                &[update_info(
+                    &lsocial::id(),
+                    &self.channel,
+                    new_info,
+                    &activity_authority.authority,
+                )],
+                Some(&[activity_authority.signer]),
+            )
+            .await
+            .unwrap();
+    }
+
+    /* pub async fn get_authority_config(
+        &self,
+        bench: &mut ProgramTestBench,
+        owner: &Pubkey,
+    ) -> SigningActivityAuthority {
+        let account = self.get_channel_account(bench).await;
+        match account.activity_authority {
+            ActivityAuthority::Tag { record_factory } => SigningActivityAuthority::Tag {
+                record_factory,
+                owner: *owner,
+            },
+            ActivityAuthority::None => SigningActivityAuthority::None,
+        }
     } */
-    pub fn token_account(&self, token: &TestGovernanceToken) -> Pubkey {
-        get_associated_token_address(&self.payer, &token.mint)
-    }
-} */
+}
 
-pub struct TestPost {
+pub struct TestUser {
+    pub keypair: Keypair,
+}
+
+impl TestUser {
+    pub fn new() -> Self {
+        Self {
+            keypair: Keypair::new(),
+        }
+    }
+
+    pub fn get_tag_record_address(&self, tag_record_factory: &Pubkey) -> Pubkey {
+        get_tag_record_program_address(&ltag::id(), tag_record_factory, &self.keypair.pubkey()).0
+    }
+}
+
+pub struct TestPost<'a> {
     pub post: Pubkey,
-    pub channel: TestChannel,
+    pub channel: &'a TestChannel,
     pub source: ContentSource,
     pub hash: [u8; 32],
     pub proposal_transactions: Vec<Pubkey>,
 }
 
-impl TestPost {
+impl<'a> TestPost<'a> {
     pub async fn new(
-        channel: &TestChannel,
+        bench: &mut ProgramTestBench,
+        channel: &'a TestChannel,
+        owner: &TestUser,
         content: &PostContent,
-        owner: &Keypair,
-        payer: &Keypair,
-        banks_client: &mut BanksClient,
-        recent_blockhash: &Hash,
-    ) -> Self {
+        parent: Option<&'a TestPost<'a>>,
+        signing_authority: &TestSignedAuthority<'a>,
+    ) -> TestPost<'a> {
         let (post, hash) = create_post_hash();
-        let authority_config = channel
-            .get_authority_config(banks_client, &owner.pubkey())
-            .await;
-        let mut transaction_create = Transaction::new_with_payer(
-            &[create_post(
-                &lpost::id(),
-                &payer.pubkey(),
-                &channel.channel,
-                &hash,
-                content,
-                &CreateVoteConfig::Simple,
-                &authority_config,
-            )],
-            Some(&payer.pubkey()),
-        );
-        transaction_create.sign(&[payer, owner], *recent_blockhash);
-        banks_client
-            .process_transaction(transaction_create)
+        bench
+            .process_transaction(
+                &[create_post(
+                    &lsocial::id(),
+                    &channel.channel,
+                    &owner.keypair.pubkey(),
+                    &bench.payer.pubkey(),
+                    content.clone(),
+                    &hash,
+                    parent.map(|p| p.post),
+                    &CreateVoteConfig::Simple,
+                    &signing_authority.authority,
+                )],
+                Some(&[signing_authority.signer]),
+            )
             .await
             .unwrap();
 
-        // Verify channel name
-        let post_account_info = banks_client
-            .get_account(post)
+        let post_account_info = bench
+            .get_account(&post)
             .await
-            .expect("get_account")
-            .expect("channel_account not found");
+            .expect("post_account not found");
         let post_account =
             try_from_slice_unchecked::<PostAccount>(&post_account_info.data).unwrap();
 
         assert_eq!(post_account.hash, hash);
+
+        if parent.is_some() {
+            assert_eq!(post_account.parent, parent.unwrap().post);
+        } else {
+            assert_eq!(post_account.parent, post_account.channel);
+        }
+
+        assert!(post_account.deleted_at_timestamp.is_none());
 
         Self {
             post,
@@ -430,90 +435,55 @@ impl TestPost {
             source: ContentSource::External {
                 url: "whatever".into(),
             },
-            channel: channel.clone(),
+            channel,
             proposal_transactions: Vec::new(),
         }
     }
 
-    /* pub async fn get_proposal_transactions(
-        &self,
-        banks_client: &mut BanksClient,
-    ) -> Vec<Box<dyn Future<Output = std::io::Result<ProposalTransactionV2>>>> {
-        let result = self
-            .proposal_transactions
-            .iter()
-            .map(|id| async {
-                let transaction: ProposalTransactionV2 = try_from_slice_unchecked(
-                    &banks_client.get_account(*id).await.unwrap().unwrap().data,
-                )
-                .unwrap();
-                return transaction;
-            })
-            .collect::<Vec<_>>();
-        return result;
-    } */
-    /* pub async fn get_proposal_used_rules(&self, banks_client: &mut BanksClient) {
-        let x = self.proposal_transactions.iter().map(|id| async {
-            let transaction: ProposalTransactionV2 = try_from_slice_unchecked(
-                &banks_client.get_account(*id).await.unwrap().unwrap().data,
-            )
-            .unwrap();
-            return transaction.get_used_rules();
-        });
-
-        if let PostType::Proposal(proposal) = post.post_type {
-            banks_client.get_account(address)
-        }
-        return None;
-    } */
-
     pub async fn vote(
         &self,
+        bench: &mut ProgramTestBench,
         vote: Vote,
-        owner: &Keypair,
-        banks_client: &mut BanksClient,
-        payer: &Keypair,
-        recent_blockhash: &Hash,
-    ) -> Result<(), TransportError> {
-        let authority_config = self
-            .channel
-            .get_authority_config(banks_client, &owner.pubkey())
-            .await;
-
-        let mut tx = Transaction::new_with_payer(
-            &[cast_vote(
-                &lpost::id(),
-                &payer.pubkey(),
-                &self.post,
-                &self.channel.channel,
-                &owner.pubkey(),
-                &authority_config,
-                vote,
-            )],
-            Some(&payer.pubkey()),
-        );
-        tx.sign(&[payer, owner], *recent_blockhash);
-        banks_client.process_transaction(tx).await
+        owner: &TestUser,
+        signing_authority: &TestSignedAuthority<'a>,
+    ) -> Result<(), ProgramError> {
+        bench
+            .process_transaction(
+                &[cast_vote(
+                    &lsocial::id(),
+                    &bench.payer.pubkey(),
+                    &self.post,
+                    &self.channel.channel,
+                    &owner.keypair.pubkey(),
+                    vote,
+                    &signing_authority.authority,
+                )],
+                Some(&[&owner.keypair, signing_authority.signer]),
+            )
+            .await?;
+        Ok(())
     }
 
     pub async fn unvote(
         &self,
-        owner: &Keypair,
-        banks_client: &mut BanksClient,
-        payer: &Keypair,
-        recent_blockhash: &Hash,
-    ) -> Result<(), TransportError> {
-        let mut tx = Transaction::new_with_payer(
-            &[uncast_vote(
-                &lpost::id(),
-                &self.post,
-                &owner.pubkey(),
-                &payer.pubkey(),
-            )],
-            Some(&payer.pubkey()),
-        );
-        tx.sign(&[payer, owner], *recent_blockhash);
-        banks_client.process_transaction(tx).await
+        bench: &mut ProgramTestBench,
+        owner: &TestUser,
+        signing_authority: &TestSignedAuthority<'a>,
+    ) -> Result<(), ProgramError> {
+        bench
+            .process_transaction(
+                &[uncast_vote(
+                    &lsocial::id(),
+                    &self.post,
+                    &self.channel.channel,
+                    &owner.keypair.pubkey(),
+                    &bench.payer.pubkey(),
+                    &signing_authority.authority,
+                )],
+                Some(&[&owner.keypair, signing_authority.signer]),
+            )
+            .await?;
+        Ok(())
     }
 
     pub async fn get_post_account(&self, banks_client: &mut BanksClient) -> PostAccount {
@@ -531,7 +501,7 @@ impl TestPost {
     pub async fn assert_votes(&self, banks_client: &mut BanksClient, upvotes: u64, downvotes: u64) {
         let post_account = self.get_post_account(banks_client).await;
         match post_account.vote_config {
-            lpost::state::post::VoteConfig::Simple { downvote, upvote } => {
+            lsocial::state::post::VoteConfig::Simple { downvote, upvote } => {
                 assert_eq!(upvote, upvotes);
                 assert_eq!(downvote, downvotes);
             }
@@ -627,99 +597,5 @@ impl TestGovernanceToken {
             .process_transaction(token_mint_transaction)
             .await
             .unwrap();
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct TestChannel {
-    pub channel: Pubkey,
-}
-
-impl TestChannel {
-    pub async fn new(
-        channel_authority: &ActivityAuthority,
-        banks_client: &mut BanksClient,
-        authority_payer: &Keypair,
-        recent_blockhash: &Hash,
-    ) -> Self {
-        let channel_name = Pubkey::new_unique().to_string();
-        let channel = create_and_verify_channel(
-            channel_name.as_ref(),
-            channel_authority,
-            None,
-            banks_client,
-            authority_payer,
-            recent_blockhash,
-        )
-        .await
-        .unwrap()
-        .0;
-
-        Self { channel }
-    }
-
-    /* pub async fn initialize(
-           &self,
-           banks_client: &mut BanksClient,
-           payer: &Keypair,
-           recent_blockhash: &Hash,
-           utility_token_balance: u64,
-       ) {
-           ensure_utility_token_balance(banks_client, payer, recent_blockhash, utility_token_balance)
-               .await;
-
-           let user = create_and_verify_user(
-               banks_client,
-               payer,
-               recent_blockhash,
-               self.username.as_ref(),
-               "profile",
-           )
-           .await;
-
-           let channel = create_and_verify_channel(
-               banks_client,
-               payer,
-               recent_blockhash,
-               "Channel",
-               &user,
-               &self.governence_mint,
-               None,
-           )
-           .await
-           .unwrap();
-
-           assert_eq!(user, self.user);
-           assert_eq!(channel, self.channel);
-       }
-    */
-    pub async fn get_channel_account(&self, banks_client: &mut BanksClient) -> ChannelAccount {
-        deserialize_channel_account(
-            &*banks_client
-                .get_account(self.channel)
-                .await
-                .unwrap()
-                .unwrap()
-                .data,
-        )
-        .unwrap()
-    }
-
-    pub async fn get_authority_config(
-        &self,
-        banks_client: &mut BanksClient,
-        owner: &Pubkey,
-    ) -> SigningActivityAuthority {
-        let account = self.get_channel_account(banks_client).await;
-        match account.activity_authority {
-            ActivityAuthority::AuthorityByTag { authority, tag } => {
-                SigningActivityAuthority::AuthorityByTag {
-                    authority,
-                    owner: *owner,
-                    tag,
-                }
-            }
-            ActivityAuthority::None => SigningActivityAuthority::None,
-        }
     }
 }

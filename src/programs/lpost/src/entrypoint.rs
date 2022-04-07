@@ -5,7 +5,7 @@ use solana_program::{
     program_error::PrintProgramError, pubkey::Pubkey,
 };
 
-use crate::{error::PostError, processor::Processor};
+use crate::{error::SocialError, processor::Processor};
 
 entrypoint!(process_instruction);
 fn process_instruction(
@@ -15,7 +15,7 @@ fn process_instruction(
 ) -> ProgramResult {
     if let Err(error) = Processor::process(program_id, accounts, instruction_data) {
         // catch the error so we can print it
-        error.print::<PostError>();
+        error.print::<SocialError>();
         return Err(error);
     }
     Ok(())

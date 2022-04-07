@@ -10,7 +10,7 @@ use solana_program::program_error::ProgramError;
 use solana_program::{program_pack::IsInitialized, pubkey::Pubkey};
 
 use crate::accounts::AccountType;
-use crate::error::PostError;
+use crate::error::SocialError;
 
 const VOTE_SEED: &[u8] = b"vote";
 
@@ -57,7 +57,7 @@ pub fn get_vote_record_data_for_signed_owner(
     }
     let data = get_account_data::<VoteRecord>(program_id, vote_record_info)?;
     if &data.owner != owner.key {
-        return Err(PostError::InvalidOwnerForVoteRecord.into());
+        return Err(SocialError::InvalidOwnerForVoteRecord.into());
     }
 
     Ok(data)
@@ -71,7 +71,7 @@ pub fn get_vote_record_data_for_signed_owner_and_post(
 ) -> Result<VoteRecord, ProgramError> {
     let data = get_vote_record_data_for_signed_owner(program_id, vote_record_info, owner)?;
     if &data.post != post {
-        return Err(PostError::InvalidPostforVoteRecord.into());
+        return Err(SocialError::InvalidPostforVoteRecord.into());
     }
     Ok(data)
 }

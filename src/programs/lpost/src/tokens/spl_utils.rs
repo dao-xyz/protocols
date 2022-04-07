@@ -1,4 +1,3 @@
-
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -439,15 +438,15 @@ pub fn transfer_spl_tokens_signed<'a>(
 /// Asserts the given account_info represents a valid SPL Token account which is initialized and belongs to spl_token program
 pub fn assert_is_valid_spl_token_account(account_info: &AccountInfo) -> Result<(), ProgramError> {
     if account_info.data_is_empty() {
-        return Err(PostError::SplTokenAccountDoesNotExist.into());
+        return Err(SocialError::SplTokenAccountDoesNotExist.into());
     }
 
     if account_info.owner != &spl_token::id() {
-        return Err(PostError::SplTokenAccountWithInvalidOwner.into());
+        return Err(SocialError::SplTokenAccountWithInvalidOwner.into());
     }
 
     if account_info.data_len() != spl_token::state::Account::LEN {
-        return Err(PostError::SplTokenInvalidTokenAccountData.into());
+        return Err(SocialError::SplTokenInvalidTokenAccountData.into());
     }
 
     // TokeAccount layout:   mint(32), owner(32), amount(8), delegate(36), state(1), ...
@@ -455,7 +454,7 @@ pub fn assert_is_valid_spl_token_account(account_info: &AccountInfo) -> Result<(
     let state = array_ref![data, 108, 1];
 
     if state == &[0] {
-        return Err(PostError::SplTokenAccountNotInitialized.into());
+        return Err(SocialError::SplTokenAccountNotInitialized.into());
     }
 
     Ok(())
@@ -464,15 +463,15 @@ pub fn assert_is_valid_spl_token_account(account_info: &AccountInfo) -> Result<(
 /// Asserts the given mint_info represents a valid SPL Token Mint account  which is initialized and belongs to spl_token program
 pub fn assert_is_valid_spl_token_mint(mint_info: &AccountInfo) -> Result<(), ProgramError> {
     if mint_info.data_is_empty() {
-        return Err(PostError::SplTokenMintDoesNotExist.into());
+        return Err(SocialError::SplTokenMintDoesNotExist.into());
     }
 
     if mint_info.owner != &spl_token::id() {
-        return Err(PostError::SplTokenMintWithInvalidOwner.into());
+        return Err(SocialError::SplTokenMintWithInvalidOwner.into());
     }
 
     if mint_info.data_len() != Mint::LEN {
-        return Err(PostError::SplTokenInvalidMintAccountData.into());
+        return Err(SocialError::SplTokenInvalidMintAccountData.into());
     }
 
     // In token program [36, 8, 1, is_initialized(1), 36] is the layout
@@ -480,7 +479,7 @@ pub fn assert_is_valid_spl_token_mint(mint_info: &AccountInfo) -> Result<(), Pro
     let is_initialized = array_ref![data, 45, 1];
 
     if is_initialized == &[0] {
-        return Err(PostError::SplTokenMintNotInitialized.into());
+        return Err(SocialError::SplTokenMintNotInitialized.into());
     }
 
     Ok(())

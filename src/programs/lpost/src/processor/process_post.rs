@@ -1,13 +1,15 @@
 use crate::{
     accounts::AccountType,
-    error::PostError,
-    instruction::{CreatePost, CreateVoteConfig},
+    error::SocialError,
+    instruction::CreateVoteConfig,
     state::{
-        assert_authorized_by_tag,
-        post::{PostAccount, VoteConfig},
+        channel::ChannelAccount,
+        channel_authority::{check_activity_authority, AuthorityType},
+        post::{
+            get_post_data, get_post_program_address_seeds, PostAccount, PostContent, VoteConfig,
+        },
     },
 };
-use lchannel::state::{ActivityAuthority, ChannelAccount};
 
 use shared::account::{
     check_system_program, create_and_serialize_account_verify_with_bump, get_account_data,
@@ -24,36 +26,48 @@ use solana_program::{
 pub fn process_create_post(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    post: CreatePost,
+    content: PostContent,
+    hash: [u8; 32],
+    is_child: bool,
+    vote_config: CreateVoteConfig,
+    post_bump_seed: u8,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
     let post_account_info = next_account_info(accounts_iter)?;
-    if !post_account_info.data_is_empty() {
-        return Err(PostError::PostAlreadyExist.into());
-    }
-    let channel_account_info = next_account_info(accounts_iter)?;
+    let channel_info = next_account_info(accounts_iter)?;
+    let owner_info = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_account = next_account_info(accounts_iter)?;
-    let content_hash = post.hash;
 
-    let channel_data = get_account_data::<ChannelAccount>(&lchannel::id(), channel_account_info)?;
+    let parent = if is_child {
+        let parent_post_info = next_account_info(accounts_iter)?;
+        let _parent_post = get_post_data(program_id, parent_post_info, channel_info.key)?;
+        *parent_post_info.key
+    } else {
+        *channel_info.key
+    };
+
+    if !post_account_info.data_is_empty() {
+        return Err(SocialError::PostAlreadyExist.into());
+    }
+
+    let channel_data = get_account_data::<ChannelAccount>(program_id, channel_info)?;
     check_system_program(system_account.key)?;
 
-    match &channel_data.activity_authority {
-        ActivityAuthority::AuthorityByTag { tag, authority } => {
-            let tag_record_info = next_account_info(accounts_iter)?;
-            let tag_authority_info = next_account_info(accounts_iter)?;
-            let tag_owner_info = next_account_info(accounts_iter)?;
-            if authority != tag_authority_info.key {
-                return Err(PostError::InvaligTagAuthority.into());
-            }
-            assert_authorized_by_tag(tag_owner_info, tag_record_info, tag, tag_authority_info)?;
-        }
-        ActivityAuthority::None => {}
-    }
+    let authority_info = next_account_info(accounts_iter)?;
+
+    check_activity_authority(
+        program_id,
+        authority_info,
+        &AuthorityType::CreatePost,
+        &channel_data,
+        channel_info,
+        accounts_iter,
+    )?;
 
     let rent = Rent::get()?;
     let clock = Clock::get()?;
+    let bump_seeds = &[post_bump_seed];
     create_and_serialize_account_verify_with_bump(
         payer_account,
         post_account_info,
@@ -61,18 +75,19 @@ pub fn process_create_post(
             create_at_timestamp: clock.unix_timestamp,
             deleted_at_timestamp: None,
             account_type: AccountType::Post,
-            content: post.content,
-            channel: *channel_account_info.key,
-            hash: post.hash,
-            creator: *payer_account.key,
-            vote_config: match post.vote_config {
+            content,
+            channel: *channel_info.key,
+            hash,
+            creator: *owner_info.key,
+            parent,
+            vote_config: match vote_config {
                 CreateVoteConfig::Simple => VoteConfig::Simple {
                     upvote: 0,
                     downvote: 0,
                 },
             },
         },
-        &[&content_hash, &[post.post_bump_seed]],
+        &get_post_program_address_seeds(&hash, bump_seeds),
         program_id,
         system_account,
         &rent,

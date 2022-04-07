@@ -1,2 +1,3 @@
-pub mod post_information;
+pub mod channel;
+pub mod post;
 pub mod utils;

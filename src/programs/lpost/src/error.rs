@@ -10,19 +10,16 @@ use thiserror::Error;
 
 /// Errors that may be returned by the Governance program
 #[derive(Clone, Debug, Eq, Error, FromPrimitive, PartialEq)]
-pub enum PostError {
-    /// Invalid owner for vote record
+pub enum SocialError {
     #[error("Invalid owner for vote record")]
     InvalidOwnerForVoteRecord = 800,
 
-    /// Invalid post for vote record
     #[error("Invalid post for vote record")]
     InvalidPostforVoteRecord,
 
-    /// Vote already exist
     #[error("Vote already exist")]
     VoteAlreadyExist,
-    /// Vote does not exist
+
     #[error("Vote does not exist")]
     VoteDoesNotExist,
 
@@ -33,32 +30,38 @@ pub enum PostError {
     #[error("Invalid channel for post")]
     InvalidChannelForPost,
 
-    /// Invalid tag for vote
     #[error("Invalid tag for vote")]
     InvalidTagForVote,
 
-    /// Invalid tag authority
     #[error("Invalid tag authority")]
     InvaligTagAuthority,
 
-    /// Invalid post for channel
     #[error("Invalid post for channel")]
     InvalidPostForChannel,
+
+    #[error("Invalid channel for authority")]
+    InvalidChannelForAuthority,
+
+    #[error("Invalid authority type")]
+    InvalidAuthorityType,
+
+    #[error("Invalid authority")]
+    InvalidAuthority,
 }
 
-impl PrintProgramError for PostError {
+impl PrintProgramError for SocialError {
     fn print<E>(&self) {
-        msg!("POST-ERROR: {}", &self.to_string());
+        msg!("SOCIAL-ERROR: {}", &self.to_string());
     }
 }
 
-impl From<PostError> for ProgramError {
-    fn from(e: PostError) -> Self {
+impl From<SocialError> for ProgramError {
+    fn from(e: SocialError) -> Self {
         ProgramError::Custom(e as u32)
     }
 }
 
-impl<T> DecodeError<T> for PostError {
+impl<T> DecodeError<T> for SocialError {
     fn type_of() -> &'static str {
         "Post Error"
     }
