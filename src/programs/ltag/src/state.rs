@@ -4,8 +4,8 @@ use shared::{
     content::ContentSource,
 };
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError,
-    program_pack::IsInitialized, pubkey::Pubkey,
+    account_info::AccountInfo, program_error::ProgramError, program_pack::IsInitialized,
+    pubkey::Pubkey,
 };
 
 use crate::error::TagError;
@@ -56,7 +56,7 @@ impl IsInitialized for TagRecordAccount {
 }
 
 ///
-pub fn get_tag_record_data_with_authority_and_signed_owner<'a>(
+pub fn get_tag_record_data_with_factory_and_signed_owner<'a>(
     program_id: &Pubkey,
     tag_record_info: &AccountInfo<'a>,
     factory: &Pubkey,
@@ -110,11 +110,13 @@ pub struct TagRecordFactoryAccount {
     pub tag: Pubkey,
     pub authority: Pubkey,
     pub outstanding_records: u64,
+    pub owner_can_transfer: bool,
+    pub authority_can_withdraw: bool,
 }
 
 impl MaxSize for TagRecordFactoryAccount {
     fn get_max_size(&self) -> Option<usize> {
-        Some(1 + 32 + 32 + 8)
+        Some(1 + 32 + 32 + 8 + 1 + 1)
     }
 }
 
@@ -124,15 +126,15 @@ impl IsInitialized for TagRecordFactoryAccount {
     }
 }
 
-pub fn get_tag_factory_with_authority<'a>(
+pub fn get_tag_record_factory_with_authority<'a>(
     program_id: &Pubkey,
-    tag_factory_info: &AccountInfo<'a>,
+    tag_record_factory_info: &AccountInfo<'a>,
     authority_info: &AccountInfo<'a>,
 ) -> Result<TagRecordFactoryAccount, ProgramError> {
     if !authority_info.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    let data = get_account_data::<TagRecordFactoryAccount>(program_id, tag_factory_info)?;
+    let data = get_account_data::<TagRecordFactoryAccount>(program_id, tag_record_factory_info)?;
 
     if &data.authority != authority_info.key {
         return Err(TagError::InvalidAuthority.into());

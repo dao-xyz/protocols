@@ -23,7 +23,7 @@ use crate::{
     instruction::TagInstruction,
     names::entity_name_is_valid,
     state::{
-        get_tag_factory_with_authority, get_tag_record_data_with_authority, AccountType,
+        get_tag_record_data_with_authority, get_tag_record_factory_with_authority, AccountType,
         TagAccount, TagRecordAccount, TagRecordFactoryAccount,
     },
 };
@@ -104,7 +104,7 @@ impl Processor {
         let payer_account = next_account_info(accounts_iter)?;
         let system_account = next_account_info(accounts_iter)?;
 
-        let mut factory_data = get_tag_factory_with_authority(
+        let mut factory_data = get_tag_record_factory_with_authority(
             program_id,
             tag_record_factory_info,
             tag_record_authority_info,
@@ -120,7 +120,6 @@ impl Processor {
         let rent = Rent::get()?;
         let bump_seeds = [tag_record_bump_seed];
         let seeds = get_tag_record_program_address_seeds(
-            &factory_data.tag,
             tag_record_factory_info.key,
             tag_record_owner_info.key,
             &bump_seeds,
@@ -224,6 +223,8 @@ impl Processor {
             authority: *tag_authority_info.key,
             tag: *tag_info.key,
             outstanding_records: 0,
+            authority_can_withdraw: false,
+            owner_can_transfer: false,
         };
 
         create_and_serialize_account_verify_with_bump(

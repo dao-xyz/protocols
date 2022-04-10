@@ -64,13 +64,13 @@ impl From<SignedAuthority> for AuthorityCondition {
 pub enum PostInstruction {
     CreateChannel {
         #[allow(dead_code)] // but it's not
-        parent: Option<Pubkey>,
-
-        #[allow(dead_code)] // but it's not
         name: String,
 
         #[allow(dead_code)] // but it's not
         info: Option<ContentSource>,
+
+        #[allow(dead_code)] // but it's not
+        parent: Option<Pubkey>,
 
         #[allow(dead_code)] // but it's not
         channel_account_bump_seed: u8,
@@ -80,6 +80,11 @@ pub enum PostInstruction {
 
         #[allow(dead_code)] // but it's not
         channel_authority_bump_seed: u8,
+    },
+
+    UpdateChannelInfo {
+        #[allow(dead_code)] // but it's not
+        info: Option<ContentSource>,
     },
 
     DeleteChannel,
@@ -99,11 +104,6 @@ pub enum PostInstruction {
     },
 
     DeleteAuthority,
-
-    UpdateChannelInfo {
-        #[allow(dead_code)] // but it's not
-        info: Option<ContentSource>,
-    },
 
     CreatePost {
         #[allow(dead_code)] // but it's not
@@ -150,7 +150,7 @@ pub fn create_post(
     let (post_address, post_bump_seed) = get_post_program_address(program_id, hash);
     let mut accounts = vec![
         AccountMeta::new(post_address, false),
-        AccountMeta::new(*channel, false),
+        AccountMeta::new_readonly(*channel, false),
         AccountMeta::new_readonly(*owner, true),
         AccountMeta::new(*payer, true),
         AccountMeta::new_readonly(system_program::id(), false),
@@ -179,15 +179,20 @@ pub fn create_post(
 
 pub fn cast_vote(
     program_id: &Pubkey,
-    payer: &Pubkey,
+
+    // Acccounts
     post: &Pubkey,
     channel: &Pubkey,
     record_owner: &Pubkey,
+    payer: &Pubkey,
+
+    // Args
     vote: Vote,
     authority_config: &SignedAuthority,
 ) -> Instruction {
     let (record_address, record_bump_seed) =
         get_vote_record_address(program_id, post, record_owner);
+
     let mut accounts = vec![
         AccountMeta::new(*post, false),
         AccountMeta::new_readonly(*channel, false),
@@ -213,10 +218,14 @@ pub fn cast_vote(
 
 pub fn uncast_vote(
     program_id: &Pubkey,
+
+    // Accounts
     post: &Pubkey,
     channel: &Pubkey,
     record_owner: &Pubkey,
     destination_info: &Pubkey,
+
+    // Args
     authority_config: &SignedAuthority,
 ) -> Instruction {
     let (record_address, _) = get_vote_record_address(program_id, post, record_owner);
@@ -244,7 +253,6 @@ pub fn create_channel(
 
     // Accounts
     parent: Option<Pubkey>,
-    creator: &Pubkey,
     authority: &Pubkey,
     payer: &Pubkey,
 
@@ -260,11 +268,10 @@ pub fn create_channel(
         get_channel_authority_address(program_id, &channel, channel_authority_seed);
     let mut accounts = vec![
         AccountMeta::new(channel, false),
-        AccountMeta::new_readonly(*creator, true),
         AccountMeta::new(channel_authority, false),
         AccountMeta::new_readonly(*authority, true),
         AccountMeta::new(*payer, true),
-        AccountMeta::new(system_program::id(), false),
+        AccountMeta::new_readonly(system_program::id(), false),
     ];
     // Only needed (is Some) if channel is a subchannel
     if let Some(authority_config) = authority_config {
@@ -291,14 +298,16 @@ pub fn create_channel(
 /// Creates a update info transaction
 pub fn update_info(
     program_id: &Pubkey,
+
+    // Accounts
     channel: &Pubkey,
+
+    // Args
     info: Option<ContentSource>,
     authority_config: &SignedAuthority,
 ) -> Instruction {
     let mut accounts = vec![AccountMeta::new(*channel, false)];
-
     authority_config.add_account_infos(&mut accounts);
-
     Instruction {
         program_id: *program_id,
         data: (PostInstruction::UpdateChannelInfo { info })
@@ -328,7 +337,7 @@ pub fn create_channel_authority(
         AccountMeta::new(authority_address, false),
         AccountMeta::new_readonly(*channel, false),
         AccountMeta::new(*payer, true),
-        AccountMeta::new(system_program::id(), false),
+        AccountMeta::new_readonly(system_program::id(), false),
     ];
 
     authority_config.add_account_infos(&mut accounts);
@@ -347,13 +356,15 @@ pub fn create_channel_authority(
     }
 }
 
+// TODO delete channel
+
 pub fn delete_channel_authority(
     program_id: &Pubkey,
 
     // Accounts
     channel_authority: &Pubkey,
     channel: &Pubkey,
-    payer: &Pubkey,
+    beneficiary: &Pubkey,
 
     // Args
     authority_config: &SignedAuthority,
@@ -361,8 +372,7 @@ pub fn delete_channel_authority(
     let mut accounts = vec![
         AccountMeta::new(*channel_authority, false),
         AccountMeta::new_readonly(*channel, false),
-        AccountMeta::new(*payer, true),
-        AccountMeta::new(system_program::id(), false),
+        AccountMeta::new(*beneficiary, false),
     ];
 
     authority_config.add_account_infos(&mut accounts);

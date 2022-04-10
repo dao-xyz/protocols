@@ -9,8 +9,8 @@ use solana_program::{
 
 use lsocial::{
     instruction::{
-        cast_vote, create_post, uncast_vote, update_info, CreateVoteConfig, SignedAuthority,
-        SignedAuthorityCondition,
+        cast_vote, create_post, delete_channel_authority, uncast_vote, update_info,
+        CreateVoteConfig, SignedAuthority, SignedAuthorityCondition,
     },
     state::{
         channel_authority::{
@@ -227,19 +227,46 @@ impl TestAuthority {
         }
     }
 
+    pub async fn delete<'a>(
+        &self,
+        bench: &mut ProgramTestBench,
+        signing_authority: &TestSignedAuthority<'a>,
+    ) {
+        let account = self.get_channel_authority_account(bench).await.unwrap();
+        bench
+            .process_transaction(
+                &[delete_channel_authority(
+                    &lsocial::id(),
+                    &self.key,
+                    &account.channel,
+                    &bench.payer.pubkey(),
+                    &signing_authority.authority,
+                )],
+                Some(&[signing_authority.signer]),
+            )
+            .await
+            .unwrap();
+
+        assert!(self.get_channel_authority_account(bench).await.is_none());
+    }
+
     pub async fn get_channel_authority_account(
         &self,
         bench: &mut ProgramTestBench,
-    ) -> ChannelAuthority {
-        let account = bench.get_account(&self.key).await.unwrap();
-        try_from_slice_unchecked::<ChannelAuthority>(&account.data).unwrap()
+    ) -> Option<ChannelAuthority> {
+        let account = bench.get_account(&self.key).await;
+        if let Some(account) = account {
+            Some(try_from_slice_unchecked::<ChannelAuthority>(&account.data).unwrap())
+        } else {
+            None
+        }
     }
     pub async fn get_signing_authority<'a>(
         &self,
         bench: &mut ProgramTestBench,
         user: &'a TestUser,
     ) -> TestSignedAuthority<'a> {
-        let account = self.get_channel_authority_account(bench).await;
+        let account = self.get_channel_authority_account(bench).await.unwrap();
         let condition = match account.condition {
             AuthorityCondition::None => SignedAuthorityCondition::None,
             AuthorityCondition::Pubkey(key) => SignedAuthorityCondition::Pubkey(key),
@@ -288,7 +315,6 @@ impl TestChannel {
                 &[create_channel(
                     &lsocial::id(),
                     parent.map(|p| p.channel),
-                    &admin.keypair.pubkey(),
                     &admin.keypair.pubkey(),
                     &bench.payer.pubkey(),
                     channel_name.as_ref(),
@@ -451,16 +477,17 @@ impl<'a> TestPost<'a> {
             .process_transaction(
                 &[cast_vote(
                     &lsocial::id(),
-                    &bench.payer.pubkey(),
                     &self.post,
                     &self.channel.channel,
                     &owner.keypair.pubkey(),
+                    &bench.payer.pubkey(),
                     vote,
                     &signing_authority.authority,
                 )],
                 Some(&[&owner.keypair, signing_authority.signer]),
             )
             .await?;
+
         Ok(())
     }
 
@@ -470,6 +497,11 @@ impl<'a> TestPost<'a> {
         owner: &TestUser,
         signing_authority: &TestSignedAuthority<'a>,
     ) -> Result<(), ProgramError> {
+        let pre_balance = bench
+            .get_account(&bench.payer.pubkey())
+            .await
+            .unwrap()
+            .lamports;
         bench
             .process_transaction(
                 &[uncast_vote(
@@ -483,6 +515,14 @@ impl<'a> TestPost<'a> {
                 Some(&[&owner.keypair, signing_authority.signer]),
             )
             .await?;
+
+        let post_balance = bench
+            .get_account(&bench.payer.pubkey())
+            .await
+            .unwrap()
+            .lamports;
+        // We got some balance bak since we are removing the vote record
+        assert!(pre_balance < post_balance);
         Ok(())
     }
 

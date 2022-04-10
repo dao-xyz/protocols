@@ -72,7 +72,7 @@ pub async fn create_tag_record(
         .await
         .unwrap();
 
-    let tag_record_address = get_tag_record_program_address(&ltag::id(), tag, factory, owner).0;
+    let tag_record_address = get_tag_record_program_address(&ltag::id(), factory, owner).0;
     let tag_record_account_info = banks_client
         .get_account(tag_record_address)
         .await

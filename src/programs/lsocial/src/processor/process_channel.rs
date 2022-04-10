@@ -37,16 +37,10 @@ pub fn process_create_channel(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
     let channel_account_info = next_account_info(accounts_iter)?;
-    let creator = next_account_info(accounts_iter)?;
     let manage_authority_authority_record_info = next_account_info(accounts_iter)?;
     let manage_authority_authority_info = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_account = next_account_info(accounts_iter)?;
-
-    if !creator.is_signer {
-        // Do not let someone create an channel for someone else without their signature
-        return Err(ProgramError::MissingRequiredSignature);
-    }
     if !manage_authority_authority_info.is_signer {
         // Make sure creator can sign authority
         return Err(ProgramError::MissingRequiredSignature);
@@ -91,11 +85,10 @@ pub fn process_create_channel(
         channel_account_info,
         &ChannelAccount {
             account_type: AccountType::Channel,
-            creator: *creator.key,
             parent,
             link,
             name,
-            creation_timestamp: Clock::get()?.unix_timestamp as u64,
+            creation_timestamp: Clock::get()?.unix_timestamp,
             /* authority: Some(*authority.key), */
         },
         seed_slice,

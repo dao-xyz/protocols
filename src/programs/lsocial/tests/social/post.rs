@@ -9,8 +9,9 @@ use lsocial::{
     error::SocialError,
     state::{post::PostContent, vote_record::Vote},
 };
-use shared::content::ContentSource;
+
 use solana_program::program_error::ProgramError;
+
 use solana_program_test::*;
 
 #[tokio::test]
@@ -24,7 +25,7 @@ async fn success_post_comment_comment() {
         &mut bench,
         &test_channel,
         &user,
-        &PostContent::ContentSource(ContentSource::String("a".into())),
+        &PostContent::String("a".into()),
         None,
         &signing_authority,
     )
@@ -34,7 +35,7 @@ async fn success_post_comment_comment() {
         &mut bench,
         &test_channel,
         &user,
-        &PostContent::ContentSource(ContentSource::String("a".into())),
+        &PostContent::String("a".into()),
         Some(&post),
         &signing_authority,
     )
@@ -44,7 +45,7 @@ async fn success_post_comment_comment() {
         &mut bench,
         &test_channel,
         &user,
-        &PostContent::ContentSource(ContentSource::String("a".into())),
+        &PostContent::String("a".into()),
         Some(&post),
         &signing_authority,
     )
@@ -54,7 +55,7 @@ async fn success_post_comment_comment() {
         &mut bench,
         &test_channel,
         &user,
-        &PostContent::ContentSource(ContentSource::String("a".into())),
+        &PostContent::String("a".into()),
         Some(&comment_1),
         &signing_authority,
     )
@@ -72,7 +73,7 @@ async fn success_vote_unvote() {
         &mut bench,
         &test_channel,
         &user,
-        &PostContent::ContentSource(ContentSource::String("a".into())),
+        &PostContent::String("a".into()),
         None,
         &signing_authority,
     )

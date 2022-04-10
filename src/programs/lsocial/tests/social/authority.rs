@@ -1,181 +1,16 @@
-use lchannel::instruction::{
-    create_channel, create_update_authority_transacation, create_update_info_transacation,
+use lsocial::state::{
+    channel_authority::{AuthorityCondition, AuthorityType},
+    post::PostContent,
+    vote_record::Vote,
 };
 
-use lchannel::state::{find_channel_program_address, ActivityAuthority, ChannelAccount};
-use shared::content::ContentSource;
-use solana_program::borsh::try_from_slice_unchecked;
-use solana_program::hash::Hash;
-use solana_program::instruction::InstructionError;
 use solana_program_test::*;
-use solana_sdk::account::Account;
-use solana_sdk::signature::Keypair;
-use solana_sdk::transaction::TransactionError;
-use solana_sdk::transport::TransportError;
-use solana_sdk::{pubkey::Pubkey, signer::Signer, transaction::Transaction};
 
+use crate::bench::ProgramTestBench;
 use crate::utils::program_test;
 
-pub fn deserialize_channel_account(data: &[u8]) -> std::io::Result<ChannelAccount> {
-    let account: ChannelAccount = try_from_slice_unchecked(data)?;
-    Ok(account)
-}
-
-pub async fn create_and_verify_channel(
-    banks_client: &mut BanksClient,
-    payer: &Keypair,
-    recent_blockhash: &Hash,
-    channel_name: &str,
-    creator: &Keypair,
-    parent_and_authority: &Option<(Pubkey, Pubkey)>,
-    activity_authority: &ActivityAuthority,
-    info: Option<ContentSource>,
-) -> Result<(Pubkey, Keypair), TransportError> {
-    let authority = Keypair::new();
-    create_and_verify_channel_with_authority(
-        banks_client,
-        payer,
-        recent_blockhash,
-        channel_name,
-        creator,
-        parent_and_authority,
-        activity_authority,
-        info,
-        authority,
-    )
-    .await
-}
-pub async fn create_and_verify_channel_with_authority(
-    banks_client: &mut BanksClient,
-    payer: &Keypair,
-    recent_blockhash: &Hash,
-    channel_name: &str,
-    creator: &Keypair,
-    parent_and_authority: &Option<(Pubkey, Pubkey)>,
-    activity_authority: &ActivityAuthority,
-    info: Option<ContentSource>,
-    authority: Keypair,
-) -> Result<(Pubkey, Keypair), TransportError> {
-    let (channel_address_pda, _bump) =
-        find_channel_program_address(&lchannel::id(), channel_name).unwrap();
-
-    let mut transaction_create = Transaction::new_with_payer(
-        &[create_channel(
-            &lchannel::id(),
-            channel_name,
-            &creator.pubkey(),
-            &authority.pubkey(),
-            *parent_and_authority,
-            activity_authority,
-            info,
-            &payer.pubkey(),
-        )],
-        Some(&payer.pubkey()),
-    );
-    transaction_create.sign(&[payer, creator, &authority], *recent_blockhash);
-    banks_client.process_transaction(transaction_create).await?;
-
-    // Verify channel name
-    let channel_account_info = banks_client
-        .get_account(channel_address_pda)
-        .await
-        .expect("get_account")
-        .expect("channel_account not found");
-    let channel_account = deserialize_channel_account(&channel_account_info.data).unwrap();
-
-    assert_eq!(channel_account.name.as_str(), channel_name);
-    Ok((channel_address_pda, authority))
-}
-
-#[tokio::test]
-pub async fn success() {
-    let program = program_test();
-
-    let (mut banks_client, payer, recent_blockhash) = program.start().await;
-    // create a channel
-    let (channel, authority) = create_and_verify_channel(
-        &mut banks_client,
-        &payer,
-        &recent_blockhash,
-        "Channel",
-        &payer,
-        &None,
-        &ActivityAuthority::AuthorityByTag {
-            tag: Pubkey::new_unique(),
-            authority: Pubkey::new_unique(),
-        },
-        Some("link".into()),
-    )
-    .await
-    .unwrap();
-
-    // create a subchannel
-    create_and_verify_channel_with_authority(
-        &mut banks_client,
-        &payer,
-        &recent_blockhash,
-        "asd",
-        &payer,
-        &Some((channel, authority.pubkey())),
-        &ActivityAuthority::AuthorityByTag {
-            tag: Pubkey::new_unique(),
-            authority: Pubkey::new_unique(),
-        },
-        Some("link".into()),
-        authority,
-    )
-    .await
-    .unwrap();
-}
-
-#[tokio::test]
-async fn success_update_info() {
-    let (mut banks_client, payer, recent_blockhash) = program_test().start().await;
-
-    let channel_name = "Channel";
-
-    let (channel_account_address, authority) = create_and_verify_channel(
-        &mut banks_client,
-        &payer,
-        &recent_blockhash,
-        channel_name,
-        &payer,
-        &None,
-        &ActivityAuthority::AuthorityByTag {
-            tag: Pubkey::new_unique(),
-            authority: Pubkey::new_unique(),
-        },
-        Some("link".into()),
-    )
-    .await
-    .unwrap();
-    let new_authority = Pubkey::new_unique();
-    banks_client
-        .process_transaction(Transaction::new_signed_with_payer(
-            &[create_update_authority_transacation(
-                &lchannel::id(),
-                channel_name,
-                &new_authority,
-                &authority.pubkey(),
-            )],
-            Some(&payer.pubkey()),
-            &[&payer, &authority],
-            recent_blockhash,
-        ))
-        .await
-        .unwrap();
-
-    // Verify channel changed
-
-    let channel_account_info = banks_client
-        .get_account(channel_account_address)
-        .await
-        .expect("get_channel")
-        .expect("user not found");
-    let user = deserialize_channel_account(&channel_account_info.data).unwrap();
-    assert_eq!(user.authority, new_authority);
-}
-
+use super::utils::{TestAuthority, TestChannel, TestPost, TestTagRecordFactory, TestUser};
+/*
 #[tokio::test]
 async fn success_update_authority() {
     let (mut banks_client, payer, recent_blockhash) = program_test().start().await;
@@ -203,7 +38,7 @@ async fn success_update_authority() {
     banks_client
         .process_transaction(Transaction::new_signed_with_payer(
             &[create_update_info_transacation(
-                &lchannel::id(),
+                &lsocial::id(),
                 channel_name,
                 Some(new_link.into()),
                 &authority.pubkey(),
@@ -324,7 +159,7 @@ async fn fail_update_info_wrong_authority() {
     let err = banks_client
         .process_transaction(Transaction::new_signed_with_payer(
             &[create_update_info_transacation(
-                &lchannel::id(),
+                &lsocial::id(),
                 channel_name,
                 Some(new_link.into()),
                 &wrong_authority.pubkey(),
@@ -381,7 +216,7 @@ async fn fail_update_authority_wrong_authority() {
     let err = banks_client
         .process_transaction(Transaction::new_signed_with_payer(
             &[create_update_authority_transacation(
-                &lchannel::id(),
+                &lsocial::id(),
                 channel_name,
                 &Pubkey::new_unique(),
                 &wrong_authority.pubkey(),
@@ -402,7 +237,7 @@ async fn fail_update_authority_wrong_authority() {
         },
         _ => panic!("Wrong error type"),
     };
-}
+} */
 
 /*
 #[tokio::test]
@@ -436,12 +271,12 @@ async fn fail_update_not_signer() {
         Some("link".into()),
     )
     .await;
-    let (channel, _) = find_channel_program_address(&lchannel::id(), channel_name).unwrap();
+    let (channel, _) = get_channel_program_address(&lsocial::id(), channel_name).unwrap();
 
     let err = banks_client
         .process_transaction(Transaction::new_signed_with_payer(
             &[Instruction {
-                program_id: lchannel::id(),
+                program_id: lsocial::id(),
                 data: SocialInstruction::ChannelInstruction(ChannelInstruction::UpdateChannel {
                     link: Some("new link".into()),
                 })
@@ -472,3 +307,70 @@ async fn fail_update_not_signer() {
 }
  */
 // TODO add tests for "bad" channel names: padding, already exist etc
+
+#[tokio::test]
+pub async fn success_authority_by_tag() {
+    let mut bench = ProgramTestBench::start_new(program_test()).await;
+    let user = TestUser::new();
+
+    let tag_record_factory = TestTagRecordFactory::new(&mut bench).await;
+
+    // create a channel
+    let (test_channel, authority) = TestChannel::new(&mut bench, &user, None, None, None).await;
+
+    // Add a new authority
+    let admin_signer = authority.get_signing_authority(&mut bench, &user).await;
+    let new_authourity = TestAuthority::new(
+        &mut bench,
+        &test_channel,
+        &vec![
+            AuthorityType::CreatePost,
+            AuthorityType::Comment,
+            AuthorityType::Vote,
+        ],
+        &AuthorityCondition::Tag {
+            record_factory: tag_record_factory.factory,
+        },
+        &admin_signer,
+    )
+    .await;
+
+    let new_authorized_user = TestUser::new();
+
+    tag_record_factory
+        .new_record(&mut bench, &new_authorized_user)
+        .await;
+
+    // Create a post, vote and comment with the new authority
+    let post_comment_vote_signer = new_authourity
+        .get_signing_authority(&mut bench, &new_authorized_user)
+        .await;
+    let post = TestPost::new(
+        &mut bench,
+        &test_channel,
+        &new_authorized_user,
+        &PostContent::String("a".into()),
+        None,
+        &post_comment_vote_signer,
+    )
+    .await;
+
+    // Vote
+    post.vote(
+        &mut bench,
+        Vote::Up,
+        &new_authorized_user,
+        &post_comment_vote_signer,
+    )
+    .await
+    .unwrap();
+
+    // Unvote
+    post.unvote(&mut bench, &new_authorized_user, &post_comment_vote_signer)
+        .await
+        .unwrap();
+
+    new_authourity.delete(&mut bench, &admin_signer).await;
+}
+
+// TODO add negative tests

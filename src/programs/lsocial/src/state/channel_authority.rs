@@ -39,9 +39,9 @@ pub enum AuthorityCondition {
 pub struct ChannelAuthority {
     pub account_type: AccountType,
     pub channel: Pubkey,
-    pub seed: Pubkey,
     pub authority_types: Vec<AuthorityType>,
     pub condition: AuthorityCondition,
+    pub seed: Pubkey,
 }
 
 impl MaxSize for ChannelAuthority {

@@ -4,8 +4,9 @@ use crate::{
     state::{
         channel::ChannelAccount,
         channel_authority::{
-            check_activity_authority, get_channel_authority_data_for_channel, AuthorityCondition,
-            AuthorityType, ChannelAuthority,
+            check_activity_authority, get_channel_authority_address_seed,
+            get_channel_authority_data_for_channel, AuthorityCondition, AuthorityType,
+            ChannelAuthority,
         },
     },
 };
@@ -62,7 +63,7 @@ pub fn process_create_authority(
             condition,
             seed,
         },
-        &[seed.as_ref(), &[authority_bump_seed]],
+        &get_channel_authority_address_seed(channel_info.key, &seed, &[authority_bump_seed]),
         program_id,
         system_account,
         &rent,
@@ -76,14 +77,14 @@ pub fn process_delete_authority(program_id: &Pubkey, accounts: &[AccountInfo]) -
 
     let delete_authority_info = next_account_info(accounts_iter)?;
     let channel_info = next_account_info(accounts_iter)?;
-    let beneficiary = next_account_info(accounts_iter)?;
+    let beneficiary_info = next_account_info(accounts_iter)?;
     let channel_data = get_account_data::<ChannelAccount>(program_id, channel_info)?;
+
     let authority_info = next_account_info(accounts_iter)?;
 
     if delete_authority_info.key == authority_info.key {
         return Err(SocialError::InvalidAuthority.into());
     }
-    let authority_info = next_account_info(accounts_iter)?;
 
     check_activity_authority(
         program_id,
@@ -101,7 +102,7 @@ pub fn process_delete_authority(program_id: &Pubkey, accounts: &[AccountInfo]) -
         channel_info.key,
     )?;
 
-    dispose_account(delete_authority_info, beneficiary);
+    dispose_account(delete_authority_info, beneficiary_info);
 
     Ok(())
 }

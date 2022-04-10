@@ -1,7 +1,7 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 
 use shared::account::get_account_data;
-use shared::{account::MaxSize, content::ContentSource};
+use shared::{account::MaxSize};
 use solana_program::account_info::AccountInfo;
 use solana_program::clock::UnixTimestamp;
 use solana_program::program_error::ProgramError;
@@ -24,7 +24,8 @@ pub enum VoteConfig {
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum PostContent {
     External { program_id: Pubkey, key: Pubkey },
-    ContentSource(ContentSource),
+    Link { url: String },
+    String(String),
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]

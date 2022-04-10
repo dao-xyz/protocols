@@ -309,8 +309,6 @@ pub fn assert_is_valid_account_of_types<T: BorshDeserialize + PartialEq, F: Fn(&
     Ok(())
 }
 
-
-
 /* pub fn close_system_account<'a, 'b>(
     receiving_account: &'a AccountInfo<'b>,
     target_account: &'a AccountInfo<'b>,
@@ -335,7 +333,7 @@ pub fn assert_is_valid_account_of_types<T: BorshDeserialize + PartialEq, F: Fn(&
 }
  */
 
- /// Disposes account by transferring its lamports to the beneficiary account and zeros its data
+/// Disposes account by transferring its lamports to the beneficiary account and zeros its data
 // After transaction completes the runtime would remove the account with no lamports
 pub fn dispose_account(account_info: &AccountInfo, beneficiary_info: &AccountInfo) {
     let account_lamports = account_info.lamports();

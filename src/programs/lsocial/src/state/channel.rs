@@ -1,15 +1,20 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+
 use shared::seeds::generate_seeds_from_string;
 use shared::{account::MaxSize, content::ContentSource};
+
+use solana_program::clock::UnixTimestamp;
 use solana_program::{
-    account_info::AccountInfo,
-    program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::{Pubkey, PubkeyError},
 };
 
+use crate::accounts::AccountType;
+
 pub const MAX_URI_LENGTH: usize = 200;
 pub const MAX_NAME_LENGTH: usize = 100;
+
+const CHANNEL_SEED: &[u8] = b"channel";
 
 pub const MAX_CHANNEL_LEN: usize = 1 + 32 // owner pubkey
     + 8 // timestamp
@@ -19,32 +24,16 @@ pub const MAX_CHANNEL_LEN: usize = 1 + 32 // owner pubkey
     + 200; // some padding
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub enum AccountType {
-    Channel,
-}
-
-#[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
-pub enum ActivityAuthority {
-    None,
-    AuthorityByTag { tag: Pubkey, authority: Pubkey },
-}
-
-#[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
 pub struct ChannelAccount {
     pub account_type: AccountType,
-    pub creator: Pubkey,
-    pub creation_timestamp: u64,
+    pub creation_timestamp: UnixTimestamp,
     pub parent: Option<Pubkey>,
     pub name: String,
-    pub link: Option<ContentSource>, // The link to to info data
-
+    pub link: Option<ContentSource>,
     // A key controlling its governance of something,
     // Should be set to itself make it self governed through proposals
     // as it can only sign itself through the program (program functions)
-    pub authority: Pubkey,
-
-    // Tag that lets users create posts, votes, commments etc
-    pub activity_authority: ActivityAuthority,
+    /*   pub authority: Option<Pubkey>, */
 }
 
 impl MaxSize for ChannelAccount {
@@ -60,48 +49,62 @@ impl IsInitialized for ChannelAccount {
 }
 
 impl ChannelAccount {
-    pub fn check_authority<'a>(
+    /*  pub fn check_authority<'a>(
         &self,
+        program_id: &Pubkey,
         authority_info: &AccountInfo<'a>,
+        accounts: &mut Iter<AccountInfo<'a>>,
     ) -> Result<(), ProgramError> {
         if !authority_info.is_signer {
             return Err(ProgramError::MissingRequiredSignature);
         }
-        if &self.authority != authority_info.key {
-            return Err(ProgramError::InvalidAccountData);
+        if let Some(authority) = &self.authority {
+            if authority == authority_info.key {
+                return Ok(());
+            }
         }
-        Ok(())
-    }
+        if let Some(parent) = &self.parent {
+            let parent_info = next_account_info(accounts)?;
+            if parent == parent_info.key {
+                let parent_channel = get_account_data::<ChannelAccount>(program_id, parent_info)?;
+                if let Some(authority) = &parent_channel.authority {
+                    if authority == authority_info.key {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        Err(ProgramError::InvalidAccountData)
+    } */
 
-    pub fn find_channel_program_address(
+    /*  pub fn get_channel_program_address(
         &self,
         program_id: &Pubkey,
     ) -> Result<(Pubkey, u8), PubkeyError> {
-        let seeds = create_channel_account_program_address_seeds(self.name.as_str())?;
+        let seeds = get_channel_account_program_address_seeds(self.name.as_str())?;
         let seed_slice = &seeds.iter().map(|x| &x[..]).collect::<Vec<&[u8]>>()[..];
         Ok(Pubkey::find_program_address(seed_slice, program_id))
     }
 
-    pub fn create_channel_account_program_address_seeds(
-        &self,
-    ) -> Result<Vec<Vec<u8>>, PubkeyError> {
+    pub fn get_channel_account_program_address_seeds(&self) -> Result<Vec<Vec<u8>>, PubkeyError> {
         generate_seeds_from_string(self.name.as_str())
-    }
+    } */
 }
 
-/// Findchannel address from name
-pub fn find_channel_program_address(
+pub fn get_channel_program_address(
     program_id: &Pubkey,
     channel_name: &str,
 ) -> Result<(Pubkey, u8), PubkeyError> {
-    let seeds = create_channel_account_program_address_seeds(channel_name)?;
-    let seed_slice = &seeds.iter().map(|x| &x[..]).collect::<Vec<&[u8]>>()[..];
+    let mut seed = generate_seeds_from_string(channel_name)?;
+    seed.insert(0, CHANNEL_SEED.try_to_vec().unwrap());
+    let seed_slice = &seed.iter().map(|x| &x[..]).collect::<Vec<&[u8]>>()[..];
     Ok(Pubkey::find_program_address(seed_slice, program_id))
 }
 
-/// Create post mint program address
-pub fn create_channel_account_program_address_seeds(
+pub fn get_channel_account_program_address_seeds(
     channel_name: &str,
 ) -> Result<Vec<Vec<u8>>, PubkeyError> {
-    generate_seeds_from_string(channel_name)
+    let mut seed = generate_seeds_from_string(channel_name)?;
+    seed.insert(0, CHANNEL_SEED.try_to_vec().unwrap());
+    Ok(seed)
 }

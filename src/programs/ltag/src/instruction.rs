@@ -40,10 +40,14 @@ pub enum TagInstruction {
 /// Creates a tag transction
 pub fn create_tag(
     program_id: &Pubkey,
-    tag: &str,
-    info: Option<ContentSource>,
+
+    // Accounts
     authority: &Pubkey,
     payer: &Pubkey,
+
+    // Args
+    tag: &str,
+    info: Option<ContentSource>,
 ) -> Instruction {
     let (tag_address, tag_account_bump_seed) = get_tag_program_address(program_id, tag);
     Instruction {
@@ -59,21 +63,23 @@ pub fn create_tag(
             AccountMeta::new(tag_address, false),
             AccountMeta::new_readonly(*authority, true),
             AccountMeta::new(*payer, true),
-            AccountMeta::new(system_program::id(), false),
+            AccountMeta::new_readonly(system_program::id(), false),
         ],
     }
 }
 
 pub fn create_tag_record(
     program_id: &Pubkey,
-    tag: &Pubkey,
+
+    // Accounts
     owner: &Pubkey,
     factory: &Pubkey,
     authority: &Pubkey,
     payer: &Pubkey,
+    // Args
 ) -> Instruction {
     let (tag_record_address, tag_record_bump_seed) =
-        get_tag_record_program_address(program_id, tag, factory, owner);
+        get_tag_record_program_address(program_id, factory, owner);
 
     Instruction {
         program_id: *program_id,
@@ -88,18 +94,20 @@ pub fn create_tag_record(
             AccountMeta::new(*factory, false),
             AccountMeta::new_readonly(*authority, true),
             AccountMeta::new(*payer, true),
-            AccountMeta::new(system_program::id(), false),
+            AccountMeta::new_readonly(system_program::id(), false),
         ],
     }
 }
 
 pub fn delete_tag_record_as_owner(
     program_id: &Pubkey,
+    // Accounts
     tag_record: &Pubkey,
     owner: &Pubkey,
     factory: &Pubkey,
     authority: &Pubkey,
     withdraw_destination: &Pubkey,
+    // Args
 ) -> Instruction {
     Instruction {
         program_id: *program_id,
@@ -116,11 +124,13 @@ pub fn delete_tag_record_as_owner(
 
 pub fn delete_tag_record_as_authority(
     program_id: &Pubkey,
+    // Accounts
     tag_record: &Pubkey,
     owner: &Pubkey,
     factory: &Pubkey,
     authority: &Pubkey,
     withdraw_destination: &Pubkey,
+    // Args
 ) -> Instruction {
     Instruction {
         program_id: *program_id,
@@ -136,9 +146,11 @@ pub fn delete_tag_record_as_authority(
 }
 pub fn create_tag_record_factory(
     program_id: &Pubkey,
+    // Accounts
     tag: &Pubkey,
     authority: &Pubkey,
     payer: &Pubkey,
+    // Args
 ) -> Instruction {
     let (tag_record_factory, tag_record_factory_bump_seed) =
         get_tag_record_factory_program_address(program_id, tag, authority);
@@ -156,7 +168,7 @@ pub fn create_tag_record_factory(
             AccountMeta::new_readonly(*authority, true),
             AccountMeta::new_readonly(*tag, false),
             AccountMeta::new(*payer, true),
-            AccountMeta::new(system_program::id(), false),
+            AccountMeta::new_readonly(system_program::id(), false),
         ],
     }
 }
