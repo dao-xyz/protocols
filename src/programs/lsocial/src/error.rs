@@ -47,6 +47,12 @@ pub enum SocialError {
 
     #[error("Invalid authority")]
     InvalidAuthority,
+
+    #[error("Invalid parent channel")]
+    InvalidParentChannel,
+
+    #[error("Invalid channel type")]
+    InvalidChannelType,
 }
 
 impl PrintProgramError for SocialError {

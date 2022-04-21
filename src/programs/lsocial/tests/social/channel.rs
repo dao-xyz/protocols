@@ -1,3 +1,4 @@
+use lsocial::state::channel::ChannelType;
 use shared::content::ContentSource;
 use solana_program_test::*;
 
@@ -11,25 +12,44 @@ pub async fn success() {
     let mut bench = ProgramTestBench::start_new(program_test()).await;
     let user = TestUser::new();
     // create a channel
-    let (test_channel, authority) = TestChannel::new(&mut bench, &user, None, None, None).await;
+    let (test_collection, collection_authority) = TestChannel::new(
+        &mut bench,
+        &user,
+        None,
+        &ChannelType::Collection,
+        None,
+        None,
+    )
+    .await;
 
     // create a subchannel
-    let create_channel_authority = authority.get_signing_authority(&mut bench, &user).await;
+    let create_channel_authority = collection_authority
+        .get_signing_authority(&mut bench, &user)
+        .await;
     TestChannel::new(
         &mut bench,
         &user,
         None,
-        Some(&test_channel),
+        &ChannelType::Forum,
+        Some(&test_collection),
         Some(&create_channel_authority),
     )
     .await;
 }
 
 #[tokio::test]
-async fn success_update_info() {
+async fn update_info() {
     let mut bench = ProgramTestBench::start_new(program_test()).await;
     let user = TestUser::new();
-    let (test_channel, authority) = TestChannel::new(&mut bench, &user, None, None, None).await;
+    let (test_channel, authority) = TestChannel::new(
+        &mut bench,
+        &user,
+        None,
+        &ChannelType::Collection,
+        None,
+        None,
+    )
+    .await;
     let signing_authority = authority.get_signing_authority(&mut bench, &user).await;
 
     test_channel

@@ -24,14 +24,17 @@ pub enum AuthorityType {
     Vote,
     Comment,
     ManageInfo,
-    CreateSubChannel,
-    RemoveSubChannel,
+    CreateChannel,
+    RemoveChannel,
 }
 
 #[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
 pub enum AuthorityCondition {
     Pubkey(Pubkey),
-    Tag { record_factory: Pubkey },
+    Tag {
+        #[allow(dead_code)] // but it's not
+        record_factory: Pubkey,
+    },
     None,
 }
 

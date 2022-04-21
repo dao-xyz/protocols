@@ -9,6 +9,7 @@ pub mod state;
 solana_program::declare_id!("FHnDtK9D2MDSKWvyD4eLk7CZfUa9FP4zH77TKiVAeDXK");
 use shared::seeds::generate_seeds_from_string;
 use solana_program::pubkey::Pubkey;
+const TAG_SEED: &[u8] = b"tag";
 
 pub fn get_tag_program_address(program_id: &Pubkey, tag: &str) -> (Pubkey, u8) {
     let seeds = get_tag_program_address_seeds(tag);
@@ -18,7 +19,7 @@ pub fn get_tag_program_address(program_id: &Pubkey, tag: &str) -> (Pubkey, u8) {
 
 pub fn get_tag_program_address_seeds(tag: &str) -> Vec<Vec<u8>> {
     let mut seeds = generate_seeds_from_string(tag).unwrap();
-    seeds.insert(0, b"tag".to_vec());
+    seeds.insert(0, TAG_SEED.to_vec());
     seeds
 }
 

@@ -35,7 +35,6 @@ impl Processor {
         user_account_bump_seed: u8,
     ) -> ProgramResult {
         let accounts_iter = &mut accounts.iter();
-        let payer_account = next_account_info(accounts_iter)?;
 
         if !entity_name_is_valid(name.as_ref()) {
             return Err(ProgramError::InvalidArgument);
@@ -46,6 +45,12 @@ impl Processor {
             // Already exist
             return Err(ProgramError::InvalidArgument);
         }
+        let owner_info = next_account_info(accounts_iter)?;
+        if !owner_info.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        let payer_info = next_account_info(accounts_iter)?;
         let system_account = next_account_info(accounts_iter)?;
         let rent = Rent::get()?;
         let mut seeds = create_user_account_program_address_seeds(&name);
@@ -58,11 +63,11 @@ impl Processor {
             name,
             profile,
             creation_timestamp: Clock::get()?.unix_timestamp as u64,
-            owner: *payer_account.key, // payer becomes owner
+            owner: *owner_info.key, // payer becomes owner
         };
 
         create_and_serialize_account_verify_with_bump(
-            payer_account,
+            payer_info,
             user_acount_info,
             &user_account,
             seed_slice,
@@ -78,15 +83,15 @@ impl Processor {
         profile: Option<ContentSource>,
     ) -> ProgramResult {
         let accounts_iter = &mut accounts.iter();
-        let payer_account = next_account_info(accounts_iter)?;
 
-        if !payer_account.is_signer {
+        let user_account_info = next_account_info(accounts_iter)?;
+        let owner_info = next_account_info(accounts_iter)?;
+        if !owner_info.is_signer {
             return Err(ProgramError::MissingRequiredSignature);
         }
 
-        let user_account_info = next_account_info(accounts_iter)?;
         let mut user = deserialize_user_account(*user_account_info.data.borrow())?;
-        if &user.owner != payer_account.key {
+        if &user.owner != owner_info.key {
             return Err(ProgramError::InvalidAccountData);
         }
         user.profile = profile;

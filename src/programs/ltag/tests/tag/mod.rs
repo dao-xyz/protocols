@@ -22,10 +22,10 @@ pub async fn create_tag(
         .process_transaction(Transaction::new_signed_with_payer(
             &[ltag::instruction::create_tag(
                 &ltag::id(),
-                tag,
-                None,
                 &authority.pubkey(),
                 &payer.pubkey(),
+                tag,
+                None,
             )],
             Some(&payer.pubkey()),
             &[payer, authority],
@@ -59,7 +59,6 @@ pub async fn create_tag_record(
         .process_transaction(Transaction::new_signed_with_payer(
             &[ltag::instruction::create_tag_record(
                 &ltag::id(),
-                tag,
                 owner,
                 factory,
                 &authority.pubkey(),
@@ -108,7 +107,6 @@ pub async fn delete_tag_record(
                 tag_record,
                 &owner.pubkey(),
                 factory,
-                &authority.pubkey(),
                 withdraw_destination,
             )],
             Some(&payer.pubkey()),

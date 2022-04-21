@@ -26,7 +26,8 @@ pub enum TagInstruction {
         #[allow(dead_code)] // but it's not
         bump_seed: u8,
     },
-    DeleteTagRecord,
+    DeleteTagRecordAsOwner,
+    DeleteTagRecordAsFactory,
 
     CreateTagRecordFactory {
         #[allow(dead_code)] // but it's not
@@ -105,28 +106,27 @@ pub fn delete_tag_record_as_owner(
     tag_record: &Pubkey,
     owner: &Pubkey,
     factory: &Pubkey,
-    authority: &Pubkey,
     withdraw_destination: &Pubkey,
     // Args
 ) -> Instruction {
     Instruction {
         program_id: *program_id,
-        data: (TagInstruction::DeleteTagRecord).try_to_vec().unwrap(),
+        data: (TagInstruction::DeleteTagRecordAsOwner)
+            .try_to_vec()
+            .unwrap(),
         accounts: vec![
             AccountMeta::new(*tag_record, false),
             AccountMeta::new_readonly(*owner, true),
             AccountMeta::new(*factory, false),
-            AccountMeta::new_readonly(*authority, false),
             AccountMeta::new(*withdraw_destination, false),
         ],
     }
 }
 
-pub fn delete_tag_record_as_authority(
+pub fn delete_tag_record_as_factory(
     program_id: &Pubkey,
     // Accounts
     tag_record: &Pubkey,
-    owner: &Pubkey,
     factory: &Pubkey,
     authority: &Pubkey,
     withdraw_destination: &Pubkey,
@@ -134,10 +134,11 @@ pub fn delete_tag_record_as_authority(
 ) -> Instruction {
     Instruction {
         program_id: *program_id,
-        data: (TagInstruction::DeleteTagRecord).try_to_vec().unwrap(),
+        data: (TagInstruction::DeleteTagRecordAsFactory)
+            .try_to_vec()
+            .unwrap(),
         accounts: vec![
             AccountMeta::new(*tag_record, false),
-            AccountMeta::new_readonly(*owner, false),
             AccountMeta::new(*factory, false),
             AccountMeta::new_readonly(*authority, true),
             AccountMeta::new(*withdraw_destination, false),

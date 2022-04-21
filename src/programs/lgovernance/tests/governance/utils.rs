@@ -313,10 +313,10 @@ impl TestTagRecordFactory {
             .process_transaction(
                 &[ltag::instruction::create_tag(
                     &ltag::id(),
-                    tag.as_ref(),
-                    None,
                     &authority.pubkey(),
                     &bench.payer.pubkey(),
+                    tag.as_ref(),
+                    None,
                 )],
                 Some(&[&authority]),
             )
@@ -352,7 +352,6 @@ impl TestTagRecordFactory {
             .process_transaction(
                 &[ltag::instruction::create_tag_record(
                     &ltag::id(),
-                    &self.tag,
                     &owner.keypair.pubkey(),
                     &self.factory,
                     &self.authority.pubkey(),

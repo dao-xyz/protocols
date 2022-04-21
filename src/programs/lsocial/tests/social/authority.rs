@@ -1,4 +1,5 @@
 use lsocial::state::{
+    channel::ChannelType,
     channel_authority::{AuthorityCondition, AuthorityType},
     post::PostContent,
     vote_record::Vote,
@@ -315,8 +316,31 @@ pub async fn success_authority_by_tag() {
 
     let tag_record_factory = TestTagRecordFactory::new(&mut bench).await;
 
+    // create a collection
+    let (test_channel, collection_authority) = TestChannel::new(
+        &mut bench,
+        &user,
+        None,
+        &ChannelType::Collection,
+        None,
+        None,
+    )
+    .await;
+
+    let create_channel_authority = collection_authority
+        .get_signing_authority(&mut bench, &user)
+        .await;
+
     // create a channel
-    let (test_channel, authority) = TestChannel::new(&mut bench, &user, None, None, None).await;
+    let (test_channel, authority) = TestChannel::new(
+        &mut bench,
+        &user,
+        None,
+        &ChannelType::Chat,
+        Some(&test_channel),
+        Some(&create_channel_authority),
+    )
+    .await;
 
     // Add a new authority
     let admin_signer = authority.get_signing_authority(&mut bench, &user).await;
@@ -352,6 +376,7 @@ pub async fn success_authority_by_tag() {
         &PostContent::String("a".into()),
         None,
         &post_comment_vote_signer,
+        None,
     )
     .await;
 
@@ -361,14 +386,20 @@ pub async fn success_authority_by_tag() {
         Vote::Up,
         &new_authorized_user,
         &post_comment_vote_signer,
+        None,
     )
     .await
     .unwrap();
 
     // Unvote
-    post.unvote(&mut bench, &new_authorized_user, &post_comment_vote_signer)
-        .await
-        .unwrap();
+    post.unvote(
+        &mut bench,
+        &new_authorized_user,
+        &post_comment_vote_signer,
+        None,
+    )
+    .await
+    .unwrap();
 
     new_authourity.delete(&mut bench, &admin_signer).await;
 }

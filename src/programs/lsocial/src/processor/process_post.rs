@@ -3,7 +3,7 @@ use crate::{
     error::SocialError,
     instruction::CreateVoteConfig,
     state::{
-        channel::ChannelAccount,
+        channel::{ChannelAccount, ChannelType},
         channel_authority::{check_activity_authority, AuthorityType},
         post::{
             get_post_data, get_post_program_address_seeds, PostAccount, PostContent, VoteConfig,
@@ -18,6 +18,8 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
     entrypoint::ProgramResult,
+    msg,
+    program_error::ProgramError,
     pubkey::Pubkey,
     rent::Rent,
     sysvar::Sysvar,
@@ -51,8 +53,16 @@ pub fn process_create_post(
         return Err(SocialError::PostAlreadyExist.into());
     }
 
+    if !owner_info.is_signer {
+        return Err(ProgramError::MissingRequiredSignature.into());
+    }
+
     let channel_data = get_account_data::<ChannelAccount>(program_id, channel_info)?;
     check_system_program(system_account.key)?;
+
+    if channel_data.channel_type == ChannelType::Collection {
+        return Err(SocialError::InvalidChannelType.into());
+    }
 
     let authority_info = next_account_info(accounts_iter)?;
 

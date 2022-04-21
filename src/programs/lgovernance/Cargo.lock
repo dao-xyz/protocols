@@ -1343,15 +1343,12 @@ dependencies = [
 name = "ltag"
 version = "0.0.1"
 dependencies = [
- "arrayref",
- "bincode",
  "borsh 0.9.3",
  "borsh-derive 0.9.3",
  "num-derive",
  "num-traits",
  "shared",
  "solana-program",
- "spl-token",
  "thiserror",
 ]
 
@@ -2125,16 +2122,11 @@ dependencies = [
 name = "shared"
 version = "0.0.1"
 dependencies = [
- "arrayref",
- "bincode",
  "borsh 0.9.3",
  "borsh-derive 0.9.3",
  "num-derive",
  "num-traits",
  "solana-program",
- "spl-associated-token-account",
- "spl-math",
- "spl-token",
  "thiserror",
 ]
 

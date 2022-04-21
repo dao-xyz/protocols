@@ -38,6 +38,7 @@ impl Processor {
                 parent,
                 name,
                 info,
+                channel_type,
                 channel_account_bump_seed,
                 channel_authority_seed,
                 channel_authority_bump_seed,
@@ -48,6 +49,7 @@ impl Processor {
                 process_create_channel(
                     program_id,
                     accounts,
+                    channel_type,
                     parent,
                     name,
                     info,

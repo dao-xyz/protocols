@@ -36,5 +36,5 @@ impl MaxSize for UserAccount {
 
 pub fn deserialize_user_account(data: &[u8]) -> Result<UserAccount> {
     let user_account: UserAccount = try_from_slice_unchecked(data)?;
-    return Ok(user_account);
+    Ok(user_account)
 }

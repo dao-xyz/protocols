@@ -21,8 +21,9 @@ use solana_sdk::{
 };
 
 use bincode::deserialize;
-
+/*
 use spl_token::instruction::{set_authority, AuthorityType};
+ */
 
 /// TODO: Add to Solana SDK
 /// Instruction errors not mapped in the sdk
@@ -170,119 +171,119 @@ impl ProgramTestBench {
             account,
         }
     }
+    /*
+       pub async fn create_mint(
+           &mut self,
+           mint_keypair: &Keypair,
+           mint_authority: &Pubkey,
+           freeze_authority: Option<&Pubkey>,
+       ) {
+           let mint_rent = self.rent.minimum_balance(spl_token::state::Mint::LEN);
 
-    pub async fn create_mint(
-        &mut self,
-        mint_keypair: &Keypair,
-        mint_authority: &Pubkey,
-        freeze_authority: Option<&Pubkey>,
-    ) {
-        let mint_rent = self.rent.minimum_balance(spl_token::state::Mint::LEN);
+           let instructions = [
+               system_instruction::create_account(
+                   &self.context.payer.pubkey(),
+                   &mint_keypair.pubkey(),
+                   mint_rent,
+                   spl_token::state::Mint::LEN as u64,
+                   &spl_token::id(),
+               ),
+               spl_token::instruction::initialize_mint(
+                   &spl_token::id(),
+                   &mint_keypair.pubkey(),
+                   mint_authority,
+                   freeze_authority,
+                   0,
+               )
+               .unwrap(),
+           ];
 
-        let instructions = [
-            system_instruction::create_account(
-                &self.context.payer.pubkey(),
-                &mint_keypair.pubkey(),
-                mint_rent,
-                spl_token::state::Mint::LEN as u64,
-                &spl_token::id(),
-            ),
-            spl_token::instruction::initialize_mint(
-                &spl_token::id(),
-                &mint_keypair.pubkey(),
-                mint_authority,
-                freeze_authority,
-                0,
-            )
-            .unwrap(),
-        ];
+           self.process_transaction(&instructions, Some(&[mint_keypair]))
+               .await
+               .unwrap();
+       }
 
-        self.process_transaction(&instructions, Some(&[mint_keypair]))
-            .await
-            .unwrap();
-    }
+       /// Sets spl-token program account (Mint or TokenAccount) authority
+       pub async fn set_spl_token_account_authority(
+           &mut self,
+           account: &Pubkey,
+           account_authority: &Keypair,
+           new_authority: Option<&Pubkey>,
+           authority_type: AuthorityType,
+       ) {
+           let set_authority_ix = set_authority(
+               &spl_token::id(),
+               account,
+               new_authority,
+               authority_type,
+               &account_authority.pubkey(),
+               &[],
+           )
+           .unwrap();
 
-    /// Sets spl-token program account (Mint or TokenAccount) authority
-    pub async fn set_spl_token_account_authority(
-        &mut self,
-        account: &Pubkey,
-        account_authority: &Keypair,
-        new_authority: Option<&Pubkey>,
-        authority_type: AuthorityType,
-    ) {
-        let set_authority_ix = set_authority(
-            &spl_token::id(),
-            account,
-            new_authority,
-            authority_type,
-            &account_authority.pubkey(),
-            &[],
-        )
-        .unwrap();
+           self.process_transaction(&[set_authority_ix], Some(&[account_authority]))
+               .await
+               .unwrap();
+       }
 
-        self.process_transaction(&[set_authority_ix], Some(&[account_authority]))
-            .await
-            .unwrap();
-    }
+       #[allow(dead_code)]
+       pub async fn create_empty_token_account(
+           &mut self,
+           token_account_keypair: &Keypair,
+           token_mint: &Pubkey,
+           owner: &Pubkey,
+       ) {
+           let create_account_instruction = system_instruction::create_account(
+               &self.context.payer.pubkey(),
+               &token_account_keypair.pubkey(),
+               self.rent
+                   .minimum_balance(spl_token::state::Account::get_packed_len()),
+               spl_token::state::Account::get_packed_len() as u64,
+               &spl_token::id(),
+           );
 
-    #[allow(dead_code)]
-    pub async fn create_empty_token_account(
-        &mut self,
-        token_account_keypair: &Keypair,
-        token_mint: &Pubkey,
-        owner: &Pubkey,
-    ) {
-        let create_account_instruction = system_instruction::create_account(
-            &self.context.payer.pubkey(),
-            &token_account_keypair.pubkey(),
-            self.rent
-                .minimum_balance(spl_token::state::Account::get_packed_len()),
-            spl_token::state::Account::get_packed_len() as u64,
-            &spl_token::id(),
-        );
+           let initialize_account_instruction = spl_token::instruction::initialize_account(
+               &spl_token::id(),
+               &token_account_keypair.pubkey(),
+               token_mint,
+               owner,
+           )
+           .unwrap();
 
-        let initialize_account_instruction = spl_token::instruction::initialize_account(
-            &spl_token::id(),
-            &token_account_keypair.pubkey(),
-            token_mint,
-            owner,
-        )
-        .unwrap();
+           self.process_transaction(
+               &[create_account_instruction, initialize_account_instruction],
+               Some(&[token_account_keypair]),
+           )
+           .await
+           .unwrap();
+       }
 
-        self.process_transaction(
-            &[create_account_instruction, initialize_account_instruction],
-            Some(&[token_account_keypair]),
-        )
-        .await
-        .unwrap();
-    }
+       #[allow(dead_code)]
+       pub async fn with_token_account(
+           &mut self,
+           token_mint: &Pubkey,
+           owner: &Pubkey,
+           token_mint_authority: &Keypair,
+           amount: u64,
+       ) -> TokenAccountCookie {
+           let token_account_keypair = Keypair::new();
 
-    #[allow(dead_code)]
-    pub async fn with_token_account(
-        &mut self,
-        token_mint: &Pubkey,
-        owner: &Pubkey,
-        token_mint_authority: &Keypair,
-        amount: u64,
-    ) -> TokenAccountCookie {
-        let token_account_keypair = Keypair::new();
+           self.create_empty_token_account(&token_account_keypair, token_mint, owner)
+               .await;
 
-        self.create_empty_token_account(&token_account_keypair, token_mint, owner)
-            .await;
+           self.mint_tokens(
+               token_mint,
+               token_mint_authority,
+               &token_account_keypair.pubkey(),
+               amount,
+           )
+           .await;
 
-        self.mint_tokens(
-            token_mint,
-            token_mint_authority,
-            &token_account_keypair.pubkey(),
-            amount,
-        )
-        .await;
-
-        TokenAccountCookie {
-            address: token_account_keypair.pubkey(),
-        }
-    }
-
+           TokenAccountCookie {
+               address: token_account_keypair.pubkey(),
+           }
+       }
+    */
     pub async fn transfer_sol(&mut self, to_account: &Pubkey, lamports: u64) {
         let transfer_ix = system_instruction::transfer(&self.payer.pubkey(), to_account, lamports);
 
@@ -290,89 +291,89 @@ impl ProgramTestBench {
             .await
             .unwrap();
     }
+    /*
+          pub async fn mint_tokens(
+              &mut self,
+              token_mint: &Pubkey,
+              token_mint_authority: &Keypair,
+              token_account: &Pubkey,
+              amount: u64,
+          ) {
+              let mint_instruction = spl_token::instruction::mint_to(
+                  &spl_token::id(),
+                  token_mint,
+                  token_account,
+                  &token_mint_authority.pubkey(),
+                  &[],
+                  amount,
+              )
+              .unwrap();
 
-    pub async fn mint_tokens(
-        &mut self,
-        token_mint: &Pubkey,
-        token_mint_authority: &Keypair,
-        token_account: &Pubkey,
-        amount: u64,
-    ) {
-        let mint_instruction = spl_token::instruction::mint_to(
-            &spl_token::id(),
-            token_mint,
-            token_account,
-            &token_mint_authority.pubkey(),
-            &[],
-            amount,
-        )
-        .unwrap();
+              self.process_transaction(&[mint_instruction], Some(&[token_mint_authority]))
+                  .await
+                  .unwrap();
+          }
 
-        self.process_transaction(&[mint_instruction], Some(&[token_mint_authority]))
-            .await
-            .unwrap();
-    }
+       #[allow(dead_code)]
+       pub async fn create_token_account_with_transfer_authority(
+           &mut self,
+           token_account_keypair: &Keypair,
+           token_mint: &Pubkey,
+           token_mint_authority: &Keypair,
+           amount: u64,
+           owner: &Keypair,
+           transfer_authority: &Pubkey,
+       ) {
+           let create_account_instruction = system_instruction::create_account(
+               &self.context.payer.pubkey(),
+               &token_account_keypair.pubkey(),
+               self.rent
+                   .minimum_balance(spl_token::state::Account::get_packed_len()),
+               spl_token::state::Account::get_packed_len() as u64,
+               &spl_token::id(),
+           );
 
-    #[allow(dead_code)]
-    pub async fn create_token_account_with_transfer_authority(
-        &mut self,
-        token_account_keypair: &Keypair,
-        token_mint: &Pubkey,
-        token_mint_authority: &Keypair,
-        amount: u64,
-        owner: &Keypair,
-        transfer_authority: &Pubkey,
-    ) {
-        let create_account_instruction = system_instruction::create_account(
-            &self.context.payer.pubkey(),
-            &token_account_keypair.pubkey(),
-            self.rent
-                .minimum_balance(spl_token::state::Account::get_packed_len()),
-            spl_token::state::Account::get_packed_len() as u64,
-            &spl_token::id(),
-        );
+           let initialize_account_instruction = spl_token::instruction::initialize_account(
+               &spl_token::id(),
+               &token_account_keypair.pubkey(),
+               token_mint,
+               &owner.pubkey(),
+           )
+           .unwrap();
 
-        let initialize_account_instruction = spl_token::instruction::initialize_account(
-            &spl_token::id(),
-            &token_account_keypair.pubkey(),
-            token_mint,
-            &owner.pubkey(),
-        )
-        .unwrap();
+           let mint_instruction = spl_token::instruction::mint_to(
+               &spl_token::id(),
+               token_mint,
+               &token_account_keypair.pubkey(),
+               &token_mint_authority.pubkey(),
+               &[],
+               amount,
+           )
+           .unwrap();
 
-        let mint_instruction = spl_token::instruction::mint_to(
-            &spl_token::id(),
-            token_mint,
-            &token_account_keypair.pubkey(),
-            &token_mint_authority.pubkey(),
-            &[],
-            amount,
-        )
-        .unwrap();
+           let approve_instruction = spl_token::instruction::approve(
+               &spl_token::id(),
+               &token_account_keypair.pubkey(),
+               transfer_authority,
+               &owner.pubkey(),
+               &[],
+               amount,
+           )
+           .unwrap();
 
-        let approve_instruction = spl_token::instruction::approve(
-            &spl_token::id(),
-            &token_account_keypair.pubkey(),
-            transfer_authority,
-            &owner.pubkey(),
-            &[],
-            amount,
-        )
-        .unwrap();
-
-        self.process_transaction(
-            &[
-                create_account_instruction,
-                initialize_account_instruction,
-                mint_instruction,
-                approve_instruction,
-            ],
-            Some(&[token_account_keypair, token_mint_authority, owner]),
-        )
-        .await
-        .unwrap();
-    }
-
+           self.process_transaction(
+               &[
+                   create_account_instruction,
+                   initialize_account_instruction,
+                   mint_instruction,
+                   approve_instruction,
+               ],
+               Some(&[token_account_keypair, token_mint_authority, owner]),
+           )
+           .await
+           .unwrap();
+       }
+    */
     #[allow(dead_code)]
     pub async fn get_clock(&mut self) -> Clock {
         self.get_bincode_account::<Clock>(&sysvar::clock::id())

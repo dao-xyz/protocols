@@ -4,7 +4,6 @@ pub mod instruction;
 pub mod processor;
 pub mod shared;
 pub mod state;
-pub mod tokens;
 
 solana_program::declare_id!("FeHc2yfKLCSxdwyvKaY8rZsA4da3kyJNpjJtQe8ioh87");
 use solana_program::pubkey::{Pubkey, PubkeyError, MAX_SEEDS, MAX_SEED_LEN};

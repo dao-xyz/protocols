@@ -30,6 +30,7 @@ pub fn create_user_transaction(
     program_id: &Pubkey,
     username: &str,
     profile: Option<ContentSource>,
+    owner: &Pubkey,
     payer: &Pubkey,
 ) -> Instruction {
     let (user_account, user_account_bump_seed) =
@@ -44,9 +45,10 @@ pub fn create_user_transaction(
         .try_to_vec()
         .unwrap(),
         accounts: vec![
-            AccountMeta::new(*payer, true),
             AccountMeta::new(user_account, false),
-            AccountMeta::new(system_program::id(), false),
+            AccountMeta::new_readonly(*owner, true),
+            AccountMeta::new(*payer, true),
+            AccountMeta::new_readonly(system_program::id(), false),
         ],
     }
 }
@@ -56,7 +58,7 @@ pub fn create_update_user_transaction(
     program_id: &Pubkey,
     username: &str,
     profile: Option<ContentSource>,
-    payer: &Pubkey,
+    owner: &Pubkey,
 ) -> Instruction {
     let (user_account, _) = find_user_account_program_address(program_id, username);
     Instruction {
@@ -65,8 +67,8 @@ pub fn create_update_user_transaction(
             .try_to_vec()
             .unwrap(),
         accounts: vec![
-            AccountMeta::new(*payer, true),
             AccountMeta::new(user_account, false),
+            AccountMeta::new_readonly(*owner, true),
         ],
     }
 }

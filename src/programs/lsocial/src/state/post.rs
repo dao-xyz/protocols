@@ -1,7 +1,7 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 
 use shared::account::get_account_data;
-use shared::{account::MaxSize};
+use shared::account::MaxSize;
 use solana_program::account_info::AccountInfo;
 use solana_program::clock::UnixTimestamp;
 use solana_program::program_error::ProgramError;

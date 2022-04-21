@@ -5,8 +5,7 @@ pub mod instruction;
 pub mod processor;
 pub mod shared;
 pub mod state;
-pub mod tokens;
-solana_program::declare_id!("A55r8UJDa2jTWVzDBhpzTcBPqSx2zcdZeh7Qxxqp8Sbb");
+solana_program::declare_id!("8jZtsr1pruCDNZeMRMMeS21NDJYj4dUmxJJ1J2jzi9Wa");
 use state::vote_record::Vote;
 
 /*

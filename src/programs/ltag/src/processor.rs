@@ -23,8 +23,9 @@ use crate::{
     instruction::TagInstruction,
     names::entity_name_is_valid,
     state::{
-        get_tag_record_data_with_authority, get_tag_record_factory_with_authority, AccountType,
-        TagAccount, TagRecordAccount, TagRecordFactoryAccount,
+        get_tag_record_data_with_factory, get_tag_record_data_with_owner,
+        get_tag_record_factory_with_authority, AccountType, TagAccount, TagRecordAccount,
+        TagRecordFactoryAccount,
     },
 };
 
@@ -145,17 +146,14 @@ impl Processor {
         Ok(())
     }
 
-    pub fn process_delete_tag_record(
+    pub fn process_delete_tag_record_as_factory(
         program_id: &Pubkey,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
         let accounts_iter = &mut accounts.iter();
         let tag_record_info = next_account_info(accounts_iter)?;
-        let tag_record_owner_info = next_account_info(accounts_iter)?;
-
         let tag_record_factory_info = next_account_info(accounts_iter)?;
         let tag_record_authority_info = next_account_info(accounts_iter)?;
-
         let destination_account_info = next_account_info(accounts_iter)?;
 
         // Verify authority
@@ -168,12 +166,41 @@ impl Processor {
 
         factory_data.outstanding_records = factory_data.outstanding_records.checked_sub(1).unwrap();
 
-        let _tag_record = get_tag_record_data_with_authority(
+        let _tag_record = get_tag_record_data_with_factory(
             program_id,
             tag_record_info,
             tag_record_factory_info,
             &factory_data,
             tag_record_authority_info,
+        )?;
+
+        factory_data.serialize(&mut *tag_record_factory_info.data.borrow_mut())?;
+        dispose_account(tag_record_info, destination_account_info);
+
+        Ok(())
+    }
+
+    pub fn process_delete_tag_record_as_owner(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+    ) -> ProgramResult {
+        let accounts_iter = &mut accounts.iter();
+        let tag_record_info = next_account_info(accounts_iter)?;
+        let tag_record_owner_info = next_account_info(accounts_iter)?;
+        let tag_record_factory_info = next_account_info(accounts_iter)?;
+        let destination_account_info = next_account_info(accounts_iter)?;
+
+        // Verify authority
+        let mut factory_data =
+            get_account_data::<TagRecordFactoryAccount>(program_id, tag_record_factory_info)?;
+
+        factory_data.outstanding_records = factory_data.outstanding_records.checked_sub(1).unwrap();
+
+        let _tag_record = get_tag_record_data_with_owner(
+            program_id,
+            tag_record_info,
+            tag_record_factory_info,
+            &factory_data,
             tag_record_owner_info,
         )?;
 
@@ -254,9 +281,13 @@ impl Processor {
                 msg!("Instruction: Create tag record");
                 Self::process_create_tag_record(program_id, accounts, bump_seed)
             }
-            TagInstruction::DeleteTagRecord => {
-                msg!("Instruction: Delete tag record");
-                Self::process_delete_tag_record(program_id, accounts)
+            TagInstruction::DeleteTagRecordAsOwner => {
+                msg!("Instruction: Delete tag record as owner");
+                Self::process_delete_tag_record_as_owner(program_id, accounts)
+            }
+            TagInstruction::DeleteTagRecordAsFactory => {
+                msg!("Instruction: Delete tag record as record");
+                Self::process_delete_tag_record_as_factory(program_id, accounts)
             }
             TagInstruction::CreateTagRecordFactory { tag: _, bump_seed } => {
                 msg!("Instruction: Create tag record factory");

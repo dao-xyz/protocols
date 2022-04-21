@@ -7,6 +7,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
     entrypoint::ProgramResult,
+    msg,
     program_error::ProgramError,
     pubkey::Pubkey,
     rent::Rent,
@@ -15,9 +16,12 @@ use solana_program::{
 
 use crate::{
     accounts::AccountType,
+    error::SocialError,
     shared::names::entity_name_is_valid,
     state::{
-        channel::{get_channel_account_program_address_seeds, ChannelAccount},
+        channel::{
+            get_channel_account_program_address_seeds, ChannelAccount, ChannelType, Encryption,
+        },
         channel_authority::{
             check_activity_authority, get_channel_authority_address_seed, AuthorityCondition,
             AuthorityType, ChannelAuthority,
@@ -28,6 +32,7 @@ use crate::{
 pub fn process_create_channel(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    channel_type: ChannelType,
     parent: Option<Pubkey>,
     name: String,
     link: Option<ContentSource>,
@@ -60,16 +65,23 @@ pub fn process_create_channel(
         let parent_channel =
             get_account_data::<ChannelAccount>(program_id, parent_channel_account_info)?;
 
+        if parent_channel.channel_type != ChannelType::Collection {
+            return Err(SocialError::InvalidParentChannel.into());
+        }
+
         let authority_info = next_account_info(accounts_iter)?;
 
         check_activity_authority(
             program_id,
             authority_info,
-            &AuthorityType::CreateSubChannel,
+            &AuthorityType::CreateChannel,
             &parent_channel,
             parent_channel_account_info,
             accounts_iter,
         )?;
+    } else if channel_type != ChannelType::Collection {
+        // The root must be a collection
+        return Err(SocialError::InvalidParentChannel.into());
     }
 
     let rent = Rent::get()?;
@@ -77,7 +89,7 @@ pub fn process_create_channel(
        Channel and user names must be unique, as we generate the seeds in the same way for both
        Do we want this really?
     */
-    let mut seeds = get_channel_account_program_address_seeds(name.as_ref())?;
+    let mut seeds = get_channel_account_program_address_seeds(name.as_ref(), parent.as_ref())?;
     seeds.push(vec![channel_account_bump_seed]);
     let seed_slice = &seeds.iter().map(|x| &x[..]).collect::<Vec<&[u8]>>()[..];
     create_and_serialize_account_verify_with_bump(
@@ -85,10 +97,13 @@ pub fn process_create_channel(
         channel_account_info,
         &ChannelAccount {
             account_type: AccountType::Channel,
+            channel_type,
             parent,
             link,
             name,
             creation_timestamp: Clock::get()?.unix_timestamp,
+            encryption: Encryption::None,
+            collection: None,
             /* authority: Some(*authority.key), */
         },
         seed_slice,
@@ -128,8 +143,10 @@ pub fn process_update_channel_info(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
     let channel_account_info = next_account_info(accounts_iter)?;
+    msg!("X");
     let mut channel = get_account_data::<ChannelAccount>(program_id, channel_account_info)?;
     let authority_info = next_account_info(accounts_iter)?;
+    msg!("Y");
 
     check_activity_authority(
         program_id,
@@ -139,6 +156,7 @@ pub fn process_update_channel_info(
         channel_account_info,
         accounts_iter,
     )?;
+    msg!("Z");
 
     channel.link = link;
     channel.serialize(&mut *channel_account_info.data.borrow_mut())?;

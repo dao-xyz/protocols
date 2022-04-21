@@ -77,26 +77,38 @@ pub fn get_tag_record_data_with_factory_and_signed_owner<'a>(
     Ok(data)
 }
 
-pub fn get_tag_record_data_with_authority<'a>(
+pub fn get_tag_record_data_with_factory<'a>(
     program_id: &Pubkey,
     tag_record_info: &AccountInfo<'a>,
     factory_info: &AccountInfo<'a>,
     factory_data: &TagRecordFactoryAccount,
     factory_authority_info: &AccountInfo<'a>,
+) -> Result<TagRecordAccount, ProgramError> {
+    let data = get_account_data::<TagRecordAccount>(program_id, tag_record_info)?;
+    if factory_authority_info.is_signer {
+        if &factory_data.authority != factory_authority_info.key {
+            return Err(TagError::InvalidAuthority.into());
+        }
+        if &data.factory != factory_info.key {
+            return Err(TagError::InvalidTagRecordFactory.into());
+        }
+        Ok(data)
+    } else {
+        Err(ProgramError::MissingRequiredSignature)
+    }
+}
+
+pub fn get_tag_record_data_with_owner<'a>(
+    program_id: &Pubkey,
+    tag_record_info: &AccountInfo<'a>,
+    factory_info: &AccountInfo<'a>,
+    factory_data: &TagRecordFactoryAccount,
     owner: &AccountInfo<'a>,
 ) -> Result<TagRecordAccount, ProgramError> {
     let data = get_account_data::<TagRecordAccount>(program_id, tag_record_info)?;
     if owner.is_signer {
         if &data.owner != owner.key {
             return Err(TagError::InvalidOwner.into());
-        }
-        Ok(data)
-    } else if factory_authority_info.is_signer {
-        if &factory_data.authority != factory_authority_info.key {
-            return Err(TagError::InvalidAuthority.into());
-        }
-        if &data.factory != factory_info.key {
-            return Err(TagError::InvalidTagRecordFactory.into());
         }
         Ok(data)
     } else {
