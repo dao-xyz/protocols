@@ -1,16 +1,20 @@
 use std::slice::Iter;
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use ltag::state::get_tag_record_data_with_factory_and_signed_owner;
+use ltag::state::{get_tag_record_data_with_factory_and_signed_owner, TagRecordAccount};
 use shared::account::{get_account_data, MaxSize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
+    msg,
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::Pubkey,
 };
 
-use crate::{accounts::AccountType, error::SocialError};
+use crate::{
+    accounts::AccountType, error::SocialError,
+    processor::utils::verify_signed_owner_maybe_sign_for_me,
+};
 
 use super::channel::ChannelAccount;
 
@@ -71,17 +75,27 @@ pub fn check_activity_authority<'a>(
         get_channel_authority_data_for_channel(program_id, authority_info, channel_info.key)?;
 
     // Check if user can use authority
+
+    /// TODO limit capability of sign for me with scope
+    ///
     match &authority_data.condition {
         AuthorityCondition::Tag { record_factory } => {
             let tag_record_info = next_account_info(accounts_iter)?;
             let tag_owner_info = next_account_info(accounts_iter)?;
-            assert_authorized_by_tag(tag_record_info, tag_owner_info, record_factory)?;
+            let data = get_account_data::<TagRecordAccount>(&ltag::id(), tag_record_info)?;
+
+            if &data.factory != record_factory && &data.owner != tag_owner_info.key {
+                return Err(SocialError::InvalidAuthority.into());
+            }
+
+            verify_signed_owner_maybe_sign_for_me(tag_owner_info, accounts_iter)?;
         }
         AuthorityCondition::Pubkey(pubkey) => {
             let signer = next_account_info(accounts_iter)?;
-            if signer.key != pubkey || !signer.is_signer {
+            if signer.key != pubkey {
                 return Err(SocialError::InvalidAuthority.into());
             }
+            verify_signed_owner_maybe_sign_for_me(signer, accounts_iter)?;
         }
         AuthorityCondition::None => {}
     }

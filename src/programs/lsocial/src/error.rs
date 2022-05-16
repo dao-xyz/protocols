@@ -53,6 +53,9 @@ pub enum SocialError {
 
     #[error("Invalid channel type")]
     InvalidChannelType,
+
+    #[error("Test error")]
+    TestError,
 }
 
 impl PrintProgramError for SocialError {

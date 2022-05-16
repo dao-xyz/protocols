@@ -52,6 +52,10 @@ pub fn process_create_authority(
         accounts_iter,
     )?;
 
+    if authority_types.len() == 0 {
+        // Expecting atleast 1 authority type
+        return Err(SocialError::InvalidAuthorityType.into());
+    }
     let rent = Rent::get()?;
     create_and_serialize_account_verify_with_bump(
         payer_account,

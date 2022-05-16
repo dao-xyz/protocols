@@ -25,6 +25,8 @@ use solana_program::{
     sysvar::Sysvar,
 };
 
+use super::utils::verify_signed_owner_maybe_sign_for_me;
+
 pub fn process_create_post(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -38,6 +40,13 @@ pub fn process_create_post(
     let post_account_info = next_account_info(accounts_iter)?;
     let channel_info = next_account_info(accounts_iter)?;
     let owner_info = next_account_info(accounts_iter)?;
+
+    match verify_signed_owner_maybe_sign_for_me(owner_info, accounts_iter) {
+        Ok(()) => {}
+        Err(_err) => {
+            return Err(SocialError::TestError.into());
+        }
+    }
     let payer_account = next_account_info(accounts_iter)?;
     let system_account = next_account_info(accounts_iter)?;
 
@@ -53,9 +62,9 @@ pub fn process_create_post(
         return Err(SocialError::PostAlreadyExist.into());
     }
 
-    if !owner_info.is_signer {
+    /*  if !owner_info.is_signer {
         return Err(ProgramError::MissingRequiredSignature.into());
-    }
+    } */
 
     let channel_data = get_account_data::<ChannelAccount>(program_id, channel_info)?;
     check_system_program(system_account.key)?;

@@ -19,7 +19,7 @@ use shared::account::create_and_serialize_account_verify_with_bump;
 use crate::{
     error::SignForMeError,
     get_sign_for_me_program_address_seeds,
-    instruction::TagInstruction,
+    instruction::SignForMeInstruction,
     state::{get_sign_for_me_data_for_signed_owner, AccountType, SignForMeAccount},
 };
 
@@ -85,9 +85,9 @@ impl Processor {
     }
 
     pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], data: &[u8]) -> ProgramResult {
-        let instruction = try_from_slice_unchecked::<TagInstruction>(data)?;
+        let instruction = try_from_slice_unchecked::<SignForMeInstruction>(data)?;
         match instruction {
-            TagInstruction::CreateSignForMe {
+            SignForMeInstruction::CreateSignForMe {
                 bump_seed,
                 scope,
                 signer,
@@ -95,7 +95,7 @@ impl Processor {
                 msg!("Instruction: CreateSignForMe");
                 Self::process_create_sign_for_me(program_id, accounts, signer, scope, bump_seed)
             }
-            TagInstruction::DeleteSignForMe => {
+            SignForMeInstruction::DeleteSignForMe => {
                 msg!("Instruction: DeleteSignForMe");
                 Self::process_delete_sign_for_me_as_owner(program_id, accounts)
             }

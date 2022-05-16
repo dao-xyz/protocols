@@ -24,6 +24,7 @@ pub mod process_authority;
 pub mod process_channel;
 pub mod process_post;
 pub mod process_vote;
+pub mod utils;
 
 pub struct Processor {}
 impl Processor {

@@ -5,7 +5,7 @@ use crate::{
         channel::ChannelAccount,
         channel_authority::{check_activity_authority, AuthorityType},
         post::get_post_data,
-        vote_record::Vote,
+        vote_record::{get_vote_record_data_for_owner, Vote},
     },
     state::{
         post::{PostAccount, VoteConfig},
@@ -30,6 +30,8 @@ use solana_program::{
     sysvar::Sysvar,
 };
 
+use super::utils::verify_signed_owner_maybe_sign_for_me;
+
 pub fn process_post_vote(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -41,6 +43,7 @@ pub fn process_post_vote(
     let channel_info = next_account_info(accounts_iter)?;
     let vote_record_info = next_account_info(accounts_iter)?;
     let vote_record_owner_info = next_account_info(accounts_iter)?;
+    verify_signed_owner_maybe_sign_for_me(vote_record_owner_info, accounts_iter)?;
     let payer_info = next_account_info(accounts_iter)?;
     let system_info = next_account_info(accounts_iter)?;
 
@@ -50,9 +53,6 @@ pub fn process_post_vote(
         return Err(SocialError::VoteAlreadyExist.into());
     }
 
-    if !vote_record_owner_info.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
     let channel_data = get_account_data::<ChannelAccount>(program_id, channel_info)?;
     let mut post = get_post_data(program_id, post_account_info, channel_info.key)?;
 
@@ -111,6 +111,7 @@ pub fn process_post_unvote(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
     let channel_info = next_account_info(accounts_iter)?;
     let vote_record_info = next_account_info(accounts_iter)?;
     let vote_record_owner_info = next_account_info(accounts_iter)?;
+    verify_signed_owner_maybe_sign_for_me(vote_record_owner_info, accounts_iter)?;
     let destination_info = next_account_info(accounts_iter)?;
 
     let authority_info = next_account_info(accounts_iter)?;
@@ -129,11 +130,8 @@ pub fn process_post_unvote(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
         return Err(SocialError::VoteDoesNotExist.into());
     }
 
-    let vote_record_data = get_vote_record_data_for_signed_owner(
-        program_id,
-        vote_record_info,
-        vote_record_owner_info,
-    )?;
+    let vote_record_data =
+        get_vote_record_data_for_owner(program_id, vote_record_info, vote_record_owner_info.key)?;
 
     msg!("DISPOSE {}", vote_record_info.key);
     dispose_account(vote_record_info, destination_info);

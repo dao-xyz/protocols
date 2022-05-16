@@ -3,15 +3,13 @@ use ltag::{
     get_tag_program_address, get_tag_record_factory_program_address, get_tag_record_program_address,
 };
 use shared::content::ContentSource;
-use solana_program::{
-    borsh::try_from_slice_unchecked, hash::Hash, program_error::ProgramError, program_pack::Pack,
-    system_instruction,
-};
+use solana_program::{borsh::try_from_slice_unchecked, program_error::ProgramError};
 
 use lsocial::{
     instruction::{
         cast_vote, create_post, delete_channel_authority, uncast_vote, update_info,
         CreateVoteConfig, SignForMe, SignedAuthority, SignedAuthorityCondition,
+        SignerMaybeSignForMe,
     },
     state::{
         channel::ChannelType,
@@ -28,10 +26,7 @@ use lsocial::{
 };
 
 use solana_program_test::*;
-use solana_sdk::{
-    pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction,
-    transport::TransportError,
-};
+use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 /*
 use spl_associated_token_account::{create_associated_token_account, get_associated_token_address};
  */
@@ -198,8 +193,36 @@ pub struct TestAuthority {
     pub key: Pubkey,
 }
 pub struct TestSignedAuthority<'a> {
-    pub signer: &'a Keypair,
+    pub signer: &'a TestSignerMaybeForMe<'a>,
     pub authority: SignedAuthority,
+}
+
+impl<'a> TestSignedAuthority<'a> {
+    fn get_signer(&self) -> &'a Keypair {
+        self.signer.get_signer()
+    }
+}
+
+pub struct TestSignerMaybeForMe<'a> {
+    pub original_signer: &'a Keypair,
+    pub sign_for_me: Option<&'a TestSignForMe<'a>>,
+}
+impl<'a> From<&TestSignerMaybeForMe<'a>> for SignerMaybeSignForMe {
+    fn from(test_signer_maybe_sign_for_me: &TestSignerMaybeForMe<'a>) -> Self {
+        SignerMaybeSignForMe {
+            original_signer: test_signer_maybe_sign_for_me.original_signer.pubkey(),
+            sign_for_me: test_signer_maybe_sign_for_me
+                .sign_for_me
+                .map(|s| s.sign_for_me.clone()),
+        }
+    }
+}
+impl<'a> TestSignerMaybeForMe<'a> {
+    fn get_signer(&self) -> &'a Keypair {
+        self.sign_for_me
+            .map(|s| s.signer)
+            .unwrap_or(self.original_signer)
+    }
 }
 
 pub struct TestSignForMe<'a> {
@@ -279,9 +302,8 @@ impl TestAuthority {
                     condition,
                     &seed,
                     &signing_authority.authority,
-                    None,
                 )],
-                Some(&[signing_authority.signer]),
+                Some(&[signing_authority.get_signer()]),
             )
             .await
             .unwrap();
@@ -305,9 +327,8 @@ impl TestAuthority {
                     &account.channel,
                     &bench.payer.pubkey(),
                     &signing_authority.authority,
-                    None,
                 )],
-                Some(&[signing_authority.signer]),
+                Some(&[signing_authority.get_signer()]),
             )
             .await
             .unwrap();
@@ -329,23 +350,28 @@ impl TestAuthority {
     pub async fn get_signing_authority<'a>(
         &self,
         bench: &mut ProgramTestBench,
-        user: &'a TestUser,
+        signer_maybe_sign_for_me: &'a TestSignerMaybeForMe<'a>,
     ) -> TestSignedAuthority<'a> {
         let account = self.get_channel_authority_account(bench).await.unwrap();
         let condition = match account.condition {
             AuthorityCondition::None => SignedAuthorityCondition::None,
-            AuthorityCondition::Pubkey(key) => SignedAuthorityCondition::Pubkey(key),
+            AuthorityCondition::Pubkey(key) => {
+                SignedAuthorityCondition::Pubkey(signer_maybe_sign_for_me.into())
+            }
             AuthorityCondition::Tag { record_factory } => {
-                let record = user.get_tag_record_address(&record_factory);
+                let record = get_tag_record_address(
+                    &signer_maybe_sign_for_me.original_signer.pubkey(),
+                    &record_factory,
+                );
                 SignedAuthorityCondition::Tag {
                     record_factory,
                     record,
-                    owner: user.keypair.pubkey(),
+                    owner: signer_maybe_sign_for_me.into(),
                 }
             }
         };
         TestSignedAuthority {
-            signer: &user.keypair,
+            signer: &signer_maybe_sign_for_me,
             authority: SignedAuthority {
                 channel_authority: self.key,
                 condition,
@@ -377,7 +403,7 @@ impl TestChannel {
         let channel_authority_seed = Pubkey::new_unique();
         let mut signers = vec![clone_keypair(&admin.keypair)];
         if let Some(activity_authority) = activity_authority {
-            signers.push(clone_keypair(activity_authority.signer));
+            signers.push(clone_keypair(activity_authority.get_signer()));
         }
 
         bench
@@ -392,7 +418,6 @@ impl TestChannel {
                     &channel_type,
                     &channel_authority_seed,
                     activity_authority.map(|x| &x.authority),
-                    None,
                 )],
                 Some(&signers.iter().collect::<Vec<&Keypair>>()),
             )
@@ -435,9 +460,8 @@ impl TestChannel {
                     &self.channel,
                     new_info,
                     &activity_authority.authority,
-                    None,
                 )],
-                Some(&[activity_authority.signer]),
+                Some(&[activity_authority.get_signer()]),
             )
             .await
             .unwrap();
@@ -463,16 +487,25 @@ pub struct TestUser {
     pub keypair: Keypair,
 }
 
+impl<'a> From<&'a TestUser> for TestSignerMaybeForMe<'a> {
+    fn from(user: &'a TestUser) -> TestSignerMaybeForMe<'a> {
+        TestSignerMaybeForMe {
+            sign_for_me: None,
+            original_signer: &user.keypair,
+        }
+    }
+}
+
 impl TestUser {
     pub fn new() -> Self {
         Self {
             keypair: Keypair::new(),
         }
     }
+}
 
-    pub fn get_tag_record_address(&self, tag_record_factory: &Pubkey) -> Pubkey {
-        get_tag_record_program_address(&ltag::id(), tag_record_factory, &self.keypair.pubkey()).0
-    }
+pub fn get_tag_record_address(owner: &Pubkey, tag_record_factory: &Pubkey) -> Pubkey {
+    get_tag_record_program_address(&ltag::id(), tag_record_factory, owner).0
 }
 
 pub struct TestPost<'a> {
@@ -487,11 +520,11 @@ impl<'a> TestPost<'a> {
     pub async fn new(
         bench: &mut ProgramTestBench,
         channel: &'a TestChannel,
-        owner: &TestUser,
+        owner: &TestSignerMaybeForMe<'a>,
         content: &PostContent,
         parent: Option<&'a TestPost<'a>>,
-        signing_authority: &TestSignedAuthority<'a>,
-        sign_for_me: Option<&'a TestSignForMe<'a>>,
+        signing_authority: &'a TestSignedAuthority<'a>,
+        /*  sign_for_me: Option<&'a TestSignForMe<'a>>, */
     ) -> TestPost<'a> {
         let (post, hash) = create_post_hash();
         bench
@@ -499,19 +532,15 @@ impl<'a> TestPost<'a> {
                 &[create_post(
                     &lsocial::id(),
                     &channel.channel,
-                    &owner.keypair.pubkey(),
+                    &owner.into(),
                     &bench.payer.pubkey(),
                     content.clone(),
                     &hash,
                     parent.map(|p| p.post),
                     &CreateVoteConfig::Simple,
                     &signing_authority.authority,
-                    sign_for_me.map(|sign_for_me| &sign_for_me.sign_for_me),
                 )],
-                Some(&merge_signer_optional_signer(
-                    &[signing_authority.signer, &owner.keypair],
-                    sign_for_me.map(|sign_for_me| sign_for_me.signer),
-                )),
+                Some(&[owner.get_signer(), signing_authority.get_signer()]),
             )
             .await
             .unwrap();
@@ -548,9 +577,8 @@ impl<'a> TestPost<'a> {
         &self,
         bench: &mut ProgramTestBench,
         vote: Vote,
-        owner: &TestUser,
+        owner: &'a TestSignerMaybeForMe<'a>,
         signing_authority: &'a TestSignedAuthority<'a>,
-        sign_for_me: Option<&'a TestSignForMe<'a>>,
     ) -> Result<(), ProgramError> {
         bench
             .process_transaction(
@@ -558,16 +586,12 @@ impl<'a> TestPost<'a> {
                     &lsocial::id(),
                     &self.post,
                     &self.channel.channel,
-                    &owner.keypair.pubkey(),
+                    &owner.into(),
                     &bench.payer.pubkey(),
                     vote,
                     &signing_authority.authority,
-                    sign_for_me.map(|sign_for_me| &sign_for_me.sign_for_me),
                 )],
-                Some(&merge_signer_optional_signer(
-                    &[&owner.keypair, signing_authority.signer],
-                    sign_for_me.map(|sign_for_me| sign_for_me.signer),
-                )),
+                Some(&[owner.get_signer(), signing_authority.get_signer()]),
             )
             .await?;
 
@@ -577,9 +601,8 @@ impl<'a> TestPost<'a> {
     pub async fn unvote(
         &self,
         bench: &mut ProgramTestBench,
-        owner: &TestUser,
+        owner: &'a TestSignerMaybeForMe<'a>,
         signing_authority: &'a TestSignedAuthority<'a>,
-        sign_for_me: Option<&'a TestSignForMe<'a>>,
     ) -> Result<(), ProgramError> {
         let pre_balance = bench
             .get_account(&bench.payer.pubkey())
@@ -592,15 +615,11 @@ impl<'a> TestPost<'a> {
                     &lsocial::id(),
                     &self.post,
                     &self.channel.channel,
-                    &owner.keypair.pubkey(),
+                    &owner.into(),
                     &bench.payer.pubkey(),
                     &signing_authority.authority,
-                    sign_for_me.map(|sign_for_me| &sign_for_me.sign_for_me),
                 )],
-                Some(&merge_signer_optional_signer(
-                    &[&owner.keypair, signing_authority.signer],
-                    sign_for_me.map(|sign_for_me| sign_for_me.signer),
-                )),
+                Some(&[owner.get_signer(), signing_authority.get_signer()]),
             )
             .await?;
 

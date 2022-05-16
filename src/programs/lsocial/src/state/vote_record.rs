@@ -63,6 +63,19 @@ pub fn get_vote_record_data_for_signed_owner(
     Ok(data)
 }
 
+pub fn get_vote_record_data_for_owner(
+    program_id: &Pubkey,
+    vote_record_info: &AccountInfo,
+    owner: &Pubkey,
+) -> Result<VoteRecord, ProgramError> {
+    let data = get_account_data::<VoteRecord>(program_id, vote_record_info)?;
+    if &data.owner != owner {
+        return Err(SocialError::InvalidOwnerForVoteRecord.into());
+    }
+
+    Ok(data)
+}
+
 pub fn get_vote_record_data_for_signed_owner_and_post(
     program_id: &Pubkey,
     vote_record_info: &AccountInfo,

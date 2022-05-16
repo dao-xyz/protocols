@@ -1,5 +1,4 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use shared::content::ContentSource;
 use solana_program::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
@@ -9,7 +8,7 @@ use solana_program::{
 use crate::get_sign_for_me_program_address;
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
-pub enum TagInstruction {
+pub enum SignForMeInstruction {
     CreateSignForMe {
         #[allow(dead_code)] // but it's not
         signer: Pubkey,
@@ -38,7 +37,7 @@ pub fn create_sign_for_me(
 
     Instruction {
         program_id: *program_id,
-        data: (TagInstruction::CreateSignForMe {
+        data: (SignForMeInstruction::CreateSignForMe {
             scope: *scope,
             signer: *signer,
             bump_seed,
@@ -64,7 +63,9 @@ pub fn delete_sign_for_me_as_owner(
 ) -> Instruction {
     Instruction {
         program_id: *program_id,
-        data: (TagInstruction::DeleteSignForMe).try_to_vec().unwrap(),
+        data: (SignForMeInstruction::DeleteSignForMe)
+            .try_to_vec()
+            .unwrap(),
         accounts: vec![
             AccountMeta::new(*sign_for_me, false),
             AccountMeta::new_readonly(*owner, true),

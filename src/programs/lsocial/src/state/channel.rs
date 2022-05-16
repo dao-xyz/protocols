@@ -18,8 +18,7 @@ const CHANNEL_SEED: &[u8] = b"channel";
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]
 pub enum ChannelType {
     Collection,
-    Forum,
-    Chat,
+    PostStream,
 }
 
 #[derive(Clone, Debug, BorshDeserialize, BorshSerialize, BorshSchema, PartialEq)]

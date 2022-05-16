@@ -18,50 +18,62 @@ pub enum CreateVoteConfig {
     Simple,
 }
 
+#[derive(Clone, Debug)]
+pub struct SignForMe {
+    pub sign_for_me: Pubkey,
+    pub signer: Pubkey,
+}
+
+#[derive(Clone, Debug)]
+pub struct SignerMaybeSignForMe {
+    pub original_signer: Pubkey,
+    pub sign_for_me: Option<SignForMe>,
+}
+impl SignerMaybeSignForMe {
+    pub fn add_account_infos(&self, accounts: &mut Vec<AccountMeta>) {
+        accounts.push(AccountMeta::new_readonly(
+            self.original_signer,
+            self.sign_for_me.is_none(),
+        ));
+        if let Some(sign_for_me) = &self.sign_for_me {
+            accounts.push(AccountMeta::new_readonly(sign_for_me.sign_for_me, false));
+            accounts.push(AccountMeta::new_readonly(sign_for_me.signer, true));
+        }
+    }
+}
 pub enum SignedAuthorityCondition {
-    Pubkey(Pubkey),
+    Pubkey(SignerMaybeSignForMe),
     Tag {
         record: Pubkey,
-        owner: Pubkey,
+        owner: SignerMaybeSignForMe,
         record_factory: Pubkey,
     },
     None,
 }
 
-pub struct SignForMe {
-    pub sign_for_me: Pubkey,
-    pub signer: Pubkey,
-}
 pub struct SignedAuthority {
     pub channel_authority: Pubkey,
     pub condition: SignedAuthorityCondition,
 }
 impl SignedAuthority {
-    pub fn add_account_infos(
-        &self,
-        accounts: &mut Vec<AccountMeta>,
-        sign_for_me: Option<&SignForMe>,
-    ) {
+    pub fn add_account_infos(&self, accounts: &mut Vec<AccountMeta>) {
         accounts.push(AccountMeta::new_readonly(self.channel_authority, false));
         match &self.condition {
             SignedAuthorityCondition::Tag { owner, record, .. } => {
                 accounts.push(AccountMeta::new_readonly(*record, false));
-                if let Some(sign_for_me) = sign_for_me {
-                    accounts.push(AccountMeta::new_readonly(sign_for_me.sign_for_me, false));
-                    accounts.push(AccountMeta::new_readonly(sign_for_me.signer, true));
-                    accounts.push(AccountMeta::new_readonly(*owner, false));
-                } else {
-                    accounts.push(AccountMeta::new_readonly(*owner, true));
-                }
+                owner.add_account_infos(accounts);
             }
             SignedAuthorityCondition::Pubkey(key) => {
-                if let Some(sign_for_me) = sign_for_me {
+                /* if let Some(sign_for_me) = &key.sign_for_me {
                     accounts.push(AccountMeta::new_readonly(sign_for_me.sign_for_me, false));
                     accounts.push(AccountMeta::new_readonly(sign_for_me.signer, true));
-                    accounts.push(AccountMeta::new_readonly(*key, false));
-                } else {
-                    accounts.push(AccountMeta::new_readonly(*key, true));
                 }
+                accounts.push(AccountMeta::new_readonly(
+                    key.original_signer,
+                    key.sign_for_me.is_none(),
+                )); */
+
+                key.add_account_infos(accounts);
             }
             SignedAuthorityCondition::None => {}
         }
@@ -71,7 +83,9 @@ impl SignedAuthority {
 impl From<SignedAuthority> for AuthorityCondition {
     fn from(signed_authority_condition: SignedAuthority) -> Self {
         match signed_authority_condition.condition {
-            SignedAuthorityCondition::Pubkey(key) => AuthorityCondition::Pubkey(key),
+            SignedAuthorityCondition::Pubkey(key) => {
+                AuthorityCondition::Pubkey(key.original_signer)
+            }
             SignedAuthorityCondition::None => AuthorityCondition::None,
             SignedAuthorityCondition::Tag { record_factory, .. } => {
                 AuthorityCondition::Tag { record_factory }
@@ -152,6 +166,7 @@ pub enum PostInstruction {
         #[allow(dead_code)] // but it's not
         vote_record_bump_seed: u8,
     },
+
     Unvote,
 }
 
@@ -160,7 +175,7 @@ pub fn create_post(
 
     // Accounts
     channel: &Pubkey,
-    owner: &Pubkey,
+    owner: &SignerMaybeSignForMe,
     payer: &Pubkey,
 
     // Args
@@ -169,22 +184,26 @@ pub fn create_post(
     parent_post: Option<Pubkey>,
     vote_config: &CreateVoteConfig,
     authority_config: &SignedAuthority,
-    sign_for_me: Option<&SignForMe>,
 ) -> Instruction {
     let (post_address, post_bump_seed) = get_post_program_address(program_id, hash);
+
     let mut accounts = vec![
         AccountMeta::new(post_address, false),
         AccountMeta::new_readonly(*channel, false),
-        AccountMeta::new_readonly(*owner, sign_for_me.is_none()),
+    ];
+
+    owner.add_account_infos(&mut accounts);
+
+    accounts.append(&mut vec![
         AccountMeta::new(*payer, true),
         AccountMeta::new_readonly(system_program::id(), false),
-    ];
+    ]);
 
     if let Some(parent) = parent_post {
         accounts.push(AccountMeta::new_readonly(parent, false));
     }
 
-    authority_config.add_account_infos(&mut accounts, sign_for_me);
+    authority_config.add_account_infos(&mut accounts);
 
     Instruction {
         program_id: *program_id,
@@ -207,27 +226,30 @@ pub fn cast_vote(
     // Acccounts
     post: &Pubkey,
     channel: &Pubkey,
-    record_owner: &Pubkey,
+    record_owner: &SignerMaybeSignForMe,
     payer: &Pubkey,
 
     // Args
     vote: Vote,
     authority_config: &SignedAuthority,
-    sign_for_me: Option<&SignForMe>,
 ) -> Instruction {
     let (record_address, record_bump_seed) =
-        get_vote_record_address(program_id, post, record_owner);
+        get_vote_record_address(program_id, post, &record_owner.original_signer);
 
     let mut accounts = vec![
         AccountMeta::new(*post, false),
         AccountMeta::new_readonly(*channel, false),
         AccountMeta::new(record_address, false),
-        AccountMeta::new_readonly(*record_owner, true),
-        AccountMeta::new(*payer, true),
-        AccountMeta::new_readonly(system_program::id(), false),
     ];
 
-    authority_config.add_account_infos(&mut accounts, sign_for_me);
+    record_owner.add_account_infos(&mut accounts);
+
+    accounts.append(&mut vec![
+        AccountMeta::new(*payer, true),
+        AccountMeta::new_readonly(system_program::id(), false),
+    ]);
+
+    authority_config.add_account_infos(&mut accounts);
 
     Instruction {
         program_id: *program_id,
@@ -247,24 +269,26 @@ pub fn uncast_vote(
     // Accounts
     post: &Pubkey,
     channel: &Pubkey,
-    record_owner: &Pubkey,
+    record_owner: &SignerMaybeSignForMe,
     destination_info: &Pubkey,
 
     // Args
     authority_config: &SignedAuthority,
-    sign_for_me: Option<&SignForMe>,
 ) -> Instruction {
-    let (record_address, _) = get_vote_record_address(program_id, post, record_owner);
+    let (record_address, _) =
+        get_vote_record_address(program_id, post, &record_owner.original_signer);
 
     let mut accounts = vec![
         AccountMeta::new(*post, false),
         AccountMeta::new_readonly(*channel, false),
         AccountMeta::new(record_address, false),
-        AccountMeta::new_readonly(*record_owner, true),
-        AccountMeta::new(*destination_info, false),
     ];
 
-    authority_config.add_account_infos(&mut accounts, sign_for_me);
+    record_owner.add_account_infos(&mut accounts);
+
+    accounts.push(AccountMeta::new(*destination_info, false));
+
+    authority_config.add_account_infos(&mut accounts);
 
     Instruction {
         program_id: *program_id,
@@ -288,7 +312,6 @@ pub fn create_channel(
     channel_type: &ChannelType,
     channel_authority_seed: &Pubkey,
     authority_config: Option<&SignedAuthority>,
-    sign_for_me: Option<&SignForMe>,
 ) -> Instruction {
     let (channel, channel_account_bump_seed) =
         get_channel_program_address(program_id, channel_name, parent.as_ref()).unwrap();
@@ -304,7 +327,7 @@ pub fn create_channel(
     // Only needed (is Some) if channel is a subchannel
     if let Some(authority_config) = authority_config {
         accounts.push(AccountMeta::new_readonly(parent.unwrap(), false));
-        authority_config.add_account_infos(&mut accounts, sign_for_me);
+        authority_config.add_account_infos(&mut accounts);
     }
 
     Instruction {
@@ -334,10 +357,9 @@ pub fn update_info(
     // Args
     info: Option<ContentSource>,
     authority_config: &SignedAuthority,
-    sign_for_me: Option<&SignForMe>,
 ) -> Instruction {
     let mut accounts = vec![AccountMeta::new(*channel, false)];
-    authority_config.add_account_infos(&mut accounts, sign_for_me);
+    authority_config.add_account_infos(&mut accounts);
     Instruction {
         program_id: *program_id,
         data: (PostInstruction::UpdateChannelInfo { info })
@@ -359,7 +381,6 @@ pub fn create_channel_authority(
     condition: &AuthorityCondition,
     seed: &Pubkey,
     authority_config: &SignedAuthority,
-    sign_for_me: Option<&SignForMe>,
 ) -> Instruction {
     let (authority_address, authority_address_bump_seed) =
         get_channel_authority_address(program_id, channel, seed);
@@ -371,7 +392,7 @@ pub fn create_channel_authority(
         AccountMeta::new_readonly(system_program::id(), false),
     ];
 
-    authority_config.add_account_infos(&mut accounts, sign_for_me);
+    authority_config.add_account_infos(&mut accounts);
 
     Instruction {
         program_id: *program_id,
@@ -399,7 +420,6 @@ pub fn delete_channel_authority(
 
     // Args
     authority_config: &SignedAuthority,
-    sign_for_me: Option<&SignForMe>,
 ) -> Instruction {
     let mut accounts = vec![
         AccountMeta::new(*channel_authority, false),
@@ -407,7 +427,7 @@ pub fn delete_channel_authority(
         AccountMeta::new(*beneficiary, false),
     ];
 
-    authority_config.add_account_infos(&mut accounts, sign_for_me);
+    authority_config.add_account_infos(&mut accounts);
 
     Instruction {
         program_id: *program_id,

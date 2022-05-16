@@ -13,5 +13,10 @@ pub fn program_test() -> ProgramTest {
         processor!(lsocial::processor::Processor::process),
     );
 
+    program.add_program(
+        "lsignforme",
+        lsignforme::id(),
+        processor!(lsignforme::processor::Processor::process),
+    );
     program
 }

@@ -327,8 +327,10 @@ pub async fn success_authority_by_tag() {
     )
     .await;
 
+    let signed_owner = (&user).into();
+
     let create_channel_authority = collection_authority
-        .get_signing_authority(&mut bench, &user)
+        .get_signing_authority(&mut bench, &signed_owner)
         .await;
 
     // create a channel
@@ -336,14 +338,17 @@ pub async fn success_authority_by_tag() {
         &mut bench,
         &user,
         None,
-        &ChannelType::Chat,
+        &ChannelType::PostStream,
         Some(&test_channel),
         Some(&create_channel_authority),
     )
     .await;
 
     // Add a new authority
-    let admin_signer = authority.get_signing_authority(&mut bench, &user).await;
+    let admin_signer = authority
+        .get_signing_authority(&mut bench, &signed_owner)
+        .await;
+
     let new_authourity = TestAuthority::new(
         &mut bench,
         &test_channel,
@@ -360,23 +365,24 @@ pub async fn success_authority_by_tag() {
     .await;
 
     let new_authorized_user = TestUser::new();
-
     tag_record_factory
         .new_record(&mut bench, &new_authorized_user)
         .await;
 
     // Create a post, vote and comment with the new authority
+    let new_authorized_user_signer = (&new_authorized_user).into();
+
     let post_comment_vote_signer = new_authourity
-        .get_signing_authority(&mut bench, &new_authorized_user)
+        .get_signing_authority(&mut bench, &new_authorized_user_signer)
         .await;
+
     let post = TestPost::new(
         &mut bench,
         &test_channel,
-        &new_authorized_user,
+        &new_authorized_user_signer,
         &PostContent::String("a".into()),
         None,
         &post_comment_vote_signer,
-        None,
     )
     .await;
 
@@ -384,9 +390,8 @@ pub async fn success_authority_by_tag() {
     post.vote(
         &mut bench,
         Vote::Up,
-        &new_authorized_user,
+        &new_authorized_user_signer,
         &post_comment_vote_signer,
-        None,
     )
     .await
     .unwrap();
@@ -394,9 +399,8 @@ pub async fn success_authority_by_tag() {
     // Unvote
     post.unvote(
         &mut bench,
-        &new_authorized_user,
+        &new_authorized_user_signer,
         &post_comment_vote_signer,
-        None,
     )
     .await
     .unwrap();

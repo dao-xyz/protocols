@@ -23,14 +23,16 @@ pub async fn success() {
     .await;
 
     // create a subchannel
+    let signed_owner = (&user).into();
+
     let create_channel_authority = collection_authority
-        .get_signing_authority(&mut bench, &user)
+        .get_signing_authority(&mut bench, &signed_owner)
         .await;
     TestChannel::new(
         &mut bench,
         &user,
         None,
-        &ChannelType::Forum,
+        &ChannelType::PostStream,
         Some(&test_collection),
         Some(&create_channel_authority),
     )
@@ -50,7 +52,10 @@ async fn update_info() {
         None,
     )
     .await;
-    let signing_authority = authority.get_signing_authority(&mut bench, &user).await;
+    let signed_owner = (&user).into();
+    let signing_authority = authority
+        .get_signing_authority(&mut bench, &signed_owner)
+        .await;
 
     test_channel
         .update_info(
