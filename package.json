@@ -1,10 +1,10 @@
 {
-  "name": "westake",
+  "name": "@dao-xyz/protocol",
   "version": "0.0.0",
   "description": "",
   "repository": {
     "type": "git",
-    "url": "https://github.com/westake/westake-protocol"
+    "url": "https://github.com/dao-xyz/governance-protocol"
   },
   "keywords": [],
   "author": "",
@@ -17,7 +17,7 @@
     "build": "cargo build-bpf --manifest-path=./src/program/Cargo.toml --bpf-out-dir=dist/program",
     "clean": "cargo clean --manifest-path=./src/program/Cargo.toml && rm -rf ./dist",
     "test": "cargo test-bpf --manifest-path=./src/program/Cargo.toml",
-    "redeploy" : "npm run build && solana program deploy /Users/admin/git/solchat/dist/program/westake.so",
+    "redeploy" : "npm run build && solana program deploy /Users/admin/git/solchat/dist/program/ggg.so",
     "pretty": "prettier --write '{,src/**/}*.ts'"
   },
   "dependencies": {

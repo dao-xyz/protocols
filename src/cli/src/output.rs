@@ -3,7 +3,7 @@ use {
     solana_cli_output::{QuietDisplay, VerboseDisplay},
     solana_sdk::native_token::Sol,
     solana_sdk::{pubkey::Pubkey, stake::state::Lockup},
-    s2g::stake_pool::state::{Fee, StakePool, StakeStatus, ValidatorList, ValidatorStakeInfo},
+    lpool::state::{Fee, StakePool, StakeStatus, ValidatorList, ValidatorStakeInfo},
     std::fmt::{Display, Formatter, Result, Write},
 };
 

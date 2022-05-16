@@ -1,15 +1,11 @@
-# Governance and authentication protocol for DAO.xyz
+# DAO.xyz protocols
 
-- Support for proxy voting (scope/sub-daos).
-- Multi-token voting
-- Aggregated delegation: An delegatee voting on behalf of delegators only have to perform one transaction
+This repo contains a collections of protocols used for DAO.xyz
+
+- [Governance protocol]('./src/programs/lgovernance'): Governance protocol that support proxy voting and sub-dao security principplas
+- [SignForMe]('./src/programs/lsignforme'): Contextual/scoped multisig with 2 participants.
+- [Tag]('./src/programs/ltag'): Non transferable badges
+- [User]('./src/programs/luser'): On-chain user data
 
 
 WIP
-
-
-
-
-
-
-

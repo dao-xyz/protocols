@@ -37,8 +37,8 @@ use {
         transaction::Transaction,
     },
     spl_associated_token_account::{create_associated_token_account, get_associated_token_address},
-    s2g::stake_pool::state::ValidatorStakeInfo,
-    s2g::stake_pool::{
+    lpool::state::ValidatorStakeInfo,
+    lpool::{
         find_stake_program_address, find_transient_stake_program_address,
         find_withdraw_authority_program_address,
         instruction::{FundingType, PreferredValidatorType},
@@ -198,11 +198,11 @@ fn command_create_pool(
     let reserve_keypair = reserve_keypair.unwrap_or_else(Keypair::new);
     println!("Creating reserve stake {}", reserve_keypair.pubkey());
 
-    let pool_mint = s2g::tokens::spl_utils::find_utility_mint_program_address(&s2g::id()).0;
+    let pool_mint = lpool::find_platform_mint_program_address(&lpool::id()).0;
 
 
     //let stake_pool_keypair = stake_pool_keypair.unwrap_or_else(Keypair::new);
-    let stake_pool = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool = lpool::find_stake_pool_program_address(&lpool::id()).0;
 
     let validator_list_keypair = validator_list_keypair.unwrap_or_else(Keypair::new);
 
@@ -234,11 +234,11 @@ fn command_create_pool(
 
     // Calculate withdraw authority used for minting pool tokens
    /*  let (withdraw_authority, _) = find_withdraw_authority_program_address(
-        &s2g::id(),
+        &lpool::id(),
         &stake_pool_keypair.pubkey(),
     ); */
     let (withdraw_authority, _) = find_withdraw_authority_program_address(
-        &s2g::id(),
+        &lpool::id(),
         &stake_pool,
     );
 
@@ -271,10 +271,10 @@ fn command_create_pool(
             spl_token::state::Mint::LEN as u64,
             &spl_token::id(),
         ), */
-        s2g::stake_pool::instruction::setup(
-            &s2g::id(),
+        lpool::instruction::setup(
+            &lpool::id(),
             &config.fee_payer.pubkey(),
-            get_packed_len::<s2g::stake_pool::state::StakePool>() as u64,
+            get_packed_len::<lpool::state::StakePool>() as u64,
         )
         // Initialize pool token mint account
       /*   spl_token::instruction::initialize_mint(
@@ -306,7 +306,7 @@ fn command_create_pool(
                 &validator_list_keypair.pubkey(),
                 validator_list_balance,
                 validator_list_size as u64,
-                &s2g::id(),
+                &lpool::id(),
             ),
             // Account for the stake pool
            /*  system_instruction::create_account(
@@ -314,11 +314,11 @@ fn command_create_pool(
                 &stake_pool_keypair.pubkey(),
                 stake_pool_account_lamports,
                 get_packed_len::<StakePool>() as u64,
-                &s2g::id(),
+                &lpool::id(),
             ), */
             // Initialize stake pool
-            s2g::stake_pool::instruction::initialize(
-                &s2g::id(),
+            lpool::instruction::initialize(
+                &lpool::id(),
                 &stake_pool,
                 &config.manager.pubkey(),
                 &config.staker.pubkey(),
@@ -383,10 +383,10 @@ fn command_vsa_add(
     config: &Config,
     vote_account: &Pubkey,
 ) -> CommandResult {
-    let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
 
     let (stake_account_address, _) =
-        find_stake_program_address(&s2g::id(), vote_account, &stake_pool_address);
+        find_stake_program_address(&lpool::id(), vote_account, &stake_pool_address);
     println!(
         "Adding stake account {}, delegated to {}",
         stake_account_address, vote_account
@@ -410,8 +410,8 @@ fn command_vsa_add(
     let transaction = checked_transaction_with_signers(
         config,
         &[
-            s2g::stake_pool::instruction::add_validator_to_pool_with_vote(
-                &s2g::id(),
+            lpool::instruction::add_validator_to_pool_with_vote(
+                &lpool::id(),
                 &stake_pool,
                 &stake_pool_address,
                 &config.fee_payer.pubkey(),
@@ -431,14 +431,14 @@ fn command_vsa_remove(
     new_authority: &Option<Pubkey>,
     stake_receiver: &Option<Pubkey>,
 ) -> CommandResult {
-    let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
 
     if !config.no_update {
         command_update(config, &stake_pool_address, false, false)?;
     }
 
     let (stake_account_address, _) =
-        find_stake_program_address(&s2g::id(), vote_account, &stake_pool_address);
+        find_stake_program_address(&lpool::id(), vote_account, &stake_pool_address);
     println!(
         "Removing stake account {}, delegated to {}",
         stake_account_address, vote_account
@@ -474,8 +474,8 @@ fn command_vsa_remove(
     }
     instructions.push(
         // Create new validator stake account address
-        s2g::stake_pool::instruction::remove_validator_from_pool_with_vote(
-            &s2g::id(),
+        lpool::instruction::remove_validator_from_pool_with_vote(
+            &lpool::id(),
             &stake_pool,
             &stake_pool_address,
             vote_account,
@@ -495,7 +495,7 @@ fn command_increase_validator_stake(
     vote_account: &Pubkey,
     amount: f64,
 ) -> CommandResult {
-    let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
 
     let lamports = native_token::sol_to_lamports(amount);
     if !config.no_update {
@@ -513,8 +513,8 @@ fn command_increase_validator_stake(
     let transaction = checked_transaction_with_signers(
         config,
         &[
-            s2g::stake_pool::instruction::increase_validator_stake_with_vote(
-                &s2g::id(),
+            lpool::instruction::increase_validator_stake_with_vote(
+                &lpool::id(),
                 &stake_pool,
                 &stake_pool_address,
                 vote_account,
@@ -533,7 +533,7 @@ fn command_decrease_validator_stake(
     vote_account: &Pubkey,
     amount: f64,
 ) -> CommandResult {
-    let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
 
     let lamports = native_token::sol_to_lamports(amount);
     if !config.no_update {
@@ -551,8 +551,8 @@ fn command_decrease_validator_stake(
     let transaction = checked_transaction_with_signers(
         config,
         &[
-            s2g::stake_pool::instruction::decrease_validator_stake_with_vote(
-                &s2g::id(),
+            lpool::instruction::decrease_validator_stake_with_vote(
+                &lpool::id(),
                 &stake_pool,
                 &stake_pool_address,
                 vote_account,
@@ -571,15 +571,15 @@ fn command_set_preferred_validator(
     preferred_type: PreferredValidatorType,
     vote_address: Option<Pubkey>,
 ) -> CommandResult {
-    let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
 
     let stake_pool = get_stake_pool(&config.rpc_client, &stake_pool_address)?;
     let mut signers = vec![config.fee_payer.as_ref(), config.staker.as_ref()];
     unique_signers!(signers);
     let transaction = checked_transaction_with_signers(
         config,
-        &[s2g::stake_pool::instruction::set_preferred_validator(
-            &s2g::id(),
+        &[lpool::instruction::set_preferred_validator(
+            &lpool::id(),
             &stake_pool_address,
             &config.staker.pubkey(),
             &stake_pool.validator_list,
@@ -630,7 +630,7 @@ fn command_deposit_stake(
     pool_token_receiver_account: &Option<Pubkey>,
     referrer_token_account: &Option<Pubkey>,
 ) -> CommandResult {
-    let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
 
     if !config.no_update {
         command_update(config, &stake_pool_address, false, false)?;
@@ -655,7 +655,7 @@ fn command_deposit_stake(
 
     // Calculate validator stake account address linked to the pool
     let (validator_stake_account, _) =
-        find_stake_program_address(&s2g::id(), &vote_account, &stake_pool_address);
+        find_stake_program_address(&lpool::id(), &vote_account, &stake_pool_address);
 
     let validator_stake_state = get_stake_state(&config.rpc_client, &validator_stake_account)?;
     println!(
@@ -684,7 +684,7 @@ fn command_deposit_stake(
     let referrer_token_account = referrer_token_account.unwrap_or(pool_token_receiver_account);
 
     let pool_withdraw_authority =
-        find_withdraw_authority_program_address(&s2g::id(), &stake_pool_address).0;
+        find_withdraw_authority_program_address(&lpool::id(), &stake_pool_address).0;
 
     let mut deposit_instructions =
         if let Some(stake_deposit_authority) = config.funding_authority.as_ref() {
@@ -698,8 +698,8 @@ fn command_deposit_stake(
                 return Err(error.into());
             }
 
-            s2g::stake_pool::instruction::deposit_stake_with_authority(
-                &s2g::id(),
+            lpool::instruction::deposit_stake_with_authority(
+                &lpool::id(),
                 &stake_pool_address,
                 &stake_pool.validator_list,
                 &stake_deposit_authority.pubkey(),
@@ -715,8 +715,8 @@ fn command_deposit_stake(
                 &spl_token::id(),
             )
         } else {
-            s2g::stake_pool::instruction::deposit_stake(
-                &s2g::id(),
+            lpool::instruction::deposit_stake(
+                &lpool::id(),
                 &stake_pool_address,
                 &stake_pool.validator_list,
                 &pool_withdraw_authority,
@@ -755,7 +755,7 @@ fn command_deposit_all_stake(
     pool_token_receiver_account: &Option<Pubkey>,
     referrer_token_account: &Option<Pubkey>,
 ) -> CommandResult {
-    let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
 
     if !config.no_update {
         command_update(config, &stake_pool_address, false, false)?;
@@ -793,7 +793,7 @@ fn command_deposit_all_stake(
     let referrer_token_account = referrer_token_account.unwrap_or(pool_token_receiver_account);
 
     let pool_withdraw_authority =
-        find_withdraw_authority_program_address(&s2g::id(), &stake_pool_address).0;
+        find_withdraw_authority_program_address(&lpool::id(), &stake_pool_address).0;
     let validator_list = get_validator_list(&config.rpc_client, &stake_pool.validator_list)?;
     let mut signers = if let Some(stake_deposit_authority) = config.funding_authority.as_ref() {
         if stake_deposit_authority.pubkey() != stake_pool.stake_deposit_authority {
@@ -829,7 +829,7 @@ fn command_deposit_all_stake(
 
         // Calculate validator stake account address linked to the pool
         let (validator_stake_account, _) =
-            find_stake_program_address(&s2g::id(), &vote_account, &stake_pool_address);
+            find_stake_program_address(&lpool::id(), &vote_account, &stake_pool_address);
 
         let validator_stake_state = get_stake_state(&config.rpc_client, &validator_stake_account)?;
         println!("Depositing user stake {}: {:?}", stake_address, stake_state);
@@ -840,8 +840,8 @@ fn command_deposit_all_stake(
 
         let instructions = if let Some(stake_deposit_authority) = config.funding_authority.as_ref()
         {
-            s2g::stake_pool::instruction::deposit_stake_with_authority(
-                &s2g::id(),
+            lpool::instruction::deposit_stake_with_authority(
+                &lpool::id(),
                 &stake_pool_address,
                 &stake_pool.validator_list,
                 &stake_deposit_authority.pubkey(),
@@ -857,8 +857,8 @@ fn command_deposit_all_stake(
                 &spl_token::id(),
             )
         } else {
-            s2g::stake_pool::instruction::deposit_stake(
-                &s2g::id(),
+            lpool::instruction::deposit_stake(
+                &lpool::id(),
                 &stake_pool_address,
                 &stake_pool.validator_list,
                 &pool_withdraw_authority,
@@ -895,7 +895,7 @@ fn command_deposit_sol(
     referrer_token_account: &Option<Pubkey>,
     amount: f64,
 ) -> CommandResult {
-    let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
 
     if !config.no_update {
         command_update(config, &stake_pool_address, false, false)?;
@@ -949,7 +949,7 @@ fn command_deposit_sol(
     let referrer_token_account = referrer_token_account.unwrap_or(pool_token_receiver_account);
 
     let pool_withdraw_authority =
-        find_withdraw_authority_program_address(&s2g::id(), &stake_pool_address).0;
+        find_withdraw_authority_program_address(&lpool::id(), &stake_pool_address).0;
 
     let deposit_instruction = if let Some(deposit_authority) = config.funding_authority.as_ref() {
         let expected_sol_deposit_authority = stake_pool.sol_deposit_authority.ok_or_else(|| {
@@ -965,8 +965,8 @@ fn command_deposit_sol(
             return Err(error.into());
         }
 
-        s2g::stake_pool::instruction::deposit_sol_with_authority(
-            &s2g::id(),
+        lpool::instruction::deposit_sol_with_authority(
+            &lpool::id(),
             &stake_pool_address,
             &deposit_authority.pubkey(),
             &pool_withdraw_authority,
@@ -980,8 +980,8 @@ fn command_deposit_sol(
             amount,
         )
     } else {
-        s2g::stake_pool::instruction::deposit_sol(
-            &s2g::id(),
+        lpool::instruction::deposit_sol(
+            &lpool::id(),
             &stake_pool_address,
             &pool_withdraw_authority,
             &stake_pool.reserve_stake,
@@ -1022,7 +1022,7 @@ fn command_list(config: &Config, stake_pool_address: &Pubkey) -> CommandResult {
     let pool_mint = get_token_mint(&config.rpc_client, &stake_pool.pool_mint)?;
     let epoch_info = config.rpc_client.get_epoch_info()?;
     let pool_withdraw_authority =
-        find_withdraw_authority_program_address(&s2g::id(), stake_pool_address).0;
+        find_withdraw_authority_program_address(&lpool::id(), stake_pool_address).0;
     let reserve_stake = config.rpc_client.get_account(&stake_pool.reserve_stake)?;
     let minimum_reserve_stake_balance = config
         .rpc_client
@@ -1033,12 +1033,12 @@ fn command_list(config: &Config, stake_pool_address: &Pubkey) -> CommandResult {
         .iter()
         .map(|validator| {
             let (stake_account_address, _) = find_stake_program_address(
-                &s2g::id(),
+                &lpool::id(),
                 &validator.vote_account_address,
                 stake_pool_address,
             );
             let (transient_stake_account_address, _) = find_transient_stake_program_address(
-                &s2g::id(),
+                &lpool::id(),
                 &validator.vote_account_address,
                 stake_pool_address,
                 validator.transient_seed_suffix_start,
@@ -1107,8 +1107,8 @@ fn command_update(
     let validator_list = get_validator_list(&config.rpc_client, &stake_pool.validator_list)?;
 
     let (mut update_list_instructions, final_instructions) =
-        s2g::stake_pool::instruction::update_stake_pool(
-            &s2g::id(),
+        lpool::instruction::update_stake_pool(
+            &lpool::id(),
             &stake_pool,
             &validator_list,
             stake_pool_address,
@@ -1200,7 +1200,7 @@ fn prepare_withdraw_accounts(
         stake_pool,
         |validator| {
             let (stake_account_address, _) = find_stake_program_address(
-                &s2g::id(),
+                &lpool::id(),
                 &validator.vote_account_address,
                 stake_pool_address,
             );
@@ -1218,7 +1218,7 @@ fn prepare_withdraw_accounts(
         stake_pool,
         |validator| {
             let (transient_stake_account_address, _) = find_transient_stake_program_address(
-                &s2g::id(),
+                &lpool::id(),
                 &validator.vote_account_address,
                 stake_pool_address,
                 validator.transient_seed_suffix_start,
@@ -1296,7 +1296,7 @@ fn command_withdraw_stake(
     pool_token_account: &Option<Pubkey>,
     pool_amount: f64,
 ) -> CommandResult {
-    let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
 
     if !config.no_update {
         command_update(config, &stake_pool_address, false, false)?;
@@ -1307,7 +1307,7 @@ fn command_withdraw_stake(
     let pool_amount = spl_token::ui_amount_to_amount(pool_amount, pool_mint.decimals);
 
     let pool_withdraw_authority =
-        find_withdraw_authority_program_address(&s2g::id(), &stake_pool_address).0;
+        find_withdraw_authority_program_address(&lpool::id(), &stake_pool_address).0;
 
     let pool_token_account = pool_token_account.unwrap_or(get_associated_token_address(
         &config.token_owner.pubkey(),
@@ -1340,7 +1340,7 @@ fn command_withdraw_stake(
         }]
     } else if let Some(vote_account_address) = vote_account_address {
         let (stake_account_address, _) = find_stake_program_address(
-            &s2g::id(),
+            &lpool::id(),
             vote_account_address,
             &stake_pool_address,
         );
@@ -1439,8 +1439,8 @@ fn command_withdraw_stake(
             stake_pubkey
         });
 
-        instructions.push(s2g::stake_pool::instruction::withdraw_stake(
-            &s2g::id(),
+        instructions.push(lpool::instruction::withdraw_stake(
+            &lpool::id(),
             &stake_pool_address,
             &stake_pool.validator_list,
             &pool_withdraw_authority,
@@ -1480,7 +1480,7 @@ fn command_withdraw_sol(
     sol_receiver: &Pubkey,
     pool_amount: f64,
 ) -> CommandResult {
-    let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
     if !config.no_update {
         command_update(config, &stake_pool_address, false, false)?;
     }
@@ -1530,7 +1530,7 @@ fn command_withdraw_sol(
     ];
 
     let pool_withdraw_authority =
-        find_withdraw_authority_program_address(&s2g::id(), &stake_pool_address).0;
+        find_withdraw_authority_program_address(&lpool::id(), &stake_pool_address).0;
 
     let withdraw_instruction = if let Some(withdraw_authority) = config.funding_authority.as_ref() {
         let expected_sol_withdraw_authority =
@@ -1547,8 +1547,8 @@ fn command_withdraw_sol(
             return Err(error.into());
         }
 
-        s2g::stake_pool::instruction::withdraw_sol_with_authority(
-            &s2g::id(),
+        lpool::instruction::withdraw_sol_with_authority(
+            &lpool::id(),
             &stake_pool_address,
             &withdraw_authority.pubkey(),
             &pool_withdraw_authority,
@@ -1562,8 +1562,8 @@ fn command_withdraw_sol(
             pool_amount,
         )
     } else {
-        s2g::stake_pool::instruction::withdraw_sol(
-            &s2g::id(),
+        lpool::instruction::withdraw_sol(
+            &lpool::id(),
             &stake_pool_address,
             &pool_withdraw_authority,
             &user_transfer_authority.pubkey(),
@@ -1595,7 +1595,7 @@ fn command_set_manager(
     new_manager: &Option<Keypair>,
     new_fee_receiver: &Option<Pubkey>,
 ) -> CommandResult {
-    let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
 
     if !config.no_update {
         command_update(config, &stake_pool_address, false, false)?;
@@ -1629,8 +1629,8 @@ fn command_set_manager(
     unique_signers!(signers);
     let transaction = checked_transaction_with_signers(
         config,
-        &[s2g::stake_pool::instruction::set_manager(
-            &s2g::id(),
+        &[lpool::instruction::set_manager(
+            &lpool::id(),
             &stake_pool_address,
             &config.manager.pubkey(),
             &new_manager_pubkey,
@@ -1646,7 +1646,7 @@ fn command_set_staker(
     config: &Config,
     new_staker: &Pubkey,
 ) -> CommandResult {
-    let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
 
     if !config.no_update {
         command_update(config, &stake_pool_address, false, false)?;
@@ -1655,8 +1655,8 @@ fn command_set_staker(
     unique_signers!(signers);
     let transaction = checked_transaction_with_signers(
         config,
-        &[s2g::stake_pool::instruction::set_staker(
-            &s2g::id(),
+        &[lpool::instruction::set_staker(
+            &lpool::id(),
             &stake_pool_address,
             &config.manager.pubkey(),
             new_staker,
@@ -1672,7 +1672,7 @@ fn command_set_funding_authority(
     new_authority: Option<Pubkey>,
     funding_type: FundingType,
 ) -> CommandResult {
-    let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
 
     if !config.no_update {
         command_update(config, &stake_pool_address, false, false)?;
@@ -1681,8 +1681,8 @@ fn command_set_funding_authority(
     unique_signers!(signers);
     let transaction = checked_transaction_with_signers(
         config,
-        &[s2g::stake_pool::instruction::set_funding_authority(
-            &s2g::id(),
+        &[lpool::instruction::set_funding_authority(
+            &lpool::id(),
             &stake_pool_address,
             &config.manager.pubkey(),
             new_authority.as_ref(),
@@ -1698,7 +1698,7 @@ fn command_set_fee(
     config: &Config,
     new_fee: FeeType,
 ) -> CommandResult {
-    let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+    let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
 
     if !config.no_update {
         command_update(config, &stake_pool_address, false, false)?;
@@ -1707,8 +1707,8 @@ fn command_set_fee(
     unique_signers!(signers);
     let transaction = checked_transaction_with_signers(
         config,
-        &[s2g::stake_pool::instruction::set_fee(
-            &s2g::id(),
+        &[lpool::instruction::set_fee(
+            &lpool::id(),
             &stake_pool_address,
             &config.manager.pubkey(),
             new_fee,
@@ -2599,11 +2599,11 @@ fn main() {
             )
         }
         ("list", Some(_)) => {
-            let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+            let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
             command_list(&config, &stake_pool_address)
         }
         ("update", Some(arg_matches)) => {
-            let stake_pool_address = s2g::stake_pool::find_stake_pool_program_address(&s2g::id()).0;
+            let stake_pool_address = lpool::find_stake_pool_program_address(&lpool::id()).0;
             let no_merge = arg_matches.is_present("no_merge");
             let force = arg_matches.is_present("force");
             command_update(&config, &stake_pool_address, force, no_merge)

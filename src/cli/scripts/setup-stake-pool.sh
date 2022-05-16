@@ -38,7 +38,7 @@ command_args+=( --max-validators 3825 ) # Maximum number of validators in the st
 
 keys_dir=keys
 
-s2g=../../../target/debug/s2g
+lpool=../../../target/debug/lpool
 
 mkdir -p $keys_dir
 
@@ -58,7 +58,7 @@ create_keypair $validator_list_keyfile
 create_keypair $reserve_keyfile
 
 set -ex
-$s2g \
+$lpool \
   create-pool \
   "${command_args[@]}" \
   --validator-list-keypair "$validator_list_keyfile" \
