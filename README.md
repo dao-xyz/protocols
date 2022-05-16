@@ -1,4 +1,4 @@
-# DAO.xyz protocls
+# DAO.xyz protocols
 
 This repo contains a collections of protocols used for DAO.xyz
 
