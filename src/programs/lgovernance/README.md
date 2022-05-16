@@ -1,4 +1,4 @@
-# Governance and authentication protocol for DAO.xyz
+# Governance protocol for dao | xyz
 
 ## Features
 - Support for proxy voting (scope/sub-daos).
