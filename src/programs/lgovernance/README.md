@@ -7,8 +7,8 @@
 
 ## Working examples
 See integration tests.
-- [Scope voting]('./tests/governance/voting.rs')
-- [Scope delegation]('./tests/governance/delegation.rs')
+- [Scope voting](./tests/governance/voting.rs)
+- [Scope delegation](./tests/governance/delegation.rs)
 
 
 Currently WIP
